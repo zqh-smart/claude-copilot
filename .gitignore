@@ -216,3 +216,23 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project-local scratch directories
+.tmp/
+sandbox_test_*/
+
+# Runtime document and index artifacts
+data/debug/
+data/graph/
+data/documents/*
+!data/documents/.gitkeep
+data/raw/*
+!data/raw/.gitkeep
+data/parsed/*
+!data/parsed/.gitkeep
+data/reports/*
+!data/reports/.gitkeep
+
+# Local database files
+*.sqlite
+*.sqlite3

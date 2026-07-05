@@ -1,0 +1,196 @@
+{
+  "version": 1,
+  "documents": {
+    "aapl_2023_10k.html": {
+      "parse_route": "native_html",
+      "parse_backend": "native-html",
+      "page_count": 1,
+      "parsed_page_count": 1,
+      "min_metric_facts": 40,
+      "min_note_facts": 200,
+      "min_table_type_counts": {
+        "income_statement": 2,
+        "balance_sheet": 1,
+        "cash_flow": 1,
+        "equity": 1,
+        "notes_table": 30
+      },
+      "max_table_type_counts": {
+        "income_statement": 2,
+        "balance_sheet": 1,
+        "cash_flow": 1,
+        "equity": 1
+      },
+      "required_note_numbers": [
+        "Note 2",
+        "Note 3",
+        "Note 4",
+        "Note 5",
+        "Note 6",
+        "Note 7",
+        "Note 8",
+        "Note 9",
+        "Note 10",
+        "Note 11",
+        "Note 12",
+        "Note 13"
+      ],
+      "required_tables": [
+        {
+          "name": "aapl_operations",
+          "title_regex": "^CONSOLIDATED STATEMENTS OF OPERATIONS$",
+          "table_type": "income_statement",
+          "periods": [
+            "September 30, 2023",
+            "September 24, 2022",
+            "September 25, 2021"
+          ],
+          "unit": "millions",
+          "currency": "USD",
+          "required_metric_keys": ["revenue", "net_income"]
+        },
+        {
+          "name": "aapl_balance_sheet",
+          "title_regex": "^CONSOLIDATED BALANCE SHEETS$",
+          "table_type": "balance_sheet",
+          "periods": ["September 30, 2023", "September 24, 2022"],
+          "unit": "millions",
+          "currency": "USD",
+          "required_metric_keys": ["cash_and_cash_equivalents", "total_assets", "total_liabilities"]
+        },
+        {
+          "name": "aapl_cash_flow",
+          "title_regex": "^CONSOLIDATED STATEMENTS OF CASH FLOWS$",
+          "table_type": "cash_flow",
+          "periods": [
+            "September 30, 2023",
+            "September 24, 2022",
+            "September 25, 2021"
+          ],
+          "unit": "millions",
+          "currency": "USD",
+          "required_metric_keys": ["net_income", "net_cash_from_operating_activities"]
+        },
+        {
+          "name": "aapl_note_9",
+          "title_regex": "^Note 9",
+          "table_type": "notes_table",
+          "note_number": "Note 9",
+          "currency": "USD"
+        }
+      ],
+      "forbidden_tables": [
+        {
+          "name": "aapl_item_8_not_statement",
+          "title_regex": "^Item 8",
+          "table_type": "income_statement"
+        },
+        {
+          "name": "aapl_form_not_note",
+          "title_regex": "^FORM 10-K$",
+          "table_type": "notes_table"
+        }
+      ]
+    },
+    "bmw_group_financial_analysis.xlsx": {
+      "parse_route": "native_xlsx",
+      "parse_backend": "native-openpyxl",
+      "page_count": 8,
+      "parsed_page_count": 8,
+      "min_metric_facts": 20,
+      "min_table_type_counts": {
+        "profile_table": 3,
+        "analysis_table": 14,
+        "income_statement": 1,
+        "balance_sheet": 2,
+        "cash_flow": 1
+      },
+      "max_table_type_counts": {
+        "income_statement": 1,
+        "balance_sheet": 2,
+        "cash_flow": 1,
+        "notes_table": 0
+      },
+      "required_tables": [
+        {
+          "name": "bmw_xlsx_income_statement",
+          "title_regex": "^INCOME STATEMENT$",
+          "table_type": "income_statement",
+          "periods": ["2024", "2023"],
+          "unit": "millions",
+          "currency": "EUR",
+          "required_metric_keys": ["revenue", "gross_margin", "operating_income"]
+        },
+        {
+          "name": "bmw_xlsx_balance_assets",
+          "title_regex": "^BALANCE SHEET$",
+          "table_type": "balance_sheet",
+          "periods": ["2024", "2023"],
+          "unit": "millions",
+          "currency": "EUR",
+          "required_metric_keys": ["total_assets"]
+        },
+        {
+          "name": "bmw_xlsx_balance_equity",
+          "title_regex": "^BALANCE SHEET$",
+          "table_type": "balance_sheet",
+          "periods": ["2024", "2023"],
+          "unit": "millions",
+          "currency": "EUR",
+          "required_metric_keys": ["total_equity"]
+        },
+        {
+          "name": "bmw_xlsx_cash_flow",
+          "title_regex": "^CASH FLOW STATEMENT$",
+          "table_type": "cash_flow",
+          "periods": ["2024", "2023"],
+          "unit": "millions",
+          "currency": "EUR"
+        }
+      ],
+      "forbidden_tables": [
+        {
+          "name": "bmw_ratio_not_cash_flow",
+          "title_regex": "Ratio Analysis",
+          "table_type": "cash_flow"
+        },
+        {
+          "name": "bmw_profile_not_statement",
+          "title_regex": "Company Profile",
+          "table_type": "income_statement"
+        }
+      ]
+    },
+    "bmw_group_financial_analysis_report.docx": {
+      "parse_route": "native_docx",
+      "parse_backend": "native-docx",
+      "page_count": 1,
+      "parsed_page_count": 1,
+      "min_table_type_counts": {
+        "profile_table": 1,
+        "analysis_table": 1
+      },
+      "max_table_type_counts": {
+        "income_statement": 0,
+        "balance_sheet": 0,
+        "cash_flow": 0,
+        "notes_table": 0
+      },
+      "required_tables": [
+        {
+          "name": "bmw_docx_profile",
+          "title_regex": "Company Profile",
+          "table_type": "profile_table"
+        },
+        {
+          "name": "bmw_docx_free_cash_flow",
+          "title_regex": "Free Cash Flow Analysis",
+          "table_type": "analysis_table",
+          "periods": ["2024", "2023"],
+          "unit": "millions",
+          "currency": "EUR"
+        }
+      ]
+    }
+  }
+}

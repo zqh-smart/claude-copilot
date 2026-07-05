@@ -1,0 +1,21 @@
+{
+  "parse_route": "mineru_pdf",
+  "parse_backend": "mineru",
+  "min_statements": 4,
+  "min_notes": 1,
+  "min_metric_facts": 12,
+  "min_note_facts": 1,
+  "required_statement_types": [
+    "income_statement",
+    "balance_sheet",
+    "cash_flow",
+    "equity"
+  ],
+  "required_semantic_section_types": [
+    "audit_report",
+    "financial_statement",
+    "financial_note"
+  ],
+  "min_statement_page_range_ratio": 1.0,
+  "min_note_domain_facts_ratio": 1.0
+}
