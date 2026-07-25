@@ -125,6 +125,13 @@ def test_query_analyzer_avoids_overlapping_metric_aliases() -> None:
     assert analysis.years == [2024]
 
 
+def test_query_analyzer_routes_entity_relationship_questions_to_graph() -> None:
+    analysis = QueryAnalyzer().analyze("公司有哪些业务板块和子公司？")
+
+    assert analysis.intent == "relational"
+    assert analysis.routes == ["graph"]
+
+
 def test_orchestrator_routes_structured_query_to_sql(tmp_path: Path) -> None:
     result = build_orchestrator(tmp_path).retrieve(
         "营收增长趋势是多少？",

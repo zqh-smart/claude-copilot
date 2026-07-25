@@ -1,15 +1,25 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.dependencies import get_financial_data_service
+from app.api.dependencies import get_financial_data_service, get_graph_store
 from app.api.services.financial_data_service import FinancialDataService
 from app.core.errors import CompanyNotFoundError
+from app.core.kg import KnowledgeGraphStoreProtocol
 from src.claude_copilot.schemas.financial_data import (
     CompanySummary,
     FinancialMetricsResponse,
     MetricTrendResponse,
 )
+from src.claude_copilot.schemas.knowledge_graph import CompanyKnowledgeGraph
 
 router = APIRouter(prefix="/api/v1/companies", tags=["financial-data"])
+
+
+@router.get("/{company_id}/knowledge-graph", response_model=CompanyKnowledgeGraph)
+def get_company_knowledge_graph(
+    company_id: str,
+    graph_store: KnowledgeGraphStoreProtocol = Depends(get_graph_store),
+) -> CompanyKnowledgeGraph:
+    return graph_store.get_company(company_id)
 
 
 @router.get("", response_model=list[CompanySummary])

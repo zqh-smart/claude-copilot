@@ -3,7 +3,8 @@ from __future__ import annotations
 import hashlib
 import re
 
-from app.core.db.financial_data_repository import build_company_id
+from app.core.kg.entity_extractor import FinancialEntityRelationExtractor
+from src.claude_copilot.entity_resolution import EntityResolver
 from src.claude_copilot.schemas.document import ParsedDocument
 from src.claude_copilot.schemas.knowledge_graph import (
     DocumentKnowledgeGraph,
@@ -25,13 +26,29 @@ class KnowledgeGraphBuilder:
         "supply_chain_risk": ("supply chain", "供应链风险"),
     }
 
+    def __init__(
+        self,
+        resolver: EntityResolver | None = None,
+        extractor: FinancialEntityRelationExtractor | None = None,
+    ) -> None:
+        self._resolver = resolver or EntityResolver()
+        self._extractor = extractor or FinancialEntityRelationExtractor(self._resolver)
+
     def build(self, document: ParsedDocument) -> DocumentKnowledgeGraph:
         company_name = (
             document.financial_schema.company
             if document.financial_schema and document.financial_schema.company
             else document.metadata.company
         )
-        company_id = build_company_id(company_name) if company_name else None
+        resolved_company = (
+            self._resolver.resolve_company(
+                company_name,
+                aliases=document.metadata.company_aliases,
+            )
+            if company_name
+            else None
+        )
+        company_id = resolved_company.entity_id if resolved_company else None
         nodes: dict[str, KnowledgeGraphNode] = {}
         relationships: dict[str, KnowledgeGraphRelationship] = {}
 
@@ -54,8 +71,14 @@ class KnowledgeGraphBuilder:
             nodes[company_node_id] = KnowledgeGraphNode(
                 node_id=company_node_id,
                 node_type="company",
-                name=company_name,
-                properties={"company_id": company_id},
+                name=resolved_company.canonical_name,
+                properties={
+                    "company_id": company_id,
+                    "canonical_key": resolved_company.canonical_key,
+                    "aliases": list(resolved_company.aliases),
+                    "years": [document.metadata.year] if document.metadata.year else [],
+                    "document_ids": [document.doc_id],
+                },
             )
             self._add_relationship(
                 relationships,
@@ -63,6 +86,12 @@ class KnowledgeGraphBuilder:
                 company_node_id,
                 document_node_id,
                 document.doc_id,
+                page_range=(
+                    document.metadata.parsed_page_range
+                    or ((1, document.metadata.page_count) if document.metadata.page_count else None)
+                ),
+                evidence_text=document.metadata.filename or document.doc_id,
+                confidence=1.0,
             )
 
         if document.financial_schema is not None:
@@ -97,6 +126,9 @@ class KnowledgeGraphBuilder:
                         company_node_id,
                         metric_id,
                         document.doc_id,
+                        page_range=fact.page_range,
+                        evidence_text=(f"{fact.metric_key} ({fact.period}) = {fact.value}"),
+                        confidence=0.98,
                     )
                 self._add_relationship(
                     relationships,
@@ -104,6 +136,9 @@ class KnowledgeGraphBuilder:
                     metric_id,
                     document_node_id,
                     document.doc_id,
+                    page_range=fact.page_range,
+                    evidence_text=(f"{fact.metric_key} ({fact.period}) = {fact.value}"),
+                    confidence=1.0,
                 )
 
         for risk_key, evidence, page_range in self._extract_risks(document):
@@ -126,6 +161,19 @@ class KnowledgeGraphBuilder:
                     company_node_id,
                     risk_id,
                     document.doc_id,
+                    page_range=page_range,
+                    evidence_text=evidence,
+                    confidence=0.86,
+                )
+                self._add_relationship(
+                    relationships,
+                    "AFFECTED_BY",
+                    company_node_id,
+                    risk_id,
+                    document.doc_id,
+                    page_range=page_range,
+                    evidence_text=evidence,
+                    confidence=0.82,
                 )
             self._add_relationship(
                 relationships,
@@ -133,7 +181,44 @@ class KnowledgeGraphBuilder:
                 risk_id,
                 document_node_id,
                 document.doc_id,
+                page_range=page_range,
+                evidence_text=evidence,
+                confidence=1.0,
             )
+
+        if company_node_id and company_id:
+            for entity in self._extractor.extract(document, company_id=company_id):
+                nodes[entity.node_id] = KnowledgeGraphNode(
+                    node_id=entity.node_id,
+                    node_type=entity.node_type,
+                    name=entity.name,
+                    document_id=(document.doc_id if entity.node_type in {"event"} else None),
+                    properties={
+                        **entity.properties,
+                        "years": [document.metadata.year] if document.metadata.year else [],
+                        "document_ids": [document.doc_id],
+                    },
+                )
+                self._add_relationship(
+                    relationships,
+                    entity.relationship_type,
+                    company_node_id,
+                    entity.node_id,
+                    document.doc_id,
+                    page_range=entity.page_range,
+                    evidence_text=entity.evidence_text,
+                    confidence=entity.confidence,
+                )
+                self._add_relationship(
+                    relationships,
+                    "EVIDENCED_BY",
+                    entity.node_id,
+                    document_node_id,
+                    document.doc_id,
+                    page_range=entity.page_range,
+                    evidence_text=entity.evidence_text,
+                    confidence=1.0,
+                )
 
         return DocumentKnowledgeGraph(
             document_id=document.doc_id,
@@ -192,6 +277,10 @@ class KnowledgeGraphBuilder:
         source_node_id: str,
         target_node_id: str,
         document_id: str,
+        *,
+        page_range: tuple[int, int] | None = None,
+        evidence_text: str | None = None,
+        confidence: float = 1.0,
     ) -> None:
         relationship_id = self._stable_id(
             "relationship",
@@ -206,6 +295,9 @@ class KnowledgeGraphBuilder:
             source_node_id=source_node_id,
             target_node_id=target_node_id,
             document_id=document_id,
+            page_range=page_range,
+            evidence_text=evidence_text[:1800] if evidence_text else None,
+            confidence=confidence,
         )
 
     @staticmethod

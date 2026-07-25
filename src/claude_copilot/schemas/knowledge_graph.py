@@ -2,11 +2,24 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-GraphNodeType = Literal["company", "document", "metric", "risk"]
+GraphNodeType = Literal[
+    "company",
+    "subsidiary",
+    "industry",
+    "business_segment",
+    "event",
+    "document",
+    "metric",
+    "risk",
+]
 GraphRelationshipType = Literal[
     "HAS_DOCUMENT",
     "REPORTS_METRIC",
     "HAS_RISK",
+    "OWNS",
+    "OPERATES_IN",
+    "AFFECTED_BY",
+    "COMPETES_WITH",
     "EVIDENCED_BY",
 ]
 
@@ -25,12 +38,24 @@ class KnowledgeGraphRelationship(BaseModel):
     source_node_id: str
     target_node_id: str
     document_id: str
+    page_range: tuple[int, int] | None = None
+    evidence_text: str | None = None
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     properties: dict[str, Any] = Field(default_factory=dict)
 
 
 class DocumentKnowledgeGraph(BaseModel):
     document_id: str
     company_id: str | None = None
+    nodes: list[KnowledgeGraphNode] = Field(default_factory=list)
+    relationships: list[KnowledgeGraphRelationship] = Field(default_factory=list)
+
+
+class CompanyKnowledgeGraph(BaseModel):
+    company_id: str
+    company_name: str | None = None
+    document_ids: list[str] = Field(default_factory=list)
+    years: list[int] = Field(default_factory=list)
     nodes: list[KnowledgeGraphNode] = Field(default_factory=list)
     relationships: list[KnowledgeGraphRelationship] = Field(default_factory=list)
 

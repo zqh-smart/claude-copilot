@@ -16,6 +16,8 @@ class DocumentService:
         year: int | None,
         doc_type: str,
         source: str,
+        industry: str | None = None,
+        company_aliases: list[str] | None = None,
     ) -> DocumentRecord:
         content = await file.read()
         return self._pipeline_service.ingest(
@@ -26,6 +28,8 @@ class DocumentService:
             year=year,
             doc_type=doc_type,
             source=source,
+            industry=industry,
+            company_aliases=company_aliases,
         )
 
     def list_documents(self) -> list[DocumentRecord]:

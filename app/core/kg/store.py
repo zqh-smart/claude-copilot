@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from src.claude_copilot.schemas.knowledge_graph import (
+    CompanyKnowledgeGraph,
     DocumentKnowledgeGraph,
     GraphPath,
     KnowledgeGraphNode,
@@ -17,6 +18,8 @@ class KnowledgeGraphStoreProtocol(Protocol):
     def replace_document(self, graph: DocumentKnowledgeGraph) -> None: ...
 
     def get_document(self, document_id: str) -> DocumentKnowledgeGraph: ...
+
+    def get_company(self, company_id: str) -> CompanyKnowledgeGraph: ...
 
     def search(
         self,
@@ -34,6 +37,9 @@ class NoOpKnowledgeGraphStore:
 
     def get_document(self, document_id: str) -> DocumentKnowledgeGraph:
         return DocumentKnowledgeGraph(document_id=document_id)
+
+    def get_company(self, company_id: str) -> CompanyKnowledgeGraph:
+        return CompanyKnowledgeGraph(company_id=company_id)
 
     def search(
         self,
@@ -63,6 +69,13 @@ class LocalKnowledgeGraphStore:
             return DocumentKnowledgeGraph(document_id=document_id)
         return DocumentKnowledgeGraph.model_validate_json(path.read_text(encoding="utf-8"))
 
+    def get_company(self, company_id: str) -> CompanyKnowledgeGraph:
+        graphs = [
+            DocumentKnowledgeGraph.model_validate_json(path.read_text(encoding="utf-8"))
+            for path in self._base_dir.glob("*.json")
+        ]
+        return _merge_company_graphs(company_id, [g for g in graphs if g.company_id == company_id])
+
     def search(
         self,
         query: str,
@@ -79,6 +92,16 @@ class LocalKnowledgeGraphStore:
                 for path in self._base_dir.glob("*.json")
             ]
         )
+        if company_id and document_id is None:
+            merged = self.get_company(company_id)
+            graphs = [
+                DocumentKnowledgeGraph(
+                    document_id=f"company:{company_id}",
+                    company_id=company_id,
+                    nodes=merged.nodes,
+                    relationships=merged.relationships,
+                )
+            ]
         terms = self._query_terms(query)
         paths: list[GraphPath] = []
         for graph in graphs:
@@ -100,8 +123,7 @@ class LocalKnowledgeGraphStore:
                     GraphPath(
                         path_id=relationship.relationship_id,
                         summary=(
-                            f"{source.name} -[{relationship.relationship_type}]-> "
-                            f"{target.name}"
+                            f"{source.name} -[{relationship.relationship_type}]-> {target.name}"
                         ),
                         score=round(score, 4),
                         nodes=[source, target],
@@ -158,17 +180,47 @@ class LocalKnowledgeGraphStore:
             and relationship.relationship_type
         ):
             return 0.15
+        if (
+            any(term in normalized for term in ("subsidiary", "子公司"))
+            and "subsidiary" in node_types
+        ):
+            return 0.25
+        if any(term in normalized for term in ("industry", "行业")) and "industry" in node_types:
+            return 0.25
+        if (
+            any(term in normalized for term in ("segment", "business unit", "业务板块", "分部"))
+            and "business_segment" in node_types
+        ):
+            return 0.25
+        if (
+            any(term in normalized for term in ("competitor", "competition", "竞争对手", "竞争"))
+            and relationship.relationship_type == "COMPETES_WITH"
+        ):
+            return 0.25
         return 0.0
 
 
 class Neo4jKnowledgeGraphStore:
     _LABELS = {
         "company": "Company",
+        "subsidiary": "Subsidiary",
+        "industry": "Industry",
+        "business_segment": "BusinessSegment",
+        "event": "Event",
         "document": "Document",
         "metric": "Metric",
         "risk": "Risk",
     }
-    _RELATIONSHIPS = {"HAS_DOCUMENT", "REPORTS_METRIC", "HAS_RISK", "EVIDENCED_BY"}
+    _RELATIONSHIPS = {
+        "HAS_DOCUMENT",
+        "REPORTS_METRIC",
+        "HAS_RISK",
+        "OWNS",
+        "OPERATES_IN",
+        "AFFECTED_BY",
+        "COMPETES_WITH",
+        "EVIDENCED_BY",
+    }
 
     def __init__(self, *, uri: str, username: str, password: str, database: str) -> None:
         try:
@@ -181,6 +233,10 @@ class Neo4jKnowledgeGraphStore:
 
     def replace_document(self, graph: DocumentKnowledgeGraph) -> None:
         with self._driver.session(database=self._database) as session:
+            session.run(
+                "MATCH ()-[r {document_id: $document_id}]->() DELETE r",
+                document_id=graph.document_id,
+            ).consume()
             session.run(
                 "MATCH (n {document_id: $document_id}) DETACH DELETE n",
                 document_id=graph.document_id,
@@ -195,10 +251,24 @@ class Neo4jKnowledgeGraphStore:
                         **node.properties,
                     }
                 )
+                merge_lists = {
+                    key: properties.pop(key, []) for key in ("aliases", "years", "document_ids")
+                }
                 session.run(
-                    f"MERGE (n:{label} {{node_id: $node_id}}) SET n += $properties",
+                    (
+                        f"MERGE (n:{label} {{node_id: $node_id}}) "
+                        "SET n += $properties "
+                        "SET n.aliases = reduce(a = coalesce(n.aliases, []), x IN $aliases | "
+                        "CASE WHEN x IN a THEN a ELSE a + x END), "
+                        "n.years = reduce(a = coalesce(n.years, []), x IN $years | "
+                        "CASE WHEN x IN a THEN a ELSE a + x END), "
+                        "n.document_ids = reduce("
+                        "a = coalesce(n.document_ids, []), x IN $document_ids | "
+                        "CASE WHEN x IN a THEN a ELSE a + x END)"
+                    ),
                     node_id=node.node_id,
                     properties=properties,
+                    **merge_lists,
                 ).consume()
             for relationship in graph.relationships:
                 relationship_type = relationship.relationship_type
@@ -217,10 +287,21 @@ class Neo4jKnowledgeGraphStore:
                     properties=self._neo4j_properties(
                         {
                             "document_id": relationship.document_id,
+                            "page_range": relationship.page_range,
+                            "evidence_text": relationship.evidence_text,
+                            "confidence": relationship.confidence,
                             **relationship.properties,
                         }
                     ),
                 ).consume()
+            session.run(
+                """
+                MATCH (n)
+                WHERE NOT (n)--()
+                  AND (n:Company OR n:Subsidiary OR n:Industry OR n:BusinessSegment)
+                DELETE n
+                """
+            ).consume()
 
     def _ensure_schema(self) -> None:
         with self._driver.session(database=self._database) as session:
@@ -246,6 +327,24 @@ class Neo4jKnowledgeGraphStore:
             )
             return self._records_to_graph(document_id, list(records))
 
+    def get_company(self, company_id: str) -> CompanyKnowledgeGraph:
+        with self._driver.session(database=self._database) as session:
+            document_ids = [
+                record["document_id"]
+                for record in session.run(
+                    """
+                    MATCH (c:Company {company_id: $company_id})-[r]->()
+                    WHERE r.document_id IS NOT NULL
+                    RETURN DISTINCT r.document_id AS document_id
+                    """,
+                    company_id=company_id,
+                )
+            ]
+        return _merge_company_graphs(
+            company_id,
+            [self.get_document(document_id) for document_id in document_ids],
+        )
+
     def search(
         self,
         query: str,
@@ -254,7 +353,13 @@ class Neo4jKnowledgeGraphStore:
         company_id: str | None = None,
         limit: int = 10,
     ) -> list[GraphPath]:
-        graph = self.get_document(document_id) if document_id else None
+        graph = (
+            self.get_document(document_id)
+            if document_id
+            else self.get_company(company_id)
+            if company_id
+            else None
+        )
         if graph is None:
             return []
         local = _InMemoryGraphSearch(graph)
@@ -278,12 +383,20 @@ class Neo4jKnowledgeGraphStore:
             relationship_data = dict(record["r"])
             relationship_id = relationship_data.pop("relationship_id")
             relationship_document_id = relationship_data.pop("document_id", document_id)
+            page_range = relationship_data.pop("page_range", None)
+            if isinstance(page_range, str):
+                page_range = json.loads(page_range)
+            evidence_text = relationship_data.pop("evidence_text", None)
+            confidence = relationship_data.pop("confidence", 1.0)
             relationships[relationship_id] = KnowledgeGraphRelationship(
                 relationship_id=relationship_id,
                 relationship_type=record["relationship_type"],
                 source_node_id=source.node_id,
                 target_node_id=target.node_id,
                 document_id=relationship_document_id,
+                page_range=tuple(page_range) if page_range else None,
+                evidence_text=evidence_text,
+                confidence=confidence,
                 properties=relationship_data,
             )
         return DocumentKnowledgeGraph(
@@ -322,7 +435,7 @@ class Neo4jKnowledgeGraphStore:
 
 
 class _InMemoryGraphSearch(LocalKnowledgeGraphStore):
-    def __init__(self, graph: DocumentKnowledgeGraph) -> None:
+    def __init__(self, graph: DocumentKnowledgeGraph | CompanyKnowledgeGraph) -> None:
         self._graph = graph
 
     def search(
@@ -361,3 +474,38 @@ class _InMemoryGraphSearch(LocalKnowledgeGraphStore):
                 )
             )
         return sorted(paths, key=lambda item: (-item.score, item.path_id))[:limit]
+
+
+def _merge_company_graphs(
+    company_id: str,
+    graphs: list[DocumentKnowledgeGraph],
+) -> CompanyKnowledgeGraph:
+    nodes: dict[str, KnowledgeGraphNode] = {}
+    relationships: dict[str, KnowledgeGraphRelationship] = {}
+    years: set[int] = set()
+    company_name = None
+    for graph in graphs:
+        for node in graph.nodes:
+            previous = nodes.get(node.node_id)
+            if previous is None:
+                nodes[node.node_id] = node
+            else:
+                properties = dict(previous.properties)
+                for key, value in node.properties.items():
+                    if key in {"aliases", "years", "document_ids"}:
+                        properties[key] = list(dict.fromkeys([*properties.get(key, []), *value]))
+                    else:
+                        properties[key] = value
+                nodes[node.node_id] = previous.model_copy(update={"properties": properties})
+            if node.node_type == "company" and node.properties.get("company_id") == company_id:
+                company_name = node.name
+            years.update(year for year in node.properties.get("years", []) if isinstance(year, int))
+        relationships.update((item.relationship_id, item) for item in graph.relationships)
+    return CompanyKnowledgeGraph(
+        company_id=company_id,
+        company_name=company_name,
+        document_ids=sorted(graph.document_id for graph in graphs),
+        years=sorted(years),
+        nodes=list(nodes.values()),
+        relationships=list(relationships.values()),
+    )

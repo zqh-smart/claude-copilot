@@ -1,9 +1,11 @@
 from app.core.kg import KnowledgeGraphBuilder, LocalKnowledgeGraphStore
+from src.claude_copilot.entity_resolution import EntityResolver
 from src.claude_copilot.schemas.document import (
     DocumentMetadata,
     FinancialMetricFact,
     FinancialSchema,
     ParsedDocument,
+    ParsedSection,
     SemanticSectionSchema,
 )
 from src.claude_copilot.schemas.knowledge_graph import DocumentKnowledgeGraph
@@ -82,3 +84,98 @@ def test_replacing_document_graph_is_idempotent(tmp_path) -> None:
     store.replace_document(graph)
 
     assert store.get_document("doc-1") == graph
+
+
+def test_extracts_business_entities_with_relationship_provenance(tmp_path) -> None:
+    document = ParsedDocument(
+        doc_id="annual-2025",
+        metadata=DocumentMetadata(
+            doc_type="annual_report",
+            source="test",
+            filename="annual-report.txt",
+            company="ACME Holdings, Inc.",
+            company_aliases=["ACME"],
+            year=2025,
+        ),
+        sections=[
+            ParsedSection(
+                title="Business overview",
+                page_start=7,
+                page_end=8,
+                content=(
+                    "ACME Finance is a wholly-owned subsidiary. "
+                    "The company has three reportable business segments – Consumer Banking, "
+                    "Commercial Banking, and Asset Management. "
+                    "Competitors include Beta Bank and Gamma Financial. "
+                    "ACME operates banking, lending and deposit services. "
+                    "In 2025 ACME acquired Delta Payments to expand its offering."
+                ),
+            )
+        ],
+    )
+
+    graph = KnowledgeGraphBuilder().build(document)
+    node_types = {node.node_type for node in graph.nodes}
+    relationship_types = {item.relationship_type for item in graph.relationships}
+
+    assert {"company", "subsidiary", "industry", "business_segment", "event"} <= node_types
+    assert {"OWNS", "OPERATES_IN", "AFFECTED_BY", "COMPETES_WITH"} <= relationship_types
+    business_relationships = [
+        item
+        for item in graph.relationships
+        if item.relationship_type in {"OWNS", "OPERATES_IN", "AFFECTED_BY", "COMPETES_WITH"}
+    ]
+    assert business_relationships
+    assert all(
+        item.page_range == (7, 8) or item.relationship_type == "OPERATES_IN"
+        for item in business_relationships
+    )
+    assert all(item.evidence_text for item in business_relationships)
+    assert all(0 < item.confidence <= 1 for item in business_relationships)
+
+
+def test_company_identity_and_graph_merge_across_years(tmp_path) -> None:
+    builder = KnowledgeGraphBuilder()
+    first = ParsedDocument(
+        doc_id="annual-2023",
+        metadata=DocumentMetadata(
+            doc_type="annual_report",
+            source="test",
+            company="JPMorgan Chase & Co.",
+            year=2023,
+        ),
+    )
+    second = ParsedDocument(
+        doc_id="annual-2024",
+        metadata=DocumentMetadata(
+            doc_type="annual_report",
+            source="test",
+            company="JPMorganChase",
+            year=2024,
+        ),
+    )
+    first_graph = builder.build(first)
+    second_graph = builder.build(second)
+    store = LocalKnowledgeGraphStore(str(tmp_path))
+    store.replace_document(first_graph)
+    store.replace_document(second_graph)
+
+    assert first_graph.company_id == second_graph.company_id
+    merged = store.get_company(first_graph.company_id)
+    company_nodes = [
+        node
+        for node in merged.nodes
+        if node.node_type == "company" and node.properties["company_id"] == first_graph.company_id
+    ]
+    assert len(company_nodes) == 1
+    assert merged.document_ids == ["annual-2023", "annual-2024"]
+    assert merged.years == [2023, 2024]
+
+    resolver = EntityResolver()
+    assert (
+        resolver.resolve_company(
+            "JPMC",
+            aliases=["JPMorgan Chase & Co."],
+        ).entity_id
+        == first_graph.company_id
+    )

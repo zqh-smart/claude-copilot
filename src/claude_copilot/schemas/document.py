@@ -90,6 +90,8 @@ class DocumentMetadata(BaseModel):
     parsed_page_count: int | None = None
     content_quality_score: float | None = None
     company: str | None = None
+    company_aliases: list[str] = Field(default_factory=list)
+    industry: str | None = None
     year: int | None = None
 
 

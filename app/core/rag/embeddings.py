@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import re
+import time
 from hashlib import blake2b
 from typing import Protocol
 
@@ -79,7 +80,7 @@ class SiliconEmbeddingService:
         base_url: str,
         model: str,
         dimensions: int,
-        timeout: float = 30.0,
+        timeout: float = 60.0,
     ) -> None:
         self.dimensions = dimensions
         self._model = model
@@ -95,20 +96,38 @@ class SiliconEmbeddingService:
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
-        payload = {
-            "model": self._model,
-            "input": [self._normalize_text(text) for text in texts],
-        }
-        response = self._client.post("/embeddings", json=payload)
-        response.raise_for_status()
-        data = response.json().get("data", [])
-        vectors = [item["embedding"] for item in data]
+        vectors: list[list[float]] = []
+        batch_size = 32
+        for start in range(0, len(texts), batch_size):
+            batch = texts[start : start + batch_size]
+            vectors.extend(self._embed_batch_with_retry(batch))
         self._validate_dimensions(vectors)
         return vectors
 
     def embed_query(self, text: str) -> list[float]:
         vectors = self.embed_documents([text])
         return vectors[0]
+
+    def _embed_batch_with_retry(self, texts: list[str], *, attempts: int = 3) -> list[list[float]]:
+        last_error: Exception | None = None
+        payload = {
+            "model": self._model,
+            "input": [self._normalize_text(text) for text in texts],
+        }
+        for attempt in range(1, attempts + 1):
+            try:
+                response = self._client.post("/embeddings", json=payload)
+                response.raise_for_status()
+                data = response.json().get("data", [])
+                return [item["embedding"] for item in data]
+            except (httpx.HTTPError, httpx.TimeoutException, OSError) as exc:
+                last_error = exc
+                if attempt >= attempts:
+                    break
+                time.sleep(1.5 * attempt)
+        raise PersistenceBackendError(
+            f"Silicon embedding request failed after {attempts} attempts: {last_error}"
+        ) from last_error
 
     def _validate_dimensions(self, vectors: list[list[float]]) -> None:
         for vector in vectors:

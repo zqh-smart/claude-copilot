@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import re
 from collections import defaultdict
 from decimal import Decimal
@@ -11,15 +10,13 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.db.postgres_models import DocumentORM, FinancialItemORM, ParsedTableORM
 from app.core.db.protocols import DocumentRepositoryProtocol, ParsedDocumentRepositoryProtocol
 from app.core.errors import DocumentNotFoundError
+from src.claude_copilot.entity_resolution import build_canonical_company_id
 from src.claude_copilot.schemas.document import DocumentProcessingStatus
 from src.claude_copilot.schemas.financial_data import CompanySummary, FinancialMetricObservation
 
 
 def build_company_id(company_name: str) -> str:
-    normalized = re.sub(r"\s+", " ", company_name).strip().casefold()
-    slug = re.sub(r"[^a-z0-9]+", "-", normalized).strip("-") or "company"
-    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:10]
-    return f"{slug[:40]}-{digest}"
+    return build_canonical_company_id(company_name)
 
 
 def extract_period_year(period: str | None) -> int | None:
@@ -143,11 +140,15 @@ class PostgresFinancialDataRepository:
 
     def list_companies(self) -> list[CompanySummary]:
         with self._session_factory() as session:
-            documents = session.execute(
-                select(DocumentORM).where(
-                    DocumentORM.status == DocumentProcessingStatus.COMPLETED.value
+            documents = (
+                session.execute(
+                    select(DocumentORM).where(
+                        DocumentORM.status == DocumentProcessingStatus.COMPLETED.value
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             counts: dict[str, int] = defaultdict(int)
             periods: dict[str, set[int]] = defaultdict(set)
             metric_rows = session.execute(
@@ -208,11 +209,15 @@ class PostgresFinancialDataRepository:
         limit: int = 500,
     ) -> list[FinancialMetricObservation]:
         with self._session_factory() as session:
-            documents = session.execute(
-                select(DocumentORM).where(
-                    DocumentORM.status == DocumentProcessingStatus.COMPLETED.value
+            documents = (
+                session.execute(
+                    select(DocumentORM).where(
+                        DocumentORM.status == DocumentProcessingStatus.COMPLETED.value
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             matching_documents = {
                 document.doc_id: document
                 for document in documents
@@ -232,9 +237,13 @@ class PostgresFinancialDataRepository:
                 statement = statement.where(FinancialItemORM.statement_type == statement_type)
             rows = session.execute(statement).scalars().all()
 
-            table_rows = session.execute(
-                select(ParsedTableORM).where(ParsedTableORM.doc_id.in_(matching_documents))
-            ).scalars().all()
+            table_rows = (
+                session.execute(
+                    select(ParsedTableORM).where(ParsedTableORM.doc_id.in_(matching_documents))
+                )
+                .scalars()
+                .all()
+            )
             titles = {
                 (table.doc_id, table.table_id): table.title
                 for table in table_rows

@@ -16,6 +16,7 @@ from app.core.kg import (
 from app.core.rag.vector_store import VectorStoreProtocol
 from app.core.storage import LocalFileStorage
 from app.pipeline.feature_pipeline.chunking import ChunkingService
+from app.pipeline.feature_pipeline.cleaning import DocumentCleaningService
 from app.pipeline.feature_pipeline.indexing import IndexingService
 from app.pipeline.feature_pipeline.parser import ParserRouter
 from app.pipeline.feature_pipeline.schema_mapping import FinancialSchemaMappingService
@@ -58,6 +59,7 @@ class DocumentPipelineService:
             )
         )
         self._parser_router = ParserRouter()
+        self._cleaning = DocumentCleaningService()
         self._segmentation = SemanticSegmentationService()
         self._table_intelligence = TableIntelligenceService()
         self._structure_reconstruction = StructureReconstructionService()
@@ -77,6 +79,8 @@ class DocumentPipelineService:
         year: int | None,
         doc_type: str,
         source: str,
+        industry: str | None = None,
+        company_aliases: list[str] | None = None,
     ) -> DocumentRecord:
         doc_id = uuid4().hex
         suffix = Path(filename).suffix.lower()
@@ -92,6 +96,8 @@ class DocumentPipelineService:
             content_type=content_type,
             size_bytes=len(content),
             company=company,
+            company_aliases=company_aliases or [],
+            industry=industry,
             year=year,
         )
         now = datetime.utcnow()
@@ -114,6 +120,9 @@ class DocumentPipelineService:
                 content=content,
                 metadata=metadata,
             )
+
+            record = self._transition(record, DocumentProcessingStatus.CLEANING)
+            parsed_document = self._cleaning.clean(parsed_document)
             parsed_document = self._segmentation.segment(parsed_document)
             parsed_document = self._table_intelligence.enhance(parsed_document)
             parsed_document = self._structure_reconstruction.reconstruct(parsed_document)

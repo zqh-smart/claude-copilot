@@ -2,7 +2,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_document_service, get_research_service
+from app.api.dependencies import get_document_service, get_graph_store, get_research_service
 from app.api.services.document_service import DocumentService
 from app.api.services.research_service import ResearchService
 from app.core.db import LocalDocumentRepository, LocalSegmentRepository
@@ -77,6 +77,13 @@ def test_document_upload_and_research_preview(tmp_path: Path) -> None:
         relationship["relationship_type"] == "HAS_RISK"
         for relationship in graph_payload["relationships"]
     )
+
+    graph_store = document_service._pipeline_service._graph_store
+    app.dependency_overrides[get_graph_store] = lambda: graph_store
+    company_id = graph_payload["company_id"]
+    company_graph_response = client.get(f"/api/v1/companies/{company_id}/knowledge-graph")
+    assert company_graph_response.status_code == 200
+    assert company_graph_response.json()["document_ids"] == [doc_id]
 
     research_response = client.post(
         "/api/v1/research/preview",

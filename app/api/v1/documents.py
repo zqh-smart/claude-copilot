@@ -15,6 +15,8 @@ async def upload_document(
     year: int | None = Form(default=None),
     doc_type: str = Form(default="financial_report"),
     source: str = Form(default="upload"),
+    industry: str | None = Form(default=None),
+    company_aliases: str | None = Form(default=None),
     document_service: DocumentService = Depends(get_document_service),
 ) -> DocumentRecord:
     return await document_service.upload_document(
@@ -23,6 +25,12 @@ async def upload_document(
         year=year,
         doc_type=doc_type,
         source=source,
+        industry=industry,
+        company_aliases=(
+            [item.strip() for item in company_aliases.split(",") if item.strip()]
+            if company_aliases
+            else []
+        ),
     )
 
 

@@ -20,6 +20,9 @@ class TableIntelligenceService:
                 "comprehensive income",
                 "statement of operations",
                 "statements of operations",
+                "合并利润表",
+                "母公司利润表",
+                "利润表",
             ),
         ),
         (
@@ -29,6 +32,9 @@ class TableIntelligenceService:
                 "balance sheet",
                 "financial position",
                 "assets and liabilities",
+                "合并资产负债表",
+                "母公司资产负债表",
+                "资产负债表",
             ),
         ),
         (
@@ -39,6 +45,9 @@ class TableIntelligenceService:
                 "operating activities",
                 "investing activities",
                 "financing activities",
+                "合并现金流量表",
+                "母公司现金流量表",
+                "现金流量表",
             ),
         ),
         (
@@ -50,14 +59,19 @@ class TableIntelligenceService:
                 "shareholders’ equity",
                 "changes in equity",
                 "changes in stockholders",
+                "合并股东权益变动表",
+                "合并所有者权益变动表",
+                "股东权益变动表",
+                "所有者权益变动表",
             ),
         ),
     ]
 
     _UNIT_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
-        ("billions", ("in billion", "in billions", "€b", "$b")),
-        ("millions", ("in million", "in millions", "€m", "$m")),
+        ("billions", ("in billion", "in billions", "€b", "$b", "单位：亿元", "单位:亿元")),
+        ("millions", ("in million", "in millions", "€m", "$m", "单位：万元", "单位:万元", "人民币万元")),
         ("thousands", ("in thousand", "in thousands", "€k", "$k")),
+        ("yuan", ("单位：元", "单位:元", "人民币元")),
     ]
 
     _ANALYSIS_TABLE_PATTERNS = (
@@ -72,67 +86,114 @@ class TableIntelligenceService:
 
     _METRIC_ALIASES: dict[str, dict[str, tuple[str, ...]]] = {
         "income_statement": {
-            "revenue": ("revenue", "total net revenue", "total revenue", "net sales", "total net sales"),
-            "interest_income": ("interest income", "total interest income"),
-            "interest_expense": ("interest expense", "total interest expense"),
-            "net_interest_income": ("net interest income",),
+            "revenue": (
+                "revenue",
+                "total net revenue",
+                "total revenue",
+                "net sales",
+                "total net sales",
+                "营业收入",
+                "营业总收入",
+            ),
+            "interest_income": ("interest income", "total interest income", "利息收入"),
+            "interest_expense": ("interest expense", "total interest expense", "利息支出"),
+            "net_interest_income": ("net interest income", "利息净收入"),
             "noninterest_income": ("noninterest income",),
             "noninterest_revenue": ("noninterest revenue",),
-            "cost_of_sales": ("cost of sales", "cost of products sold", "cost of revenue"),
-            "gross_margin": ("gross margin", "gross profit"),
-            "operating_expenses": ("operating expenses", "total operating expenses"),
-            "operating_income": ("operating income", "income from operations"),
+            "cost_of_sales": ("cost of sales", "cost of products sold", "cost of revenue", "营业成本"),
+            "gross_margin": ("gross margin", "gross profit", "毛利润", "毛利"),
+            "operating_expenses": ("operating expenses", "total operating expenses", "营业支出"),
+            "operating_income": ("operating income", "income from operations", "营业利润"),
             "provision_for_credit_losses": ("provision for credit losses",),
             "noninterest_expense": ("noninterest expense",),
-            "income_before_income_tax_expense": ("income before income tax expense",),
-            "income_tax_expense": ("income tax expense",),
-            "net_income": ("net income", "net income applicable to common stockholders"),
-            "earnings_per_share_basic": ("basic earnings per share", "basic eps"),
-            "earnings_per_share_diluted": ("diluted earnings per share", "diluted eps"),
+            "income_before_income_tax_expense": ("income before income tax expense", "利润总额"),
+            "income_tax_expense": ("income tax expense", "所得税费用"),
+            "net_income": (
+                "net income",
+                "net income applicable to common stockholders",
+                "净利润",
+                "归属于母公司所有者的净利润",
+            ),
+            "earnings_per_share_basic": ("basic earnings per share", "basic eps", "基本每股收益"),
+            "earnings_per_share_diluted": ("diluted earnings per share", "diluted eps", "稀释每股收益"),
         },
         "balance_sheet": {
-            "cash_and_cash_equivalents": ("cash and cash equivalents", "cash and due from banks"),
-            "investment_securities": ("investment securities", "securities available-for-sale", "available-for-sale securities"),
-            "loans": ("loans", "total loans"),
-            "goodwill": ("goodwill",),
-            "intangible_assets": ("intangible assets",),
-            "total_assets": ("total assets",),
-            "debt": ("long-term debt", "total debt", "borrowings"),
-            "total_liabilities": ("total liabilities",),
-            "total_deposits": ("total deposits",),
-            "retained_earnings": ("retained earnings",),
+            "cash_and_cash_equivalents": (
+                "cash and cash equivalents",
+                "cash and due from banks",
+                "货币资金",
+            ),
+            "investment_securities": (
+                "investment securities",
+                "securities available-for-sale",
+                "available-for-sale securities",
+                "交易性金融资产",
+            ),
+            "loans": ("loans", "total loans", "发放贷款和垫款"),
+            "goodwill": ("goodwill", "商誉"),
+            "intangible_assets": ("intangible assets", "无形资产"),
+            "total_assets": ("total assets", "资产总计", "资产合计"),
+            "debt": ("long-term debt", "total debt", "borrowings", "长期借款", "短期借款"),
+            "total_liabilities": ("total liabilities", "负债合计", "负债总计"),
+            "total_deposits": ("total deposits", "吸收存款"),
+            "retained_earnings": ("retained earnings", "未分配利润"),
             "accumulated_other_comprehensive_income": (
                 "accumulated other comprehensive income",
                 "accumulated other comprehensive loss",
+                "其他综合收益",
             ),
-            "total_equity": ("total equity", "total shareholders' equity", "total stockholders' equity", "total stockholders’ equity"),
-            "total_stockholders_equity": ("total stockholders' equity", "total stockholders’ equity"),
+            "total_equity": (
+                "total equity",
+                "total shareholders' equity",
+                "total stockholders' equity",
+                "total stockholders’ equity",
+                "所有者权益合计",
+                "股东权益合计",
+            ),
+            "total_stockholders_equity": (
+                "total stockholders' equity",
+                "total stockholders’ equity",
+                "归属于母公司所有者权益合计",
+            ),
+            "accounts_receivable": ("accounts receivable", "应收账款"),
+            "inventory": ("inventory", "inventories", "存货"),
+            "current_assets": ("current assets", "流动资产合计"),
+            "current_liabilities": ("current liabilities", "流动负债合计"),
         },
         "cash_flow": {
-            "net_income": ("net income",),
-            "depreciation_and_amortization": ("depreciation and amortization", "depreciation"),
+            "net_income": ("net income", "净利润"),
+            "depreciation_and_amortization": ("depreciation and amortization", "depreciation", "折旧和摊销"),
             "net_cash_from_operating_activities": (
                 "net cash provided by operating activities",
                 "net cash from operating activities",
                 "net cash provided by operating",
                 "cash generated by operating activities",
+                "经营活动产生的现金流量净额",
             ),
             "net_cash_from_investing_activities": (
                 "net cash used in investing activities",
                 "net cash from investing activities",
                 "net cash used in investing",
+                "投资活动产生的现金流量净额",
             ),
             "net_cash_from_financing_activities": (
                 "net cash used in financing activities",
                 "net cash from financing activities",
                 "net cash provided by financing activities",
                 "net cash provided by financing",
+                "筹资活动产生的现金流量净额",
             ),
-            "capital_expenditures": ("capital expenditures", "purchases of property and equipment", "additions to premises and equipment"),
+            "capital_expenditures": (
+                "capital expenditures",
+                "purchases of property and equipment",
+                "additions to premises and equipment",
+                "购建固定资产",
+            ),
             "free_cash_flow": ("free cash flow",),
             "cash_and_cash_equivalents_at_end_of_period": (
                 "cash and cash equivalents at end of period",
                 "cash and cash equivalents at the end of the period",
+                "期末现金及现金等价物余额",
             ),
             "cash_and_due_from_banks_at_end_of_period": (
                 "cash and due from banks at the end of the period",
@@ -140,15 +201,24 @@ class TableIntelligenceService:
             ),
         },
         "equity": {
-            "additional_paid_in_capital": ("additional paid-in capital", "additional paid in capital"),
-            "total_stockholders_equity": ("total stockholders' equity", "total stockholders’ equity"),
-            "total_equity": ("total equity", "total shareholders' equity"),
-            "common_stock": ("common stock",),
-            "treasury_stock": ("treasury stock",),
-            "retained_earnings": ("retained earnings",),
+            "additional_paid_in_capital": (
+                "additional paid-in capital",
+                "additional paid in capital",
+                "资本公积",
+            ),
+            "total_stockholders_equity": (
+                "total stockholders' equity",
+                "total stockholders’ equity",
+                "归属于母公司所有者权益合计",
+            ),
+            "total_equity": ("total equity", "total shareholders' equity", "所有者权益合计"),
+            "common_stock": ("common stock", "股本"),
+            "treasury_stock": ("treasury stock", "库存股"),
+            "retained_earnings": ("retained earnings", "未分配利润"),
             "accumulated_other_comprehensive_income": (
                 "accumulated other comprehensive income",
                 "accumulated other comprehensive loss",
+                "其他综合收益",
             ),
         },
     }
@@ -187,8 +257,17 @@ class TableIntelligenceService:
         if not document.tables:
             return document
 
+        report_year = document.metadata.year
         semantic_sections = [section for section in document.sections if section.metadata.get("source") == "semantic_segmentation"]
-        enhanced_tables = [self._annotate_table(table, semantic_sections, document.page_blocks) for table in document.tables]
+        enhanced_tables = [
+            self._annotate_table(
+                table,
+                semantic_sections,
+                document.page_blocks,
+                report_year=report_year,
+            )
+            for table in document.tables
+        ]
         enhanced_tables = self._inherit_continuation_context(enhanced_tables)
         merged_tables = self._merge_cross_page_tables(enhanced_tables)
         document.tables = [self._apply_normalized_metrics(table) for table in merged_tables]
@@ -199,6 +278,8 @@ class TableIntelligenceService:
         table: ParsedTable,
         semantic_sections: list[ParsedSection],
         page_blocks: list,
+        *,
+        report_year: int | None = None,
     ) -> ParsedTable:
         enhanced = self._promote_embedded_header(table.model_copy(deep=True))
         source_section = self._find_source_section(table, semantic_sections, page_blocks)
@@ -218,10 +299,22 @@ class TableIntelligenceService:
         if not enhanced.title and source_title and source_type in {"financial_statement", "financial_note"}:
             enhanced.title = source_title
 
-        enhanced.period_headers = self._extract_period_headers(enhanced)
+        enhanced = self._recover_statement_header_row(enhanced)
+        enhanced.period_headers = self._extract_period_headers(enhanced, report_year=report_year)
         enhanced.unit = self._extract_unit(enhanced, source_section)
         enhanced.currency = self._extract_currency(enhanced, source_section)
         enhanced.table_type = self._classify_table_type(enhanced, source_section)
+        if not enhanced.period_headers and enhanced.table_type in {
+            "income_statement",
+            "balance_sheet",
+            "cash_flow",
+            "equity",
+        }:
+            enhanced.period_headers = self._infer_statement_periods(
+                enhanced,
+                source_section,
+                report_year=report_year,
+            )
         if enhanced.table_type == "notes_table":
             enhanced.note_number, enhanced.note_title = self._extract_note_identity(enhanced)
             enhanced.note_category = self._classify_note_category(enhanced)
@@ -284,28 +377,60 @@ class TableIntelligenceService:
     def _classify_table_type(self, table: ParsedTable, source_section: ParsedSection | None) -> str:
         title_text = self._normalize_text(table.title or "")
         source_title_text = self._normalize_text(table.metadata.get("source_section_title", ""))
+        nearby_text = self._normalize_text(str(table.metadata.get("nearby_context") or ""))
+        content_text = self._normalize_text(
+            " ".join(
+                [
+                    title_text,
+                    source_title_text,
+                    nearby_text,
+                    " ".join(table.headers),
+                    " ".join(row[0] for row in table.rows[:12] if row),
+                    table.raw_markdown or "",
+                ]
+            )
+        )
 
         if any(pattern in title_text for pattern in self._PROFILE_TABLE_PATTERNS):
             return "profile_table"
         if any(pattern in title_text for pattern in self._ANALYSIS_TABLE_PATTERNS):
             return "analysis_table"
-        if "notes to" in title_text or re.match(r"^note\s+\d+", title_text):
+        if (
+            "notes to" in title_text
+            or re.match(r"^note\s+\d+", title_text)
+            or "财务报表附注" in title_text
+            or re.match(r"^附注\s*\d+", title_text)
+        ):
             return "notes_table"
-        for table_type, patterns in self._TABLE_TYPE_PATTERNS:
-            if any(pattern in title_text for pattern in patterns):
-                return table_type
         if (
             re.match(r"^item\s+\d+", title_text)
             or title_text in {"form 10-k", "table of contents", "signatures"}
         ):
             return "other_table"
 
+        # Row labels are the strongest signal for Chinese primary statements.
+        # Inherited titles like “合并资产负债表” must not override a profit/cash table body.
+        inferred = self._infer_type_from_row_labels(content_text)
+        if inferred:
+            return inferred
+
+        for table_type, patterns in self._TABLE_TYPE_PATTERNS:
+            if any(pattern in title_text for pattern in patterns):
+                return table_type
+
         if source_section and source_section.section_type == "financial_note":
             return "notes_table"
-        if "notes to" in source_title_text or re.match(r"^note\s+\d+", source_title_text):
+        if (
+            "notes to" in source_title_text
+            or re.match(r"^note\s+\d+", source_title_text)
+            or "财务报表附注" in source_title_text
+        ):
             return "notes_table"
+
         for table_type, patterns in self._TABLE_TYPE_PATTERNS:
             if any(pattern in source_title_text for pattern in patterns):
+                return table_type
+            if any(pattern in nearby_text for pattern in patterns):
                 return table_type
 
         if table.metadata.get("raw_table_type") == "complex_table":
@@ -318,23 +443,65 @@ class TableIntelligenceService:
 
         return "notes_table"
 
-    def _extract_period_headers(self, table: ParsedTable) -> list[str]:
+    def _infer_type_from_row_labels(self, content_text: str) -> str | None:
+        balance_cues = ("货币资金", "流动资产合计", "资产总计", "负债合计", "所有者权益合计")
+        income_cues = ("营业收入", "营业总收入", "营业成本", "营业利润", "净利润", "利润总额")
+        cash_cues = (
+            "经营活动产生的现金流量净额",
+            "投资活动产生的现金流量净额",
+            "筹资活动产生的现金流量净额",
+        )
+        scores = {
+            "balance_sheet": sum(1 for cue in balance_cues if cue in content_text),
+            "income_statement": sum(1 for cue in income_cues if cue in content_text),
+            "cash_flow": sum(1 for cue in cash_cues if cue in content_text),
+        }
+        best_type, best_score = max(scores.items(), key=lambda item: item[1])
+        if best_score >= 2:
+            return best_type
+        return None
+
+    def _extract_period_headers(
+        self,
+        table: ParsedTable,
+        *,
+        report_year: int | None = None,
+    ) -> list[str]:
         candidates = [*table.headers]
         header_text = self._normalize_text(" ".join(table.headers))
         header_has_period_cue = any(
-            cue in header_text for cue in ("year ended", "years ended", "as of", "in million", "in billion")
+            cue in header_text
+            for cue in (
+                "year ended",
+                "years ended",
+                "as of",
+                "in million",
+                "in billion",
+                "项目",
+                "单位：元",
+                "单位:元",
+            )
         )
         if not any(self._extract_period_tokens(candidate) for candidate in candidates):
             title_text = self._normalize_text(table.title or "")
-            if any(cue in title_text for cue in ("year ended", "years ended", "as of")):
+            nearby = self._normalize_text(str(table.metadata.get("nearby_context") or ""))
+            if any(
+                cue in title_text or cue in nearby
+                for cue in ("year ended", "years ended", "as of", "年", "月", "日")
+            ):
                 candidates.append(table.title or "")
+                candidates.append(str(table.metadata.get("nearby_context") or ""))
 
-            for row in table.rows[:3]:
+            for row in table.rows[:4]:
                 row_periods = self._dedupe_preserve_order(
                     period for cell in row for period in self._extract_period_tokens(cell)
                 )
+                # Only promote a row that looks like a period header, not equity-history years.
                 if len(row_periods) >= 2 and (
-                    header_has_period_cue or not row[0].strip() or len(row) <= 6
+                    header_has_period_cue
+                    or "项目" in "".join(row)
+                    or not row[0].strip()
+                    or (len(row) <= 6 and self._row_looks_like_period_header(row))
                 ):
                     candidates.extend(row)
                     break
@@ -342,9 +509,116 @@ class TableIntelligenceService:
         found: list[str] = []
         for candidate in candidates:
             for period in self._extract_period_tokens(candidate):
-                if period not in found:
+                if period not in found and self._is_plausible_period(period, report_year=report_year):
                     found.append(period)
-        return found
+        # Keep statement periods tight and drop implausible years from notes/noise.
+        year_periods = [period for period in found if re.fullmatch(r"(19|20)\d{2}", period)]
+        if year_periods:
+            return self._prefer_recent_periods(year_periods, report_year=report_year)[:4]
+        return found[:4]
+
+    def _row_looks_like_period_header(self, row: list[str]) -> bool:
+        joined = "".join(row)
+        if "项目" in joined or "item" in joined.lower():
+            return True
+        # A real period header is mostly year/date tokens, not metric labels with one year.
+        period_cells = sum(1 for cell in row if self._extract_period_tokens(cell))
+        return period_cells >= max(2, len([cell for cell in row if str(cell).strip()]) - 1)
+
+    def _prefer_recent_periods(
+        self,
+        periods: list[str],
+        *,
+        report_year: int | None,
+    ) -> list[str]:
+        """Keep table column order; only drop years far from report_year when too many."""
+        if not report_year or len(periods) <= 4:
+            return periods
+        year_periods = [period for period in periods if re.fullmatch(r"(19|20)\d{2}", period)]
+        other_periods = [period for period in periods if period not in year_periods]
+        if len(year_periods) <= 4:
+            return periods
+        keep = {
+            period
+            for period, _distance in sorted(
+                ((period, abs(int(period) - report_year)) for period in year_periods),
+                key=lambda item: item[1],
+            )[:4]
+        }
+        # Preserve original left-to-right header order for value alignment.
+        return [period for period in year_periods if period in keep] + other_periods
+
+    def _is_plausible_period(self, period: str, *, report_year: int | None = None) -> bool:
+        if period in {"current_period", "prior_period"}:
+            return True
+        year_match = re.search(r"(19|20)\d{2}", period)
+        if re.search(
+            r"(january|february|march|april|may|june|july|august|september|october|november|december)",
+            period,
+            flags=re.IGNORECASE,
+        ) and year_match:
+            year = int(year_match.group(0))
+            if report_year is not None and (year < report_year - 5 or year > report_year + 1):
+                return False
+            return 2000 <= year <= 2035
+        if not re.fullmatch(r"(19|20)\d{2}", period):
+            return False
+        year = int(period)
+        if not (2000 <= year <= 2035):
+            return False
+        if report_year is not None and (year < report_year - 5 or year > report_year + 1):
+            return False
+        return True
+
+    def _recover_statement_header_row(self, table: ParsedTable) -> ParsedTable:
+        """Promote Chinese '项目 2021年... 2020年...' rows into headers when needed."""
+        if any(self._extract_period_tokens(cell) for cell in table.headers):
+            return table
+        for index, row in enumerate(table.rows[:3]):
+            joined = " ".join(row)
+            periods = self._dedupe_preserve_order(
+                period for cell in row for period in self._extract_period_tokens(cell)
+            )
+            if len(periods) >= 2 and ("项目" in joined or "item" in joined.lower()):
+                promoted = table.model_copy(deep=True)
+                promoted.headers = [cell.strip() for cell in row]
+                promoted.rows = table.rows[index + 1 :]
+                return promoted
+        return table
+
+    def _infer_statement_periods(
+        self,
+        table: ParsedTable,
+        source_section: ParsedSection | None,
+        *,
+        report_year: int | None = None,
+    ) -> list[str]:
+        texts = [
+            table.title or "",
+            str(table.metadata.get("nearby_context") or ""),
+            " ".join(table.headers),
+            " ".join(" ".join(row[:3]) for row in table.rows[:5]),
+            source_section.title if source_section else "",
+        ]
+        periods: list[str] = []
+        for text in texts:
+            for period in self._extract_period_tokens(text):
+                if (
+                    re.fullmatch(r"(19|20)\d{2}", period)
+                    and self._is_plausible_period(period, report_year=report_year)
+                    and period not in periods
+                ):
+                    periods.append(period)
+        if len(periods) >= 2:
+            return self._prefer_recent_periods(periods, report_year=report_year)[:2]
+        # Fallback for two-value Chinese statement columns without explicit years.
+        numeric_width = 0
+        for row in table.rows[:8]:
+            values = [cell for cell in row[1:] if self._parse_numeric_value(cell) is not None]
+            numeric_width = max(numeric_width, len(values))
+        if numeric_width >= 2:
+            return ["current_period", "prior_period"][:numeric_width]
+        return periods[:2]
 
     def _extract_period_tokens(self, text: str) -> list[str]:
         date_patterns = re.findall(
@@ -360,8 +634,16 @@ class TableIntelligenceService:
                     periods.append(normalized)
             return periods
 
+        chinese_dates = re.findall(r"(20\d{2}|19\d{2})\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日", text)
+        if chinese_dates:
+            periods = []
+            for year in chinese_dates:
+                if year not in periods:
+                    periods.append(year)
+            return periods
+
         periods = []
-        for year in re.findall(r"\b(20\d{2}|19\d{2})\b", text):
+        for year in re.findall(r"(?<!\d)(20\d{2}|19\d{2})(?!\d)", text):
             if year not in periods:
                 periods.append(year)
         return periods
@@ -375,15 +657,20 @@ class TableIntelligenceService:
 
     def _extract_currency(self, table: ParsedTable, source_section: ParsedSection | None = None) -> str | None:
         text = self._table_context_text(table, source_section, normalize=False)
-        if "$" in text or "usd" in text.lower() or "u.s. dollar" in text.lower():
+        lowered = text.lower()
+        if "$" in text or "usd" in lowered or "u.s. dollar" in lowered:
             return "USD"
-        if "€" in text:
+        if "€" in text or "eur" in lowered:
             return "EUR"
-        if "¥" in text:
-            return "CNY"
-        if "€" in text or "eur" in text.lower():
-            return "EUR"
-        if "¥" in text or "cny" in text.lower() or "rmb" in text.lower():
+        if (
+            "¥" in text
+            or "￥" in text
+            or "cny" in lowered
+            or "rmb" in lowered
+            or "人民币" in text
+            or "单位：元" in text
+            or "单位:元" in text
+        ):
             return "CNY"
         return None
 
@@ -429,7 +716,7 @@ class TableIntelligenceService:
         promoted_index: int | None = None
         for index, row in enumerate(table.rows[:3]):
             distinct = {cell.strip() for cell in row if cell.strip()}
-            if len(distinct) >= 3 and any(re.search(r"\b(?:19|20)\d{2}\b", cell) for cell in row):
+            if len(distinct) >= 3 and any(re.search(r"(?<!\d)(?:19|20)\d{2}(?!\d)", cell) for cell in row):
                 promoted_index = index
                 break
         if promoted_index is None:
@@ -625,11 +912,25 @@ class TableIntelligenceService:
         return period_values
 
     def _split_compact_row(self, *, row: list[str], period_headers: list[str]) -> tuple[str | None, list[str]]:
-        if len(row) != 1 or not period_headers:
+        if not period_headers:
+            return None, []
+
+        # Already-split Chinese financial rows: ["货币资金", "1,607...", "1,204..."]
+        if len(row) >= 2:
+            values = [cell for cell in row[1:] if self._parse_numeric_value(cell) is not None or re.search(r"\d", cell)]
+            if len(values) >= min(2, len(period_headers)):
+                return row[0].strip() or None, values[-len(period_headers) :]
+
+        if len(row) != 1:
             return None, []
 
         text = row[0].strip()
-        compact_values = re.findall(r"(?:\$\s*)?\(?\d[\d,]*\)?", text)
+        compact_values = re.findall(
+            r"\(?-?\d{1,3}(?:,\d{3})+(?:\.\d+)?\)?|\(?-?\d+\.\d{2}\)?",
+            text,
+        )
+        if len(compact_values) < len(period_headers):
+            compact_values = re.findall(r"(?:\$\s*)?\(?-?\d[\d,]*(?:\.\d+)?\)?", text)
         if len(compact_values) < len(period_headers):
             return None, []
 

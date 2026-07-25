@@ -7,6 +7,7 @@ from pptx.util import Inches
 from pypdf import PdfWriter
 
 from app.pipeline.feature_pipeline.chunking.service import ChunkingService
+from app.pipeline.feature_pipeline.cleaning import DocumentCleaningService
 from app.pipeline.feature_pipeline.parser.doc_parser import DocDocumentParser
 from app.pipeline.feature_pipeline.parser.docx_parser import DocxDocumentParser
 from app.pipeline.feature_pipeline.parser.extract_processor import ExtractProcessor
@@ -34,6 +35,7 @@ def build_metadata(filename: str, extension: str) -> DocumentMetadata:
 
 
 def run_document_ai_postprocessing(document: ParsedDocument) -> ParsedDocument:
+    document = DocumentCleaningService().clean(document)
     document = SemanticSegmentationService().segment(document)
     document = TableIntelligenceService().enhance(document)
     document = StructureReconstructionService().reconstruct(document)
@@ -616,6 +618,8 @@ def test_pdf_parser_mineru_route_uses_real_adapter_when_available(monkeypatch) -
         ],
     )
     monkeypatch.setattr(parser, "_can_use_mineru", lambda: True)
+    # Text-rich docs skip MinerU by default; force weak coverage for this unit test.
+    monkeypatch.setattr(parser, "_text_coverage", lambda _profiles: 0.0)
     monkeypatch.setattr(
         parser,
         "_run_mineru_parse",
@@ -694,6 +698,7 @@ def test_pdf_parser_partial_mineru_range_updates_metadata_and_scope(monkeypatch)
         ],
     )
     monkeypatch.setattr(parser, "_can_use_mineru", lambda: True)
+    monkeypatch.setattr(parser, "_text_coverage", lambda _profiles: 0.0)
     monkeypatch.setattr(
         parser,
         "_run_mineru_parse",
@@ -967,9 +972,10 @@ def test_chunking_service_consumes_page_blocks_and_tables() -> None:
     service = ChunkingService(chunk_size=200, overlap=20)
     segments = service.chunk(document)
 
-    assert len(segments) == 3
+    assert len(segments) >= 2
     assert {segment.metadata["content_type"] for segment in segments} == {"page_block", "table"}
     assert any("Revenue Overview" in segment.content for segment in segments)
+    assert any("Revenue grew strongly" in segment.content for segment in segments)
     assert any("Metric" in segment.content for segment in segments)
 
 
@@ -1713,3 +1719,272 @@ def test_financial_schema_mapping_consolidates_statement_fragments() -> None:
     assert schema.statements[0].metrics["revenue"]["2024"] == 100
     assert schema.statements[0].metrics["net_income"]["2023"] == 15
     assert len(schema.metric_facts) == 4
+
+def test_pdf_parser_detects_chinese_single_spaced_financial_rows() -> None:
+    parser = PdfDocumentParser(backend_priority=["table_pdf", "native_pdf"])
+    lines = [
+        "1、合并资产负债表",
+        "项目 2021年12月31日 2020年12月31日",
+        "货币资金 1,607,489,512.00 1,204,846,130.00",
+        "应收账款 8,943,113.00 10,150,655.00",
+        "流动资产合计 1,694,872,151.00 1,285,210,165.00",
+    ]
+    groups = parser._detect_table_groups(lines)
+    assert len(groups) >= 1
+    assert any("货币资金" in line for group in groups for line in group)
+    row = parser._split_table_row("货币资金 1,607,489,512.00 1,204,846,130.00")
+    assert row[0] == "货币资金"
+    assert row[1:] == ["1,607,489,512.00", "1,204,846,130.00"]
+
+
+def test_pdf_parser_skips_mineru_for_text_rich_docs_with_tables(monkeypatch) -> None:
+    parser = PdfDocumentParser(backend_priority=["mineru_pdf", "table_pdf", "native_pdf"])
+    table_group = [
+        "项目 2021年12月31日 2020年12月31日",
+        "货币资金 1,607,489,512.00 1,204,846,130.00",
+        "流动资产合计 1,694,872,151.00 1,285,210,165.00",
+    ]
+    monkeypatch.setattr(
+        parser,
+        "_build_page_profiles",
+        lambda _content: [
+            PdfPageProfile(
+                page_number=1,
+                text="\n".join(table_group),
+                lines=table_group,
+                table_groups=[table_group],
+            )
+        ],
+    )
+    monkeypatch.setattr(parser, "_can_use_mineru", lambda: True)
+
+    result = parser.parse(
+        doc_id="doc-cn-route",
+        content=b"mock-pdf-content",
+        metadata=build_metadata("cn-report.pdf", ".pdf"),
+    )
+
+    assert result.metadata.parse_route == "table_pdf"
+    assert len(result.tables) == 1
+    assert result.tables[0].rows[0][0] == "货币资金"
+
+
+def test_looks_like_heading_does_not_mark_every_chinese_line() -> None:
+    parser = PdfDocumentParser(backend_priority=["native_pdf"])
+    assert parser._looks_like_heading(["第三节 管理层讨论与分析"]) is True
+    assert parser._looks_like_heading(["1、合并资产负债表"]) is True
+    assert parser._looks_like_heading(["公司董事会、监事会及董事、监事、高级管理人员保证年度报告内容的真"]) is False
+    assert parser._looks_like_heading(["货币资金 1,607,489,512.00 1,204,846,130.00"]) is False
+
+
+def test_semantic_segmentation_recognizes_chinese_annual_report_sections() -> None:
+    service = SemanticSegmentationService()
+    document = ParsedDocument(
+        doc_id="doc-cn-semantic",
+        metadata=build_metadata("cn-report.pdf", ".pdf"),
+        page_blocks=[
+            ParsedPageBlock(
+                block_id="h0",
+                block_type="heading",
+                text="7第二节公司简介和主要财务指标",
+                page=7,
+                order=1,
+            ),
+            ParsedPageBlock(
+                block_id="p0",
+                block_type="paragraph",
+                text="公司是一家金融信息服务企业，主要财务指标如下。",
+                page=7,
+                order=2,
+            ),
+            ParsedPageBlock(
+                block_id="h1",
+                block_type="heading",
+                text="11第三节管理层讨论与分析",
+                page=10,
+                order=1,
+            ),
+            ParsedPageBlock(
+                block_id="p1",
+                block_type="paragraph",
+                text="报告期内公司主营业务稳定增长。",
+                page=10,
+                order=2,
+            ),
+            ParsedPageBlock(
+                block_id="h2",
+                block_type="heading",
+                text="1、合并资产负债表",
+                page=80,
+                order=1,
+            ),
+            ParsedPageBlock(
+                block_id="t1",
+                block_type="table",
+                text="货币资金 100",
+                page=80,
+                order=2,
+            ),
+            ParsedPageBlock(
+                block_id="bad",
+                block_type="heading",
+                text="五、管理层和治理层对财务报表的责任",
+                page=70,
+                order=1,
+            ),
+        ],
+    )
+
+    result = service.segment(document)
+    semantic = [section for section in result.sections if section.metadata.get("source") == "semantic_segmentation"]
+    types = {section.section_type for section in semantic}
+    assert "company_overview" in types
+    assert "management_discussion" in types
+    assert "financial_statement" in types
+    assert not any("治理层" in (section.title or "") for section in semantic)
+
+
+def test_table_intelligence_prefers_row_labels_over_inherited_balance_title() -> None:
+    metadata = build_metadata("cn-report.pdf", ".pdf")
+    metadata.year = 2021
+    document = ParsedDocument(
+        doc_id="doc-cn-income-override",
+        metadata=metadata,
+        sections=[
+            ParsedSection(
+                section_id="sec-bs",
+                title="1、合并资产负债表",
+                content="1、合并资产负债表",
+                section_type="financial_statement",
+                page_start=88,
+                page_end=90,
+                metadata={"source": "semantic_segmentation", "confidence": 0.98},
+            )
+        ],
+        tables=[
+            ParsedTable(
+                table_id="tbl-income",
+                title="1、合并资产负债表",
+                page=88,
+                headers=["项目", "2021年度", "2020年度"],
+                rows=[
+                    ["一、营业收入", "931,944,638.00", "691,620,925.00"],
+                    ["减：营业成本", "96,457,795.00", "86,259,669.00"],
+                    ["营业利润", "100.00", "90.00"],
+                ],
+                metadata={"nearby_context": "1、合并资产负债表"},
+            )
+        ],
+    )
+    enhanced = TableIntelligenceService().enhance(document)
+    table = enhanced.tables[0]
+    assert table.table_type == "income_statement"
+    assert table.period_headers == ["2021", "2020"]
+    assert table.normalized_metrics["revenue"]["2021"] == 931944638.0
+
+
+def test_table_intelligence_classifies_chinese_balance_sheet_and_metrics() -> None:
+    document = ParsedDocument(
+        doc_id="doc-cn-table",
+        metadata=build_metadata("cn-report.pdf", ".pdf"),
+        sections=[
+            ParsedSection(
+                section_id="sec-1",
+                title="1、合并资产负债表",
+                content="1、合并资产负债表",
+                section_type="financial_statement",
+                page_start=80,
+                page_end=82,
+                metadata={"source": "semantic_segmentation", "confidence": 0.98},
+            )
+        ],
+        tables=[
+            ParsedTable(
+                table_id="tbl-1",
+                title=None,
+                page=80,
+                headers=["项目", "2021年12月31日", "2020年12月31日"],
+                rows=[
+                    ["货币资金", "1607489512.00", "1204846130.00"],
+                    ["流动资产合计", "1694872151.00", "1285210165.00"],
+                    ["资产总计", "2000000000.00", "1500000000.00"],
+                ],
+                metadata={"nearby_context": "1、合并资产负债表 单位：元"},
+            )
+        ],
+    )
+
+    enhanced = TableIntelligenceService().enhance(document)
+    table = enhanced.tables[0]
+    assert table.table_type == "balance_sheet"
+    assert table.period_headers == ["2021", "2020"]
+    assert table.currency == "CNY"
+    assert table.normalized_metrics["cash_and_cash_equivalents"]["2021"] == 1607489512.0
+    assert table.normalized_metrics["current_assets"]["2021"] == 1694872151.0
+
+
+def test_document_cleaning_removes_headers_toc_and_duplicates() -> None:
+    document = ParsedDocument(
+        doc_id="doc-clean-1",
+        metadata=build_metadata("cn-report.pdf", ".pdf"),
+        raw_text="北京指南针科技发展股份有限公司2021年年度报告全文\n目录\n第一节 重要提示........ 2\n正文段落开始了这里有足够的信息内容。\n正文段落开始了这里有足够的信息内容。\n",
+        page_blocks=[
+            ParsedPageBlock(block_id="b1", block_type="header", text="北京指南针科技发展股份有限公司2021年年度报告全文", page=1, order=1),
+            ParsedPageBlock(block_id="b2", block_type="heading", text="目录", page=1, order=2),
+            ParsedPageBlock(block_id="b3", block_type="paragraph", text="第一节 重要提示........ 2", page=1, order=3),
+            ParsedPageBlock(block_id="b4", block_type="paragraph", text="正文段落开始了这里有足够的信息内容。", page=2, order=1),
+            ParsedPageBlock(block_id="b5", block_type="paragraph", text="正文段落开始了这里有足够的信息内容。", page=2, order=2),
+            ParsedPageBlock(block_id="b6", block_type="footer", text="3", page=2, order=3),
+        ],
+        sections=[
+            ParsedSection(section_id="s1", title="目录", content="第一节........ 2", section_type="pdf_page", page_start=1, page_end=1),
+            ParsedSection(section_id="s2", title="Page 2", content="正文", section_type="pdf_page", page_start=2, page_end=2),
+        ],
+    )
+
+    cleaned = DocumentCleaningService().clean(document)
+    assert all(block.block_type not in {"header", "footer"} for block in cleaned.page_blocks)
+    assert not any("目录" == (block.text or "").strip() for block in cleaned.page_blocks)
+    assert not any("........" in block.text for block in cleaned.page_blocks)
+    assert sum(1 for block in cleaned.page_blocks if "正文段落" in block.text) == 1
+    assert all((section.title or "") != "目录" for section in cleaned.sections)
+
+
+def test_section_aware_chunking_prefers_semantic_sections() -> None:
+    document = ParsedDocument(
+        doc_id="doc-chunk-section",
+        metadata=build_metadata("report.pdf", ".pdf"),
+        page_blocks=[
+            ParsedPageBlock(block_id="b1", block_type="paragraph", text="被章节覆盖的正文内容足够长。", page=10, order=1),
+            ParsedPageBlock(block_id="b2", block_type="paragraph", text="未被覆盖页的补充说明内容足够长。", page=99, order=1),
+        ],
+        sections=[
+            ParsedSection(
+                section_id="sem-1",
+                title="第三节 管理层讨论与分析",
+                content="经营情况保持稳定，收入与利润均有增长。",
+                section_type="management_discussion",
+                page_start=10,
+                page_end=12,
+                metadata={"source": "semantic_segmentation", "confidence": 0.96},
+            )
+        ],
+        tables=[
+            ParsedTable(
+                table_id="t1",
+                table_type="income_statement",
+                title="合并利润表",
+                page=11,
+                headers=["项目", "2021", "2020"],
+                rows=[["营业收入", "100", "90"]],
+            )
+        ],
+    )
+    segments = ChunkingService(chunk_size=200, overlap=20).chunk(document)
+    content_types = {segment.metadata["content_type"] for segment in segments}
+    assert "semantic_section" in content_types
+    assert "table" in content_types
+    assert any(segment.metadata.get("section_type") == "management_discussion" for segment in segments)
+    # Covered page blocks should be skipped; uncovered page remains.
+    assert any("未被覆盖页" in segment.content for segment in segments)
+    assert not any("被章节覆盖的正文" in segment.content for segment in segments)

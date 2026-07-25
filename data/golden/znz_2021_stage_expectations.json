@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "document_key": "znz_2021_annual_report",
+  "required_semantic_section_types": [
+    "management_discussion",
+    "financial_statement",
+    "company_overview"
+  ],
+  "core_metrics": {
+    "revenue": {
+      "2021": 931944638,
+      "2020": 691620925
+    },
+    "net_cash_from_operating_activities": {
+      "2021": 230581891
+    }
+  },
+  "notes": {
+    "source": "Extracted from 指南针 2021 A-share annual report after pipeline runs; revise if filing values differ.",
+    "company": "北京指南针科技发展股份有限公司",
+    "year": 2021
+  }
+}

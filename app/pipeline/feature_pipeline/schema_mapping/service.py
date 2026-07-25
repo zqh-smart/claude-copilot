@@ -76,9 +76,12 @@ class FinancialSchemaMappingService:
         document.tables = prepared_tables
         semantic_sections = self._build_semantic_sections(document.sections)
         note_facts = self._build_note_facts(prepared_tables)
-        statement_schemas = self._build_statement_schemas(prepared_tables)
+        statement_schemas = self._build_statement_schemas(
+            prepared_tables,
+            report_year=document.metadata.year,
+        )
         note_schemas = self._build_note_schemas(prepared_tables, note_facts)
-        metric_facts = self._build_metric_facts(statement_schemas)
+        metric_facts = self._build_metric_facts(statement_schemas, prepared_tables)
         reporting_periods = self._collect_reporting_periods(prepared_tables, statement_schemas, metric_facts)
         metrics_index = self._build_metrics_index(metric_facts)
 
@@ -264,7 +267,12 @@ class FinancialSchemaMappingService:
             )
         return semantic_sections
 
-    def _build_statement_schemas(self, tables: list[ParsedTable]) -> list[FinancialStatementSchema]:
+    def _build_statement_schemas(
+        self,
+        tables: list[ParsedTable],
+        *,
+        report_year: int | None = None,
+    ) -> list[FinancialStatementSchema]:
         grouped_tables: dict[tuple[str, str], list[ParsedTable]] = {}
         for table in tables:
             if table.table_type not in self._STATEMENT_TABLE_TYPES:
@@ -275,7 +283,7 @@ class FinancialSchemaMappingService:
         statements: list[FinancialStatementSchema] = []
         for grouped in grouped_tables.values():
             grouped.sort(key=lambda item: (self._page_range_from_table(item) or (item.page or 0, item.page or 0))[0])
-            primary = grouped[0]
+            primary = self._select_primary_statement_table(grouped)
             metrics: dict[str, dict[str, int | float | str]] = {}
             period_headers: list[str] = []
             footnotes: list[str] = []
@@ -286,23 +294,30 @@ class FinancialSchemaMappingService:
             for table in grouped:
                 for period in table.period_headers:
                     normalized_period = str(period)
-                    if normalized_period not in period_headers:
+                    if (
+                        normalized_period not in period_headers
+                        and self._is_plausible_statement_period(normalized_period, report_year=report_year)
+                    ):
                         period_headers.append(normalized_period)
                 for metric_key, values in table.normalized_metrics.items():
                     if not isinstance(values, dict):
                         continue
                     metrics.setdefault(metric_key, {})
                     for period, value in values.items():
-                        metrics[metric_key][str(period)] = value
+                        period_key = str(period)
+                        if not self._is_plausible_statement_period(period_key, report_year=report_year):
+                            continue
+                        metrics[metric_key][period_key] = value
                 for footnote in table.footnotes:
                     if footnote and footnote not in footnotes:
                         footnotes.append(footnote)
 
+            period_headers = self._consolidate_period_headers(period_headers, report_year=report_year)
             statements.append(
                 FinancialStatementSchema(
                     table_id=primary.table_id,
                     statement_type=primary.table_type,
-                    title=primary.title,
+                    title=primary.title or self._normalize_statement_title(primary),
                     period_headers=period_headers,
                     unit=primary.unit,
                     currency=primary.currency,
@@ -317,6 +332,58 @@ class FinancialSchemaMappingService:
                 )
             )
         return statements
+
+    def _select_primary_statement_table(self, grouped: list[ParsedTable]) -> ParsedTable:
+        def score(table: ParsedTable) -> tuple[int, int, int]:
+            title = (table.title or str(table.metadata.get("source_section_title") or "")).strip()
+            good_title = 1 if re.search(
+                r"(资产负债表|利润表|现金流量表|股东权益|所有者权益|balance sheet|income|cash flow)",
+                title,
+                flags=re.IGNORECASE,
+            ) else 0
+            bad_title = 1 if re.search(r"(治理层|责任|内部控制)", title) else 0
+            metric_n = len(table.normalized_metrics or {})
+            return (good_title, -bad_title, metric_n)
+
+        return max(grouped, key=score)
+
+    def _is_plausible_statement_period(self, period: str, *, report_year: int | None) -> bool:
+        if period in {"current_period", "prior_period"}:
+            return True
+        year_match = re.fullmatch(r"(19|20)\d{2}", period)
+        if not year_match:
+            # Keep English month-day-year headers as-is when present.
+            return bool(re.search(r"(19|20)\d{2}", period))
+        year = int(period)
+        if not (2000 <= year <= 2035):
+            return False
+        if report_year is not None and (year < report_year - 5 or year > report_year + 1):
+            return False
+        return True
+
+    def _consolidate_period_headers(
+        self,
+        periods: list[str],
+        *,
+        report_year: int | None,
+    ) -> list[str]:
+        years = [period for period in periods if re.fullmatch(r"(19|20)\d{2}", period)]
+        relatives = [period for period in periods if period in {"current_period", "prior_period"}]
+        others = [period for period in periods if period not in years and period not in relatives]
+        if years:
+            # Prefer concrete years; drop relative placeholders that usually duplicate them.
+            # Preserve first-seen order so merged statement headers stay stable.
+            if report_year is not None and len(years) > 4:
+                keep = {
+                    period
+                    for period, _distance in sorted(
+                        ((period, abs(int(period) - report_year)) for period in years),
+                        key=lambda item: item[1],
+                    )[:4]
+                }
+                years = [period for period in years if period in keep]
+            return years + others
+        return relatives + others
 
     def _build_note_schemas(
         self,
@@ -385,13 +452,29 @@ class FinancialSchemaMappingService:
                 )
         return note_facts
 
-    def _build_metric_facts(self, statements: list[FinancialStatementSchema]) -> list[FinancialMetricFact]:
+    def _build_metric_facts(
+        self,
+        statements: list[FinancialStatementSchema],
+        tables: list[ParsedTable],
+    ) -> list[FinancialMetricFact]:
+        tables_by_id = {table.table_id: table for table in tables if table.table_id}
         metric_facts: list[FinancialMetricFact] = []
         for statement in statements:
             if not statement.metrics:
                 continue
+            merged_ids = statement.provenance.get("merged_statement_table_ids") or [statement.table_id]
+            if not isinstance(merged_ids, list):
+                merged_ids = [statement.table_id]
             for metric_key, period_map in statement.metrics.items():
                 for period, value in period_map.items():
+                    source_table = self._resolve_metric_source_table(
+                        metric_key=metric_key,
+                        period=str(period),
+                        value=value,
+                        merged_ids=[str(item) for item in merged_ids if item],
+                        tables_by_id=tables_by_id,
+                        fallback_table_id=statement.table_id,
+                    )
                     metric_facts.append(
                         FinancialMetricFact(
                             metric_key=metric_key,
@@ -400,14 +483,80 @@ class FinancialSchemaMappingService:
                             statement_type=statement.statement_type,
                             unit=statement.unit,
                             currency=statement.currency,
-                            source_table_id=statement.table_id,
-                            source_table_title=statement.title,
+                            source_table_id=source_table.table_id if source_table else statement.table_id,
+                            source_table_title=(
+                                source_table.title
+                                if source_table and source_table.title
+                                else statement.title
+                            ),
                             source_section=statement.source_section,
-                            page_range=statement.page_range,
+                            page_range=(
+                                self._page_range_from_table(source_table)
+                                if source_table
+                                else statement.page_range
+                            ),
                             provenance=dict(statement.provenance),
                         )
                     )
         return metric_facts
+
+    def _resolve_metric_source_table(
+        self,
+        *,
+        metric_key: str,
+        period: str,
+        value: int | float | str,
+        merged_ids: list[str],
+        tables_by_id: dict[str, ParsedTable],
+        fallback_table_id: str | None,
+    ) -> ParsedTable | None:
+        candidates = [tables_by_id[table_id] for table_id in merged_ids if table_id in tables_by_id]
+        if fallback_table_id and fallback_table_id in tables_by_id:
+            fallback = tables_by_id[fallback_table_id]
+            if fallback not in candidates:
+                candidates.append(fallback)
+
+        for table in candidates:
+            metrics = table.normalized_metrics.get(metric_key)
+            if isinstance(metrics, dict) and period in metrics and self._values_equal(metrics[period], value):
+                return table
+
+        for table in candidates:
+            if self._table_contains_value(table, value):
+                return table
+
+        if fallback_table_id and fallback_table_id in tables_by_id:
+            return tables_by_id[fallback_table_id]
+        return candidates[0] if candidates else None
+
+    def _table_contains_value(self, table: ParsedTable, value: int | float | str) -> bool:
+        variants = self._numeric_variants(value)
+        if not variants:
+            return False
+        parts = [table.raw_markdown or "", " ".join(table.headers or [])]
+        for row in table.rows or []:
+            parts.append(" ".join(str(cell) for cell in row))
+        text = "\n".join(parts)
+        normalized = re.sub(r"[,\s]", "", text)
+        return any(variant in text or variant in normalized for variant in variants)
+
+    def _numeric_variants(self, value: int | float | str) -> list[str]:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            text = str(value).strip()
+            return [text] if text else []
+        if abs(number - round(number)) < 1e-9:
+            whole = abs(int(round(number)))
+            return [str(whole), f"{whole:,}", f"{whole:,}.00", f"{whole}.00"]
+        plain = f"{abs(number):.4f}".rstrip("0").rstrip(".")
+        return [plain, f"{abs(number):,.4f}".rstrip("0").rstrip(".")]
+
+    def _values_equal(self, left: Any, right: Any) -> bool:
+        try:
+            return abs(float(left) - float(right)) <= max(1.0, abs(float(right)) * 0.001)
+        except (TypeError, ValueError):
+            return str(left).strip() == str(right).strip()
 
     def _collect_reporting_periods(
         self,

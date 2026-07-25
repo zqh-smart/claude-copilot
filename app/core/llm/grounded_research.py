@@ -69,6 +69,15 @@ class GroundedResearchEngine:
                         }
                         for node in item.get("nodes", [])
                     ],
+                    "relationships": [
+                        {
+                            "relationship_type": relationship["relationship_type"],
+                            "page_range": relationship.get("page_range"),
+                            "evidence_text": relationship.get("evidence_text"),
+                            "confidence": relationship.get("confidence"),
+                        }
+                        for relationship in item.get("relationships", [])
+                    ],
                 }
             )
         return evidence

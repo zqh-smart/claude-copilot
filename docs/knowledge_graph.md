@@ -16,6 +16,10 @@ ParsedDocument + FinancialSchema
 节点类型：
 
 - `Company`
+- `Subsidiary`
+- `Industry`
+- `BusinessSegment`
+- `Event`
 - `Document`
 - `Metric`
 - `Risk`
@@ -25,9 +29,15 @@ ParsedDocument + FinancialSchema
 - `HAS_DOCUMENT`
 - `REPORTS_METRIC`
 - `HAS_RISK`
+- `OWNS`
+- `OPERATES_IN`
+- `AFFECTED_BY`
+- `COMPETES_WITH`
 - `EVIDENCED_BY`
 
-所有指标与风险节点都保留 `document_id` 和来源属性，以便追溯证据并幂等重建。
+每条关系都包含 `document_id`、`page_range`、`evidence_text` 和 `confidence`。
+实体名称经过 Unicode、标点、空格和公司法律后缀归一化；同一公司的不同写法会生成相同
+`company_id`。共享实体保存 `years`、`document_ids` 和 `aliases`，用于跨年度合并。
 
 ## 存储后端
 
@@ -74,10 +84,24 @@ uv run python scripts/backfill_knowledge_graph.py
 GET /api/v1/documents/{doc_id}/knowledge-graph
 ```
 
+查看同一公司跨年度合并后的图：
+
+```http
+GET /api/v1/companies/{company_id}/knowledge-graph
+```
+
+上传时可以提供高置信度行业和公司别名：
+
+```text
+industry=banking
+company_aliases=JPMorganChase,JPMC
+```
+
 Research 查询包含风险、关系、关联、暴露或影响等意图时，检索调度器会启用
 `graph` 路由。返回结果中的 `graph_paths` 会同时作为 `G*` 证据进入回答生成与审校。
 
 ## 当前边界
 
 这是 GraphRAG MVP，不是完整企业知识图谱。当前实体抽取以财务 Schema 和确定性风险分类为
-基础；尚未包含跨文档实体消歧、供应链关系、竞争关系、图算法和自动多跳查询规划。
+基础；当前子公司、竞争对手和事件采用确定性模式抽取，下一阶段仍需引入受 Schema 约束的
+LLM 抽取、人工评测集、图算法和自动多跳查询规划。

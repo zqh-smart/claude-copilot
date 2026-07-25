@@ -164,17 +164,31 @@ class PdfDocumentParser:
         return page_profiles
 
     def _select_route(self, page_profiles: list[PdfPageProfile]) -> str:
+        needs_ocr = self._should_use_ocr(page_profiles)
+        text_rich = self._text_coverage(page_profiles) >= 0.8
+        has_tables = self._should_use_table_route(page_profiles)
+
         for route in self._backend_priority:
             if route == "mineru_pdf" and self._can_use_mineru():
+                # Prefer MinerU for weak/scan-like PDFs. For text-rich A-share
+                # reports, fall through to table/native heuristics first.
+                if needs_ocr or not text_rich:
+                    return route
+                continue
+            if route == "ocr_pdf" and needs_ocr:
                 return route
-            if route == "ocr_pdf" and self._should_use_ocr(page_profiles):
-                return route
-            if route == "table_pdf" and self._should_use_table_route(page_profiles):
+            if route == "table_pdf" and has_tables:
                 return route
             if route == "native_pdf":
                 return route
 
         return "native_pdf"
+
+    def _text_coverage(self, page_profiles: list[PdfPageProfile]) -> float:
+        if not page_profiles:
+            return 0.0
+        nonempty = sum(1 for profile in page_profiles if profile.has_text)
+        return nonempty / len(page_profiles)
 
     def _get_effective_page_profiles(self, *, page_profiles: list[PdfPageProfile], route: str) -> list[PdfPageProfile]:
         if route != "mineru_pdf" or not page_profiles:
@@ -228,9 +242,20 @@ class PdfDocumentParser:
         metadata: DocumentMetadata,
         page_profiles: list[PdfPageProfile],
     ) -> ParsedDocument:
+        include_tables = self._should_use_table_route(page_profiles)
         sections = self._build_sections(doc_id=doc_id, page_profiles=page_profiles, section_type="pdf_page")
-        page_blocks = self._build_page_blocks(doc_id=doc_id, page_profiles=page_profiles, include_tables=False)
-        raw_text = "\n".join(profile.text for profile in page_profiles if profile.text.strip())
+        page_blocks = self._build_page_blocks(
+            doc_id=doc_id,
+            page_profiles=page_profiles,
+            include_tables=include_tables,
+        )
+        tables = (
+            self._build_tables(doc_id=doc_id, page_profiles=page_profiles, page_blocks=page_blocks)
+            if include_tables
+            else []
+        )
+        raw_parts = [profile.text for profile in page_profiles if profile.text.strip()]
+        raw_parts.extend(table.raw_markdown or "" for table in tables)
 
         return ParsedDocument(
             doc_id=doc_id,
@@ -240,9 +265,10 @@ class PdfDocumentParser:
                 parse_route="native_pdf",
                 page_count=len(page_profiles),
             ),
-            raw_text=raw_text,
+            raw_text="\n\n".join(part for part in raw_parts if part.strip()),
             sections=sections,
             page_blocks=page_blocks,
+            tables=tables,
         )
 
     def _parse_table_pdf(
@@ -1532,12 +1558,27 @@ class PdfDocumentParser:
         normalized = re.sub(r"\s+", " ", normalized)
         return normalized
 
+    _MONEY_TOKEN_RE = re.compile(
+        r"\(?-?\d{1,3}(?:,\d{3})+(?:\.\d+)?\)?"
+        r"|\(?-?\d+\.\d{2}\)?"
+        r"|\(?-?\d{4,}\.?\d*\)?"
+    )
+
     def _is_table_line(self, line: str) -> bool:
         if "|" in line:
             return len([part for part in line.split("|") if part.strip()]) >= 2
 
         if "\t" in line:
             return len([part for part in line.split("\t") if part.strip()]) >= 2
+
+        # A-share statement rows are often single-spaced:
+        # "货币资金 1,607,489,512.00 1,204,846,130.00"
+        chinese_financial = self._split_chinese_financial_row(line)
+        if chinese_financial is not None and len(chinese_financial) >= 2:
+            return True
+
+        if re.search(r"(项目|item).{0,12}(20\d{2}|19\d{2})", line, flags=re.IGNORECASE):
+            return True
 
         parts = [part.strip() for part in re.split(r"\s{2,}", line) if part.strip()]
         if len(parts) < 2:
@@ -1552,13 +1593,42 @@ class PdfDocumentParser:
 
         return False
 
+    def _split_chinese_financial_row(self, line: str) -> list[str] | None:
+        cleaned = line.strip()
+        if not cleaned or not re.search(r"[\u4e00-\u9fff]", cleaned):
+            return None
+
+        money_matches = list(self._MONEY_TOKEN_RE.finditer(cleaned))
+        if not money_matches:
+            # Header-like: 项目 2021年12月31日 2020年12月31日
+            if re.search(r"(项目|item).{0,8}(20\d{2}|19\d{2})", cleaned, flags=re.IGNORECASE):
+                parts = [part for part in re.split(r"\s+", cleaned) if part]
+                return parts if len(parts) >= 2 else None
+            return None
+
+        first_money = money_matches[0]
+        label = cleaned[: first_money.start()].strip()
+        if not label or len(label) > 40:
+            return None
+
+        values = [match.group(0) for match in money_matches]
+        # Require at least one comma-formatted amount or two numeric columns.
+        has_comma_amount = any("," in value for value in values)
+        if not has_comma_amount and len(values) < 2:
+            return None
+        return [label, *values]
+
     def _split_table_row(self, line: str) -> list[str]:
         if "|" in line:
             parts = [part.strip() for part in line.split("|") if part.strip()]
         elif "\t" in line:
             parts = [part.strip() for part in line.split("\t") if part.strip()]
         else:
-            parts = [part.strip() for part in re.split(r"\s{2,}", line) if part.strip()]
+            chinese_financial = self._split_chinese_financial_row(line)
+            if chinese_financial is not None:
+                parts = chinese_financial
+            else:
+                parts = [part.strip() for part in re.split(r"\s{2,}", line) if part.strip()]
         return parts
 
     def _normalize_rows(self, rows: list[list[str]]) -> list[list[str]]:
@@ -1589,12 +1659,37 @@ class PdfDocumentParser:
             return False
         if line.endswith((".", "。", ";", "；", ":", "：")):
             return False
+        if self._is_table_line(line):
+            return False
 
-        alpha_ratio = sum(char.isalpha() for char in line) / max(len(line), 1)
-        title_case = line == line.title()
+        cjk_count = sum(1 for char in line if "\u4e00" <= char <= "\u9fff")
+        cjk_ratio = cjk_count / max(len(line), 1)
+        if cjk_ratio >= 0.25:
+            return bool(
+                re.match(
+                    r"^(第[一二三四五六七八九十百千零〇\d]+[章节篇部]"
+                    r"|[（(]?[一二三四五六七八九十]+[、.．)]"
+                    r"|\d+[、.．]\s*\S+"
+                    r"|[一二三四五六七八九十]+、\s*\S+"
+                    r"|附录|重要提示、目录和释义)",
+                    line,
+                )
+                or re.search(
+                    r"(管理层讨论与分析|合并资产负债表|合并利润表|合并现金流量表"
+                    r"|公司简介和主要财务指标|公司治理|财务报告)",
+                    line,
+                )
+            )
+
+        latin_chars = sum(1 for char in line if ("A" <= char <= "Z") or ("a" <= char <= "z"))
+        if latin_chars == 0:
+            return False
+
+        alpha_ratio = latin_chars / max(len(line), 1)
+        title_case = line == line.title() and alpha_ratio > 0.4
         upper_case = line == line.upper() and alpha_ratio > 0.5
-        numbered_heading = bool(re.match(r"^(\d+(\.\d+)*|[一二三四五六七八九十]+[、.])\s*\S+", line))
-        return title_case or upper_case or numbered_heading or alpha_ratio < 0.35
+        numbered_heading = bool(re.match(r"^(\d+(\.\d+)*)\s+\S+", line))
+        return title_case or upper_case or numbered_heading
 
     def _looks_like_list_item(self, group: list[str]) -> bool:
         if len(group) != 1:

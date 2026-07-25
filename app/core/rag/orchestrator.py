@@ -95,11 +95,20 @@ class QueryAnalyzer:
         "related",
         "exposure",
         "affect",
+        "subsidiary",
+        "industry",
+        "segment",
+        "competitor",
         "风险",
         "关系",
         "关联",
         "暴露",
         "影响",
+        "子公司",
+        "行业",
+        "业务板块",
+        "分部",
+        "竞争对手",
     )
 
     def analyze(self, question: str) -> QueryAnalysis:
@@ -121,10 +130,7 @@ class QueryAnalyzer:
             if not shadowed and metric_key not in metric_keys:
                 metric_keys.append(metric_key)
         years = sorted(
-            {
-                int(year)
-                for year in re.findall(r"(?<!\d)(19\d{2}|20\d{2})(?!\d)", normalized)
-            }
+            {int(year) for year in re.findall(r"(?<!\d)(19\d{2}|20\d{2})(?!\d)", normalized)}
         )
         has_semantic_cue = any(cue in normalized for cue in self._SEMANTIC_CUES)
         has_structured_cue = any(cue in normalized for cue in self._STRUCTURED_CUES)
@@ -213,7 +219,7 @@ class RetrievalOrchestrator:
             else:
                 graph_paths = self._graph_store.search(
                     question,
-                    document_id=doc_id,
+                    document_id=None if company_id else doc_id,
                     company_id=company_id,
                     limit=top_k,
                 )
@@ -251,9 +257,7 @@ class RetrievalOrchestrator:
             )
         if len(analysis.years) > 1:
             year_filter = set(analysis.years)
-            observations = [
-                item for item in observations if item.period_year in year_filter
-            ]
+            observations = [item for item in observations if item.period_year in year_filter]
         return observations
 
     def _calculate(
