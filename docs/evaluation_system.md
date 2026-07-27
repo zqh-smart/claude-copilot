@@ -205,15 +205,17 @@ L4 依赖 L2+L3；解析再好，检索证据错也会在 L4 暴露。
 | ② 扩展 golden | 核心字段 + `retrieval_cases` + `serving_gate` | `data/golden/znz_2021_stage_expectations.json` | ✔ |
 | ③ 入库闸门代码 | `ServingGateService` 接入 pipeline index/graph | `evaluation/serving_gate.py` | ✔ |
 | ④ 打通 Serving 入库 | Postgres metrics + Qdrant segments + Neo4j | 单文档 E2E | ✔ |
-| ⑤ L3 题集脚本 | 按 `retrieval_cases` 自动打分 | `scripts/run_serving_ingest_eval.py` | ✔（指南针 pass_rate=1.0） |
-| ⑥ L4 批量 eval | 固定问题跑 research + critic | 需可用 LLM（当前 Silicon 402） | 待做 |
+| ⑤ L3 题集脚本 | 按 `retrieval_cases` 自动打分（含 graph） | `scripts/run_serving_ingest_eval.py` | ✔ 题集已扩；需 Silicon embedding 复验 |
+| ⑥ L4 批量 eval | 固定问题跑 research + critic | 需可用 LLM | 待做 |
 
 ### Serving 入库命令
 
 ```bash
 docker compose up -d postgres qdrant neo4j
-# Silicon embedding 不可用时脚本会自动降级 hash embedding
+# 默认要求 Silicon embedding 可用（402/缺 key 直接失败，不落 hash）
 python scripts/run_serving_ingest_eval.py --storage-backend postgres --vector-backend qdrant --graph-backend neo4j
+# 仅离线调试才允许：
+# python scripts/run_serving_ingest_eval.py --allow-hash-fallback
 ```
 
 报告：`data/reports/serving_eval/*_serving_eval.json`
@@ -221,7 +223,8 @@ python scripts/run_serving_ingest_eval.py --storage-backend postgres --vector-ba
 要点：
 
 - Artifact payload 保留全量 facts；`financial_items` / Local SQL 只读 Serving 闸门放行的 facts（`app/core/db/serving_facts.py`）
-- L3 评的是路由 + 结构化数值 + 语义关键词，不依赖 LLM 合成（L4 另算）
+- L3 评路由 + 结构化数值 + 语义关键词 + graph 关系类型（`expect_graph_relation_types`），不依赖 LLM 合成（L4 另算）
+- 生产复验条件：`EMBEDDING_BACKEND=silicon`、`SILICON_KEY` 有效、返回向量维 = `EMBEDDING_DIMENSIONS`（默认 1024）、collection=`document_segments_bge_m3`
 
 ### 已落地的闸门行为
 

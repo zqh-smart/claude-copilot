@@ -61,6 +61,24 @@
       "expect_period": "2021",
       "expect_value": 931944638,
       "expect_section_types": ["management_discussion"]
+    },
+    {
+      "id": "q_market_risk_graph",
+      "question": "公司面临哪些市场风险或风险暴露？",
+      "expect_route": "graph",
+      "expect_graph_relation_types": ["HAS_RISK"]
+    },
+    {
+      "id": "q_industry_graph",
+      "question": "公司经营所在的行业是什么？",
+      "expect_route": "graph",
+      "expect_graph_relation_types": ["OPERATES_IN"]
+    },
+    {
+      "id": "q_reports_metric_graph",
+      "question": "公司报告了哪些财务指标关联？",
+      "expect_route": "graph",
+      "expect_graph_relation_types": ["REPORTS_METRIC"]
     }
   ],
   "notes": {

@@ -30,6 +30,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--vector-backend", default="qdrant")
     parser.add_argument("--graph-backend", default="neo4j")
     parser.add_argument("--top-k", type=int, default=5)
+    parser.add_argument(
+        "--allow-hash-fallback",
+        action="store_true",
+        help="Allow hash embedding fallback when Silicon is unavailable (default: fail).",
+    )
     return parser.parse_args()
 
 
@@ -44,7 +49,7 @@ def _reset_caches() -> None:
             obj.cache_clear()
 
 
-def _ensure_embedding_backend() -> dict:
+def _ensure_embedding_backend(*, allow_hash_fallback: bool) -> dict:
     from app.core.config import get_settings
 
     settings = get_settings()
@@ -52,6 +57,9 @@ def _ensure_embedding_backend() -> dict:
         "requested_embedding": settings.embedding_backend,
         "fallback": None,
         "silicon_ok": False,
+        "status_code": None,
+        "embedding_dimensions": settings.embedding_dimensions,
+        "qdrant_collection": settings.qdrant_collection_name,
     }
     if settings.embedding_backend in {"auto", "silicon"} and settings.silicon_key:
         try:
@@ -64,12 +72,30 @@ def _ensure_embedding_backend() -> dict:
                     "Content-Type": "application/json",
                 },
                 json={"model": settings.embedding_model_id, "input": ["ping"]},
-                timeout=20,
+                timeout=30,
             )
-            info["silicon_ok"] = response.status_code < 500
+            info["status_code"] = response.status_code
+            info["silicon_ok"] = response.status_code == 200
+            if response.status_code == 200:
+                vectors = (response.json().get("data") or [{}])[0].get("embedding") or []
+                info["silicon_embedding_dim"] = len(vectors)
+                if vectors and len(vectors) != settings.embedding_dimensions:
+                    info["dimension_mismatch"] = {
+                        "expected": settings.embedding_dimensions,
+                        "actual": len(vectors),
+                    }
+                    info["silicon_ok"] = False
         except Exception as exc:  # noqa: BLE001
-            info["silicon_error"] = type(exc).__name__
+            info["silicon_error"] = f"{type(exc).__name__}: {exc}"
+    elif settings.embedding_backend in {"auto", "silicon"} and not settings.silicon_key:
+        info["silicon_error"] = "SILICON_KEY is empty"
+
     if settings.embedding_backend in {"auto", "silicon"} and not info["silicon_ok"]:
+        if not allow_hash_fallback:
+            raise RuntimeError(
+                "Silicon embedding required but unavailable: "
+                + json.dumps(info, ensure_ascii=False)
+            )
         os.environ["EMBEDDING_BACKEND"] = "hash"
         os.environ["RERANK_BACKEND"] = "deterministic"
         os.environ.setdefault("QDRANT_COLLECTION_NAME", "document_segments_hash_serving")
@@ -85,6 +111,16 @@ def _values_equal(actual, expected) -> bool:
         return str(actual).strip() == str(expected).strip()
 
 
+def _graph_path_items(preview) -> list[dict]:
+    items: list[dict] = []
+    for path in preview.graph_paths or []:
+        if isinstance(path, dict):
+            items.append(path)
+            continue
+        items.append(path.model_dump(mode="json") if hasattr(path, "model_dump") else {})
+    return items
+
+
 def _score_case(case: dict, preview) -> dict:
     expect_route = case.get("expect_route")
     analysis = preview.query_analysis
@@ -98,6 +134,8 @@ def _score_case(case: dict, preview) -> dict:
         route_ok = intent == "semantic" or ("vector" in routes and "sql" not in routes)
     elif expect_route == "hybrid":
         route_ok = intent == "hybrid" or ("vector" in routes and "sql" in routes)
+    elif expect_route in {"graph", "relational"}:
+        route_ok = "graph" in routes or intent in {"relational", "hybrid"}
 
     metric_ok = True
     matched_metric = None
@@ -144,7 +182,22 @@ def _score_case(case: dict, preview) -> dict:
                 # soft: require at least one hit for semantic/hybrid narrative
                 semantic_ok = semantic_ok and len(preview.hits or []) > 0
 
-    passed = bool(route_ok and metric_ok and semantic_ok)
+    graph_paths = _graph_path_items(preview)
+    graph_ok = True
+    matched_relations: list[str] = []
+    if case.get("expect_graph_relation_types") or expect_route in {"graph", "relational"}:
+        expected_types = set(case.get("expect_graph_relation_types") or [])
+        for path in graph_paths:
+            for rel in path.get("relationships") or []:
+                rel_type = rel.get("relationship_type") if isinstance(rel, dict) else None
+                if rel_type:
+                    matched_relations.append(rel_type)
+        if expected_types:
+            graph_ok = bool(expected_types & set(matched_relations))
+        else:
+            graph_ok = len(graph_paths) > 0
+
+    passed = bool(route_ok and metric_ok and semantic_ok and graph_ok)
     return {
         "id": case.get("id"),
         "question": case.get("question"),
@@ -154,10 +207,13 @@ def _score_case(case: dict, preview) -> dict:
         "route_ok": route_ok,
         "metric_ok": metric_ok,
         "semantic_ok": semantic_ok,
+        "graph_ok": graph_ok,
         "matched_metric": matched_metric,
+        "matched_relations": sorted(set(matched_relations)),
         "keyword_hits": keyword_hits,
         "hit_count": len(preview.hits or []),
         "metric_count": len(preview.metrics or []),
+        "graph_path_count": len(graph_paths),
         "passed": passed,
         "warnings": list(preview.warnings or []),
     }
@@ -173,8 +229,10 @@ def main() -> int:
     os.environ["STORAGE_BACKEND"] = args.storage_backend
     os.environ["VECTOR_STORE_BACKEND"] = args.vector_backend
     os.environ["GRAPH_STORE_BACKEND"] = args.graph_backend
+    # L3 scores retrieval only; keep synthesis off to avoid LLM noise.
+    os.environ["LLM_GROUNDED_SYNTHESIS_ENABLED"] = "false"
     _reset_caches()
-    embedding_info = _ensure_embedding_backend()
+    embedding_info = _ensure_embedding_backend(allow_hash_fallback=args.allow_hash_fallback)
 
     from app.api import dependencies
     from app.core.config import get_settings
@@ -257,6 +315,7 @@ def main() -> int:
             "embedding": settings.embedding_backend,
             "qdrant_collection": settings.qdrant_collection_name,
         },
+        "embedding_info": embedding_info,
         "l3": {
             "total": len(case_results),
             "passed": passed,
