@@ -47,6 +47,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Forward to serving ingest when Silicon is unavailable",
     )
+    parser.add_argument(
+        "--with-api",
+        action="store_true",
+        help="After serving eval, run HTTP API smoke (TestClient)",
+    )
     return parser.parse_args()
 
 
@@ -63,7 +68,13 @@ def _run(cmd: list[str]) -> int:
     return int(completed.returncode)
 
 
-def _run_sample(sample: dict, *, skip_serving: bool, allow_hash_fallback: bool) -> int:
+def _run_sample(
+    sample: dict,
+    *,
+    skip_serving: bool,
+    allow_hash_fallback: bool,
+    with_api: bool,
+) -> int:
     status = _golden_status(sample["golden"])
     print(json.dumps({"sample": sample["name"], "golden_status": status}, ensure_ascii=False))
     if status == "skeleton":
@@ -108,7 +119,26 @@ def _run_sample(sample: dict, *, skip_serving: bool, allow_hash_fallback: bool) 
     ]
     if allow_hash_fallback:
         serving_cmd.append("--allow-hash-fallback")
-    return _run(serving_cmd)
+    code = _run(serving_cmd)
+    if code != 0:
+        return code
+    if with_api:
+        api_cmd = [
+            sys.executable,
+            str(ROOT / "scripts" / "run_api_smoke.py"),
+            "--golden",
+            str(sample["golden"]),
+            "--storage-backend",
+            "postgres",
+            "--vector-backend",
+            "qdrant",
+            "--graph-backend",
+            "neo4j",
+        ]
+        if allow_hash_fallback:
+            api_cmd.append("--allow-hash-fallback")
+        return _run(api_cmd)
+    return 0
 
 
 def main() -> int:
@@ -126,6 +156,7 @@ def main() -> int:
             sample,
             skip_serving=args.skip_serving,
             allow_hash_fallback=args.allow_hash_fallback,
+            with_api=args.with_api,
         )
         worst = max(worst, code)
     return worst

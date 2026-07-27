@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.db.postgres_models import DocumentORM, FinancialItemORM, ParsedTableORM
 from app.core.db.protocols import DocumentRepositoryProtocol, ParsedDocumentRepositoryProtocol
-from app.core.db.serving_facts import select_serving_metric_facts
+from app.core.db.serving_facts import enrich_serving_fact_provenance, select_serving_metric_facts
 from app.core.errors import DocumentNotFoundError
 from src.claude_copilot.entity_resolution import build_canonical_company_id
 from src.claude_copilot.schemas.document import DocumentProcessingStatus
@@ -98,6 +98,7 @@ class LocalFinancialDataRepository:
                 continue
             facts = select_serving_metric_facts(parsed.financial_schema)
             for fact in facts:
+                enriched = enrich_serving_fact_provenance(fact, parsed.financial_schema)
                 period_year = extract_period_year(fact.period)
                 if year is not None and period_year != year:
                     continue
@@ -121,8 +122,8 @@ class LocalFinancialDataRepository:
                         source_table_id=fact.source_table_id,
                         source_table_title=fact.source_table_title,
                         source_section=fact.source_section,
-                        page_range=fact.page_range,
-                        provenance=dict(fact.provenance),
+                        page_range=enriched.page_range,
+                        provenance=dict(enriched.provenance),
                     )
                 )
         return _sort_observations(observations)[:limit]

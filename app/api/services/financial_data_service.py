@@ -3,6 +3,12 @@ from __future__ import annotations
 from collections import defaultdict
 
 from app.core.db import FinancialDataRepositoryProtocol
+from app.core.db.serving_facts import (
+    candidate_from_observation,
+    metric_values_conflict,
+    normalize_metric_value,
+    resolve_metric_conflict,
+)
 from app.core.errors import CompanyNotFoundError
 from src.claude_copilot.schemas.financial_data import (
     CompanySummary,
@@ -90,20 +96,27 @@ class FinancialDataService:
         selected = []
         for year in sorted(by_year):
             candidates = by_year[year]
-            values = {float(item.value) for item in candidates}
-            if len(values) > 1:
-                warnings.append(
-                    f"conflicting {metric_key} values for {year}; "
-                    "selected the latest matching document"
+            distinct_values = {normalize_metric_value(item.value) for item in candidates}
+            if len(distinct_values) > 1:
+                period = candidates[0].period
+                resolution = resolve_metric_conflict(
+                    [candidate_from_observation(item) for item in candidates],
+                    metric_key=metric_key,
+                    period=period,
                 )
-            candidates.sort(
-                key=lambda item: (
-                    item.document_year == year,
-                    item.document_year or 0,
-                    item.document_id,
-                ),
-                reverse=True,
-            )
+                warnings.extend(resolution.warnings)
+                winner = next(
+                    (
+                        item
+                        for item in candidates
+                        if resolution.winner is not None
+                        and item.document_id == resolution.winner.document_id
+                        and not metric_values_conflict(item.value, resolution.winner.value)
+                    ),
+                    candidates[0],
+                )
+                selected.append(winner)
+                continue
             selected.append(candidates[0])
 
         points: list[MetricGrowthPoint] = []

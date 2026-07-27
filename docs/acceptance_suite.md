@@ -49,9 +49,17 @@ Z:/BaiduNetdiskDownload/阶段12：LLM大型复杂项目实战/项目实战2：�
 - 生产复验：`EMBEDDING_BACKEND=silicon`、无 hash fallback、向量维 = `EMBEDDING_DIMENSIONS`、collection 与模型一致（当前 `document_segments_bge_m3` / 1024）
 - Silicon 不可用时默认失败；仅离线调试加 `--allow-hash-fallback`
 
-### L4（尚未纳入套件）
+### L4（可选，非硬门禁）
 
-Grounded research + critic 批量题集：待本地/云端 LLM 稳定后另开。
+Grounded research + critic 批量题集。依赖 L3 已入库文档 + 可用 LLM（`LLM_MODEL_*` / Silicon chat）。
+
+- 脚本：`scripts/run_l4_research_eval.py`
+- 题集：golden 中 `l4_cases`（若有）否则 `retrieval_cases`
+- 通过标准（单题）：`grounded=true`、`critic.passed=true`、有证据时含 citations；有 `expect_value` 时数值出现在 answer/metrics
+- 报告：`data/reports/l4_eval/*_l4_eval.json`
+- Exit code：`0` 全过；`2` 部分失败；`4` LLM 不可用（不阻塞 L2/L3 Knowledge Layer 工作）
+
+**尚未纳入 `run_acceptance_suite.py` 硬门禁**；LLM 502/不可用时跳过即可。
 
 ---
 
@@ -114,7 +122,66 @@ python scripts/run_serving_ingest_eval.py \
 python scripts/run_acceptance_suite.py --profile all
 ```
 
-### 3.3 单元测试（改代码后）
+### 3.3 L4（可选，LLM 可用时）
+
+前置：Smoke/Regression L3 已跑通（Serving 轨有 `doc_id`）；本地或 Silicon chat 可响应。
+
+```bash
+# 默认指南针 golden + 自动解析 doc_id
+python scripts/run_l4_research_eval.py
+
+# 指定 doc_id 或子集
+python scripts/run_l4_research_eval.py --doc-id <uuid>
+python scripts/run_l4_research_eval.py --case-ids q_revenue_2021 q_mda_overview
+```
+
+LLM 不可用时 exit `4`，并写入 `data/reports/l4_eval/llm_unavailable.json`；不阻断 L2/L3 验收。
+
+LLM 不可用时 exit `4`，并写入 `data/reports/l4_eval/llm_unavailable.json`；不阻断 L2/L3 验收。
+
+### 3.4 HTTP API smoke（Knowledge Layer 检索，可选）
+
+前置：同 §3.1（`docker compose up -d` + 已完成 **Serving 入库**，或本脚本 `--ingest`）。
+
+使用 FastAPI `TestClient`（无需单独起 `uvicorn`）：
+
+```bash
+# 推荐：先跑 serving 入库，再 API smoke（自动从 DB / 最新 serving 报告解析 doc_id）
+python scripts/run_serving_ingest_eval.py \
+  --storage-backend postgres \
+  --vector-backend qdrant \
+  --graph-backend neo4j
+
+python scripts/run_api_smoke.py \
+  --storage-backend postgres \
+  --vector-backend qdrant \
+  --graph-backend neo4j
+```
+
+已知 `doc_id` 时：
+
+```bash
+python scripts/run_api_smoke.py --doc-id <completed_doc_id>
+```
+
+验收套件一键（L1/L2 + Serving/L3 + API）：
+
+```bash
+python scripts/run_acceptance_suite.py --profile smoke --with-api
+```
+
+**断言（全部通过 exit 0）：**
+
+| 检查 | 端点 | 期望 |
+|------|------|------|
+| 健康 | `GET /health` | `status == ok` |
+| 公司列表 | `GET /api/v1/companies` | 含指南针 `company_id` |
+| 结构化指标 | `GET /api/v1/companies/{id}/metrics?metric_key=revenue&year=2021` | `revenue` 2021 ≈ `931944638` |
+| 检索路由 | `POST /api/v1/research/query`（golden `q_revenue_2021`） | 路由含 `sql`/structured；返回 metric 值匹配 |
+
+未入库时脚本 exit `1` 并打印 prerequisite；断言失败 exit `2`。
+
+### 3.5 单元测试（改代码后）
 
 ```bash
 python -m pytest tests/test_serving_gate.py tests/test_serving_facts.py tests/test_stage_scorecard.py tests/core/rag tests/core/kg -q
@@ -129,6 +196,8 @@ python -m pytest tests/test_serving_gate.py tests/test_serving_facts.py tests/te
 | 最新 scorecard | `data/reports/eval/latest_scorecard.json` |
 | baseline / diff | `data/reports/eval/baseline_scorecard.json`, `diff_vs_baseline.json` |
 | Serving + L3 | `data/reports/serving_eval/*_serving_eval.json` |
+| HTTP API smoke | stdout JSON（`scripts/run_api_smoke.py`） |
+| L4 research + critic | `data/reports/l4_eval/*_l4_eval.json` |
 | 样本快照说明 | `docs/pipeline_eval_status.md` |
 
 （`data/reports/*` 默认 gitignore；以本地报告 + 本套件文档为准。）
@@ -160,8 +229,8 @@ python -m pytest tests/test_serving_gate.py tests/test_serving_facts.py tests/te
 
 ## 7. 明确未覆盖（避免误判「已整体测试」）
 
-- HTTP API 端到端（`/research/query` 等）未进套件  
-- L4 grounded + critic 未进套件  
-- 跨文档指标冲突策略未自动化（文档 §4.2）  
+- HTTP API smoke 未进默认 `--profile smoke`（需 `--with-api` 或单独跑 `run_api_smoke.py`）  
+- L4 有独立脚本但未进 `run_acceptance_suite.py` 硬门禁（LLM 可用时可选跑）  
+- 跨文档指标冲突：已实现 grounded+provenance 优胜 + warning（单测覆盖；未进 acceptance 脚本硬门禁）  
 - 负面用例（故意脏期间应被闸门拦截）未建题  
 - Stress 样本（扫描件）未建  

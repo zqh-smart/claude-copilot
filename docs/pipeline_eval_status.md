@@ -36,7 +36,6 @@ Baseline：`data/reports/eval/baseline_scorecard.json`
 ## 可后置
 
 - 重复块再降、旁支表章节噪声
-- 跨文档同指标冲突策略（`evaluation_system.md` §4.2）
-- API 层 smoke（`/research/query`）进验收套件
-- L4 grounded + critic（LLM 稳定后）
+- L4 grounded + critic 纳入硬门禁（LLM 稳定后；现有 `run_l4_research_eval.py`）
+- 冲突策略 / API smoke 的 acceptance 脚本级硬断言（单测与 `--with-api` 已有）
 - 外部财报字段伪 golden / CER/TEDS 全量标注
