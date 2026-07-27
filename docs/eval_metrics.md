@@ -1,6 +1,7 @@
 # Document Pipeline Evaluation Metrics
 
-本文件定义各阶段评估指标，以及如何判断一次改动是正向还是负向优化。
+本文件定义 **L1/L2 阶段**评估指标，以及如何判断一次改动是正向还是负向优化。  
+完整分层（含入库闸门、检索 L3、研究 L4）见 [`evaluation_system.md`](./evaluation_system.md)。
 
 ## 原则
 

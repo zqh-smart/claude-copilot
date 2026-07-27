@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
 
 from app.pipeline.feature_pipeline.chunking import ChunkingService
 from app.pipeline.feature_pipeline.cleaning import DocumentCleaningService
+from app.pipeline.feature_pipeline.evaluation.serving_gate import ServingGateService
 from app.pipeline.feature_pipeline.evaluation.stage_scorecard import StageScorecardService
 from app.pipeline.feature_pipeline.parser import ParserRouter
 from app.pipeline.feature_pipeline.schema_mapping import FinancialSchemaMappingService
@@ -96,6 +97,7 @@ def main() -> int:
     segments = ChunkingService().chunk(schemed)
     timings["chunking"] = round(time.perf_counter() - t0, 3)
 
+    schemed.segments = segments
     scorecard = StageScorecardService().build(
         parsed=parsed,
         cleaned=cleaned,
@@ -105,10 +107,33 @@ def main() -> int:
         timings=timings,
         expectations=expectations,
     )
+    gate = ServingGateService().evaluate(
+        schemed,
+        expectations=expectations,
+        scorecard=scorecard,
+    )
+    scorecard["serving_gate"] = gate.to_dict()
+    scorecard["retrieval_cases"] = expectations.get("retrieval_cases") or []
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(scorecard, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps({"wrote": str(args.output), "summary_scores": scorecard["summary_scores"]}, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {
+                "wrote": str(args.output),
+                "summary_scores": scorecard["summary_scores"],
+                "serving_gate": {
+                    "allow_metric_serving": gate.allow_metric_serving,
+                    "allow_segment_serving": gate.allow_segment_serving,
+                    "failures": gate.failures,
+                    "warnings": gate.warnings,
+                },
+                "retrieval_case_count": len(scorecard["retrieval_cases"]),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
 
     baseline_path = EVAL_DIR / "baseline_scorecard.json"
     if args.save_baseline:
@@ -127,6 +152,9 @@ def main() -> int:
         print(f"WROTE {diff_path}")
         if diff["net_verdict"] == "negative":
             return 1
+    if not gate.allow_metric_serving:
+        print("SERVING_GATE_BLOCKED_METRICS")
+        return 3
     return 0
 
 

@@ -508,6 +508,8 @@ class TableIntelligenceService:
 
         found: list[str] = []
         for candidate in candidates:
+            if self._is_growth_header(candidate):
+                continue
             for period in self._extract_period_tokens(candidate):
                 if period not in found and self._is_plausible_period(period, report_year=report_year):
                     found.append(period)
@@ -898,28 +900,65 @@ class TableIntelligenceService:
         if not cleaned_values:
             return {}
 
-        if len(cleaned_values) >= len(period_headers):
-            cleaned_values = cleaned_values[-len(period_headers) :]
-        elif len(cleaned_values) < len(period_headers):
-            cleaned_values = [""] * (len(period_headers) - len(cleaned_values)) + cleaned_values
+        parsed_values: list[int | float] = []
+        for cell in cleaned_values:
+            parsed = self._parse_numeric_value(cell)
+            if parsed is not None:
+                parsed_values.append(parsed)
+        if not parsed_values:
+            return {}
+
+        money_values, dropped_ratios = self._drop_ratio_values(parsed_values)
+        # When YoY/% columns were removed, keep left-to-right year order.
+        # Otherwise keep legacy right-alignment (handles spacer columns).
+        if dropped_ratios and len(money_values) >= len(period_headers):
+            aligned_values: list[int | float | str] = list(money_values[: len(period_headers)])
+        elif len(money_values) >= len(period_headers):
+            aligned_values = list(money_values[-len(period_headers) :])
+        else:
+            aligned_values = [""] * (len(period_headers) - len(money_values)) + list(money_values)
 
         period_values: dict[str, int | float | str] = {}
-        for period, value in zip(period_headers, cleaned_values, strict=False):
-            parsed_value = self._parse_numeric_value(value)
-            if parsed_value is not None:
-                period_values[period] = parsed_value
+        for period, value in zip(period_headers, aligned_values, strict=False):
+            if value == "" or value is None:
+                continue
+            period_values[period] = value
 
         return period_values
+
+    def _is_growth_header(self, text: str) -> bool:
+        normalized = self._normalize_text(text)
+        if not normalized:
+            return False
+        return bool(
+            re.search(
+                r"(同比|环比|增减|变动比例|变动幅度|增长率|增长比例|下降比例|%|％)",
+                normalized,
+            )
+        )
+
+    def _drop_ratio_values(self, values: list[int | float]) -> tuple[list[int | float], bool]:
+        """Drop YoY-like percentages when the same row also has monetary amounts."""
+        if len(values) < 2:
+            return values, False
+        large = [value for value in values if abs(float(value)) >= 1000]
+        if len(large) < 2:
+            return values, False
+        filtered = [value for value in values if abs(float(value)) >= 1000]
+        if len(filtered) == len(values):
+            return values, False
+        return filtered, True
 
     def _split_compact_row(self, *, row: list[str], period_headers: list[str]) -> tuple[str | None, list[str]]:
         if not period_headers:
             return None, []
 
         # Already-split Chinese financial rows: ["货币资金", "1,607...", "1,204..."]
+        # Keep ALL numeric cells so YoY/% columns can be dropped later.
         if len(row) >= 2:
             values = [cell for cell in row[1:] if self._parse_numeric_value(cell) is not None or re.search(r"\d", cell)]
             if len(values) >= min(2, len(period_headers)):
-                return row[0].strip() or None, values[-len(period_headers) :]
+                return row[0].strip() or None, values
 
         if len(row) != 1:
             return None, []
@@ -934,13 +973,12 @@ class TableIntelligenceService:
         if len(compact_values) < len(period_headers):
             return None, []
 
-        values = compact_values[-len(period_headers) :]
         label = text
-        for value in values:
-            label = re.sub(rf"\s*{re.escape(value)}\s*$", "", label, count=1)
+        for value in compact_values:
+            label = re.sub(rf"\s*{re.escape(value)}\s*", " ", label, count=1)
         label = label.replace("$", " ")
         label = re.sub(r"\s+", " ", label).strip(" :-")
-        return label or None, values
+        return label or None, compact_values
 
     def _extract_note_identity(self, table: ParsedTable) -> tuple[str | None, str | None]:
         candidates = [

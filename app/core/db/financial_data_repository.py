@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.db.postgres_models import DocumentORM, FinancialItemORM, ParsedTableORM
 from app.core.db.protocols import DocumentRepositoryProtocol, ParsedDocumentRepositoryProtocol
+from app.core.db.serving_facts import select_serving_metric_facts
 from app.core.errors import DocumentNotFoundError
 from src.claude_copilot.entity_resolution import build_canonical_company_id
 from src.claude_copilot.schemas.document import DocumentProcessingStatus
@@ -51,7 +52,7 @@ class LocalFinancialDataRepository:
                 parsed = self._parsed_document_repository.get(record.doc_id)
             except DocumentNotFoundError:
                 continue
-            facts = parsed.financial_schema.metric_facts if parsed.financial_schema else []
+            facts = select_serving_metric_facts(parsed.financial_schema)
             entry["metric_count"] += len(facts)
             entry["years"].update(
                 year for fact in facts if (year := extract_period_year(fact.period)) is not None
@@ -95,7 +96,7 @@ class LocalFinancialDataRepository:
                 parsed = self._parsed_document_repository.get(record.doc_id)
             except DocumentNotFoundError:
                 continue
-            facts = parsed.financial_schema.metric_facts if parsed.financial_schema else []
+            facts = select_serving_metric_facts(parsed.financial_schema)
             for fact in facts:
                 period_year = extract_period_year(fact.period)
                 if year is not None and period_year != year:

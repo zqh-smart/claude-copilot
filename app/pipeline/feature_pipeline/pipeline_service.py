@@ -17,6 +17,7 @@ from app.core.rag.vector_store import VectorStoreProtocol
 from app.core.storage import LocalFileStorage
 from app.pipeline.feature_pipeline.chunking import ChunkingService
 from app.pipeline.feature_pipeline.cleaning import DocumentCleaningService
+from app.pipeline.feature_pipeline.evaluation.serving_gate import ServingGateService
 from app.pipeline.feature_pipeline.indexing import IndexingService
 from app.pipeline.feature_pipeline.parser import ParserRouter
 from app.pipeline.feature_pipeline.schema_mapping import FinancialSchemaMappingService
@@ -68,6 +69,7 @@ class DocumentPipelineService:
         self._indexing = IndexingService(segment_repository, vector_store)
         self._graph_builder = KnowledgeGraphBuilder()
         self._graph_store = graph_store or NoOpKnowledgeGraphStore()
+        self._serving_gate = ServingGateService()
 
     def ingest(
         self,
@@ -131,6 +133,12 @@ class DocumentPipelineService:
             record = self._transition(record, DocumentProcessingStatus.CHUNKING)
             parsed_document.segments = self._chunking.chunk(parsed_document)
 
+            # Artifact track: persist full parsed document.
+            # Serving track: L2 gate filters metrics/segments for index + graph.
+            serving_document, gate = self._serving_gate.apply_to_document(parsed_document)
+            if parsed_document.financial_schema is not None:
+                parsed_document.financial_schema.metadata["serving_gate"] = gate.to_dict()
+
             parsed_path = self._parsed_document_repository.save(parsed_document)
             record = self._transition(
                 record,
@@ -138,8 +146,8 @@ class DocumentPipelineService:
                 parsed_path=str(parsed_path),
             )
 
-            segment_count = self._indexing.index(doc_id, parsed_document.segments)
-            self._graph_store.replace_document(self._graph_builder.build(parsed_document))
+            segment_count = self._indexing.index(doc_id, serving_document.segments)
+            self._graph_store.replace_document(self._graph_builder.build(serving_document))
             record = self._transition(
                 record,
                 DocumentProcessingStatus.COMPLETED,

@@ -41,6 +41,8 @@ class QueryAnalyzer:
         "net_cash_from_operating_activities": (
             "operating cash flow",
             "cash from operating activities",
+            "经营活动产生的现金流量净额",
+            "经营活动现金流量净额",
             "经营现金流",
             "经营活动现金流",
         ),

@@ -19,6 +19,7 @@ from app.core.db.protocols import (
     SegmentRepositoryProtocol,
 )
 from app.core.db.segment_repository import LocalSegmentRepository
+from app.core.db.serving_facts import select_serving_metric_facts, select_serving_metric_facts_from_document
 from app.core.db.session import get_postgres_engine, get_postgres_session_factory
 
 __all__ = [
@@ -37,4 +38,6 @@ __all__ = [
     "build_company_id",
     "get_postgres_engine",
     "get_postgres_session_factory",
+    "select_serving_metric_facts",
+    "select_serving_metric_facts_from_document",
 ]

@@ -13,6 +13,7 @@ from app.core.db.postgres_mappers import (
     parsed_table_to_orm,
 )
 from app.core.db.postgres_models import FinancialItemORM, ParsedDocumentORM, ParsedTableORM
+from app.core.db.serving_facts import select_serving_metric_facts
 from app.core.errors import DocumentNotFoundError
 from app.core.storage import LocalFileStorage
 from src.claude_copilot.schemas.document import ParsedDocument
@@ -62,9 +63,11 @@ class PostgresParsedDocumentRepository:
             )
 
             if parsed_document.financial_schema is not None:
+                # Artifact payload keeps all facts; SQL Serving table only stores gated facts.
+                serving_facts = select_serving_metric_facts(parsed_document.financial_schema)
                 session.add_all(
                     metric_fact_to_orm(parsed_document.doc_id, fact, fact_index)
-                    for fact_index, fact in enumerate(parsed_document.financial_schema.metric_facts, start=1)
+                    for fact_index, fact in enumerate(serving_facts, start=1)
                 )
                 session.add_all(
                     note_fact_to_orm(parsed_document.doc_id, fact, fact_index)

@@ -17,12 +17,17 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
 
-    default_llm_provider: str = "silicon"
-    default_llm_model: str = "deepseek-ai/DeepSeek-V4-Flash"
+    # LLM chat（与 .env 中 LLM_MODEL_* 对齐）
+    llm_model_name: str = "qwen3.5"
+    llm_model_base_url: str = "http://192.168.0.102:30000/v1"
+    llm_model_api_key: str | None = None
+    llm_model_api_type: Literal["openai", "silicon"] = "openai"
     llm_grounded_synthesis_enabled: bool = True
     llm_temperature: float = 0.1
     llm_timeout_seconds: float = 90.0
     llm_max_revisions: int = 1
+
+    # Embedding / Rerank（硅基等；与 LLM chat 配置分离）
     default_embedding_model: str = "BAAI/bge-m3"
     embedding_backend: Literal["auto", "silicon", "hash"] = "auto"
     embedding_model_id: str = "BAAI/bge-m3"
@@ -34,8 +39,6 @@ class Settings(BaseSettings):
     retrieval_candidate_multiplier: int = 4
     silicon_base_url: str = "https://api.siliconflow.cn/v1"
     silicon_key: str | None = None
-    openai_api_key: str | None = None
-    openai_base_url: str | None = None
 
     postgres_dsn: str = "postgresql+psycopg://postgres:postgres@localhost:5432/claude_copilot"
     qdrant_url: str = "http://localhost:6333"

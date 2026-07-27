@@ -1844,6 +1844,31 @@ def test_semantic_segmentation_recognizes_chinese_annual_report_sections() -> No
     assert not any("治理层" in (section.title or "") for section in semantic)
 
 
+def test_table_intelligence_drops_yoy_percentage_columns() -> None:
+    metadata = build_metadata("cn-report.pdf", ".pdf")
+    metadata.year = 2021
+    document = ParsedDocument(
+        doc_id="doc-cn-yoy",
+        metadata=metadata,
+        tables=[
+            ParsedTable(
+                table_id="tbl-cf",
+                title="合并现金流量表",
+                page=20,
+                headers=["项目", "2021", "2020", "同比增减"],
+                rows=[
+                    ["经营活动产生的现金流量净额", "373,048,933.00", "230,581,891.00", "61.79"],
+                    ["投资活动产生的现金流量净额", "119,341,599.00", "-272,000,000.00", "-120.57"],
+                ],
+            )
+        ],
+    )
+    enhanced = TableIntelligenceService().enhance(document)
+    metrics = enhanced.tables[0].normalized_metrics
+    assert metrics["net_cash_from_operating_activities"] == {"2021": 373048933.0, "2020": 230581891.0}
+    assert 61.79 not in metrics["net_cash_from_operating_activities"].values()
+
+
 def test_table_intelligence_prefers_row_labels_over_inherited_balance_title() -> None:
     metadata = build_metadata("cn-report.pdf", ".pdf")
     metadata.year = 2021

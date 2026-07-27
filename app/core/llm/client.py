@@ -73,25 +73,25 @@ class JsonChatClient:
 
 
 def build_json_chat_client(settings: Settings) -> JsonChatClientProtocol:
-    provider = settings.default_llm_provider.strip().lower()
-    if provider == "silicon":
+    api_type = settings.llm_model_api_type.strip().lower()
+    if api_type == "openai":
+        if not settings.llm_model_api_key:
+            raise PersistenceBackendError("LLM_MODEL_API_TYPE=openai requires LLM_MODEL_API_KEY.")
+        return JsonChatClient(
+            api_key=settings.llm_model_api_key,
+            base_url=settings.llm_model_base_url,
+            model=settings.llm_model_name,
+            temperature=settings.llm_temperature,
+            timeout=settings.llm_timeout_seconds,
+        )
+    if api_type == "silicon":
         if not settings.silicon_key:
-            raise PersistenceBackendError("DEFAULT_LLM_PROVIDER=silicon requires SILICON_KEY.")
+            raise PersistenceBackendError("LLM_MODEL_API_TYPE=silicon requires SILICON_KEY.")
         return JsonChatClient(
             api_key=settings.silicon_key,
             base_url=settings.silicon_base_url,
-            model=settings.default_llm_model,
+            model=settings.llm_model_name,
             temperature=settings.llm_temperature,
             timeout=settings.llm_timeout_seconds,
         )
-    if provider == "openai":
-        if not settings.openai_api_key:
-            raise PersistenceBackendError("DEFAULT_LLM_PROVIDER=openai requires OPENAI_API_KEY.")
-        return JsonChatClient(
-            api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url or "https://api.openai.com/v1",
-            model=settings.default_llm_model,
-            temperature=settings.llm_temperature,
-            timeout=settings.llm_timeout_seconds,
-        )
-    raise PersistenceBackendError(f"Unsupported DEFAULT_LLM_PROVIDER: {provider}")
+    raise PersistenceBackendError(f"Unsupported LLM_MODEL_API_TYPE: {api_type}")

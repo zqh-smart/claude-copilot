@@ -60,6 +60,24 @@ class StageScorecardService:
 
     _TOC_LIKE_RE = re.compile(r"(\.{3,}|…{2,}|第[一二三四五六七八九十百千零〇\d]+[章节].*\d+\s*$)")
 
+    def build_from_document(
+        self,
+        document: ParsedDocument,
+        *,
+        expectations: dict[str, Any] | None = None,
+        timings: dict[str, float] | None = None,
+    ) -> dict[str, Any]:
+        """Scorecard from a fully processed document (used by serving gate)."""
+        return self.build(
+            parsed=document,
+            cleaned=document,
+            segmented=document,
+            schemed=document,
+            segments=list(document.segments),
+            timings=timings or {},
+            expectations=expectations,
+        )
+
     def build(
         self,
         *,

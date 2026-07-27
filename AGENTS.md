@@ -110,6 +110,13 @@ Use stage scorecards so changes are judged positive/negative, not by vibes:
 
 Key signals: `core_metric_exact_match` and `source_grounding_rate` must not regress; watch `false_anchor_rate_proxy`, `implausible_period_ratio`, `tiny_segment_ratio`.
 
+Serving ingest + L3 retrieval eval:
+
+```bash
+docker compose up -d postgres qdrant neo4j
+python scripts/run_serving_ingest_eval.py
+```
+
 ## Coding Conventions
 
 - Python ≥3.11, Pydantic v2 models, explicit type hints (avoid `Any` unless metadata bags)
@@ -123,7 +130,8 @@ Key signals: `core_metric_exact_match` and `source_grounding_rate` must not regr
 - `docs/project_architecture.md` — module boundaries
 - `docs/knowledge_graph.md` — graph model and backfill
 - `docs/structured_financial_data_api.md` — companies/metrics/research API
-- `docs/eval_metrics.md` — stage metrics definitions
+- `docs/evaluation_system.md` — layered eval (L0–L4) +入库闸门（先评后存）
+- `docs/eval_metrics.md` — stage metrics definitions (L1/L2 detail)
 - `docs/pipeline_eval_status.md` — current scorecard snapshot + next optimizations
 - `README.md` — onboarding, env, scripts
 

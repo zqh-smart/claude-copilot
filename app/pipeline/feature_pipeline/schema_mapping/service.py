@@ -282,6 +282,10 @@ class FinancialSchemaMappingService:
 
         statements: list[FinancialStatementSchema] = []
         for grouped in grouped_tables.values():
+            # Skip empty-shell tables so they do not become metric-less statements.
+            grouped = [table for table in grouped if table.normalized_metrics]
+            if not grouped:
+                continue
             grouped.sort(key=lambda item: (self._page_range_from_table(item) or (item.page or 0, item.page or 0))[0])
             primary = self._select_primary_statement_table(grouped)
             metrics: dict[str, dict[str, int | float | str]] = {}
@@ -312,12 +316,17 @@ class FinancialSchemaMappingService:
                     if footnote and footnote not in footnotes:
                         footnotes.append(footnote)
 
+            # Drop metrics that became empty after value filters.
+            metrics = {key: values for key, values in metrics.items() if values}
+            if not metrics:
+                continue
+
             period_headers = self._consolidate_period_headers(period_headers, report_year=report_year)
             statements.append(
                 FinancialStatementSchema(
                     table_id=primary.table_id,
                     statement_type=primary.table_type,
-                    title=primary.title or self._normalize_statement_title(primary),
+                    title=self._resolve_statement_title(primary, statement_type=primary.table_type),
                     period_headers=period_headers,
                     unit=primary.unit,
                     currency=primary.currency,
@@ -336,16 +345,44 @@ class FinancialSchemaMappingService:
     def _select_primary_statement_table(self, grouped: list[ParsedTable]) -> ParsedTable:
         def score(table: ParsedTable) -> tuple[int, int, int]:
             title = (table.title or str(table.metadata.get("source_section_title") or "")).strip()
-            good_title = 1 if re.search(
-                r"(资产负债表|利润表|现金流量表|股东权益|所有者权益|balance sheet|income|cash flow)",
-                title,
-                flags=re.IGNORECASE,
-            ) else 0
-            bad_title = 1 if re.search(r"(治理层|责任|内部控制)", title) else 0
+            good_title = 1 if self._title_matches_statement_type(title, table.table_type or "") else 0
+            bad_title = 1 if re.search(r"(治理层|责任|内部控制|管理层讨论|公司简介)", title) else 0
             metric_n = len(table.normalized_metrics or {})
             return (good_title, -bad_title, metric_n)
 
         return max(grouped, key=score)
+
+    def _resolve_statement_title(self, table: ParsedTable, *, statement_type: str) -> str:
+        candidates = [
+            table.title or "",
+            str(table.metadata.get("source_section_title") or ""),
+            str(table.metadata.get("nearby_context") or ""),
+        ]
+        for candidate in candidates:
+            cleaned = re.split(r"[\n\r]", candidate.strip())[0].strip()
+            if cleaned and self._title_matches_statement_type(cleaned, statement_type):
+                return cleaned[:120]
+        defaults = {
+            "income_statement": "利润表",
+            "balance_sheet": "资产负债表",
+            "cash_flow": "现金流量表",
+            "equity": "所有者权益变动表",
+        }
+        current = (table.title or "").strip()
+        if current and self._title_matches_statement_type(current, statement_type):
+            return current[:120]
+        return defaults.get(statement_type, current or statement_type)
+
+    def _title_matches_statement_type(self, title: str, statement_type: str) -> bool:
+        normalized = title.lower()
+        patterns = {
+            "income_statement": r"(利润表|income statement|statements? of income|净收入)",
+            "balance_sheet": r"(资产负债表|balance sheet)",
+            "cash_flow": r"(现金流量表|cash flow)",
+            "equity": r"(股东权益|所有者权益|changes in stockholders|changes in equity)",
+        }
+        pattern = patterns.get(statement_type)
+        return bool(pattern and re.search(pattern, normalized, flags=re.IGNORECASE))
 
     def _is_plausible_statement_period(self, period: str, *, report_year: int | None) -> bool:
         if period in {"current_period", "prior_period"}:
