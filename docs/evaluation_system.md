@@ -157,8 +157,8 @@ L4 依赖 L2+L3；解析再好，检索证据错也会在 L4 暴露。
 
 | 集合 | 规模 | 用途 |
 |------|------|------|
-| Smoke | 1 份（指南针 2021） | 每次改动必跑 |
-| Regression | 2–5 份 A 股年报 | 合并前必跑 |
+| Smoke | 1 份（指南针 2021） | 每次改动必跑；见 `docs/acceptance_suite.md` |
+| Regression | 2–5 份 A 股年报 | 合并前必跑；第二份=`jucan_2021_stage_expectations.json`（ready） |
 | Stress（后置） | 扫描件 / 多栏复杂表 | 路由与 OCR |
 
 ### 5.2 Golden 文件最小字段
@@ -205,7 +205,7 @@ L4 依赖 L2+L3；解析再好，检索证据错也会在 L4 暴露。
 | ② 扩展 golden | 核心字段 + `retrieval_cases` + `serving_gate` | `data/golden/znz_2021_stage_expectations.json` | ✔ |
 | ③ 入库闸门代码 | `ServingGateService` 接入 pipeline index/graph | `evaluation/serving_gate.py` | ✔ |
 | ④ 打通 Serving 入库 | Postgres metrics + Qdrant segments + Neo4j | 单文档 E2E | ✔ |
-| ⑤ L3 题集脚本 | 按 `retrieval_cases` 自动打分（含 graph） | `scripts/run_serving_ingest_eval.py` | ✔ 题集已扩；需 Silicon embedding 复验 |
+| ⑤ L3 题集脚本 | 按 `retrieval_cases` 自动打分（含 graph） | `scripts/run_serving_ingest_eval.py` | ✔ 硅基 embedding 复验 pass_rate=1.0（8/8） |
 | ⑥ L4 批量 eval | 固定问题跑 research + critic | 需可用 LLM | 待做 |
 
 ### Serving 入库命令
@@ -238,9 +238,11 @@ python scripts/run_serving_ingest_eval.py --storage-backend postgres --vector-ba
 
 ## 8. 相关文件
 
+- 验收套件（命令 / 通过标准）：`docs/acceptance_suite.md`  
 - 指标定义（L1/L2 细节）：`docs/eval_metrics.md`  
 - 当前样本快照：`docs/pipeline_eval_status.md`  
 - Stage 跑分：`scripts/run_stage_eval.py`  
+- 一键验收：`scripts/run_acceptance_suite.py`  
 - 实现：`app/pipeline/feature_pipeline/evaluation/`  
 - 检索/研究 API：`docs/structured_financial_data_api.md`  
 - 图谱：`docs/knowledge_graph.md`  

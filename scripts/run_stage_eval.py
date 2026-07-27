@@ -58,6 +58,7 @@ def main() -> int:
     expectations = {}
     if args.expectations.exists():
         expectations = json.loads(args.expectations.read_text(encoding="utf-8"))
+    notes = expectations.get("notes") or {}
 
     content = args.pdf_path.read_bytes()
     metadata = DocumentMetadata(
@@ -65,8 +66,10 @@ def main() -> int:
         source="stage_eval",
         filename=args.pdf_path.name,
         extension=args.pdf_path.suffix.lower(),
-        company="北京指南针科技发展股份有限公司",
-        year=2021,
+        company=notes.get("company") or "北京指南针科技发展股份有限公司",
+        year=notes.get("year") or 2021,
+        industry=notes.get("industry"),
+        company_aliases=list(notes.get("company_aliases") or []),
     )
 
     timings: dict[str, float] = {}

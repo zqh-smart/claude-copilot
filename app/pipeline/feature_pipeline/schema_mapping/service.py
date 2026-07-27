@@ -322,6 +322,7 @@ class FinancialSchemaMappingService:
                 continue
 
             period_headers = self._consolidate_period_headers(period_headers, report_year=report_year)
+            metrics = self._remap_relative_metric_periods(metrics, report_year=report_year)
             statements.append(
                 FinancialStatementSchema(
                     table_id=primary.table_id,
@@ -398,6 +399,31 @@ class FinancialSchemaMappingService:
             return False
         return True
 
+    def _resolve_relative_period(self, period: str, *, report_year: int | None) -> str:
+        if report_year is None:
+            return period
+        if period == "current_period":
+            return str(report_year)
+        if period == "prior_period":
+            return str(report_year - 1)
+        return period
+
+    def _remap_relative_metric_periods(
+        self,
+        metrics: dict[str, dict[str, int | float | str]],
+        *,
+        report_year: int | None,
+    ) -> dict[str, dict[str, int | float | str]]:
+        if report_year is None:
+            return metrics
+        remapped: dict[str, dict[str, int | float | str]] = {}
+        for metric_key, values in metrics.items():
+            bucket: dict[str, int | float | str] = {}
+            for period, value in values.items():
+                bucket[self._resolve_relative_period(str(period), report_year=report_year)] = value
+            remapped[metric_key] = bucket
+        return remapped
+
     def _consolidate_period_headers(
         self,
         periods: list[str],
@@ -420,6 +446,13 @@ class FinancialSchemaMappingService:
                 }
                 years = [period for period in years if period in keep]
             return years + others
+        if relatives and report_year is not None:
+            resolved: list[str] = []
+            for period in relatives:
+                year_period = self._resolve_relative_period(period, report_year=report_year)
+                if year_period not in resolved:
+                    resolved.append(year_period)
+            return resolved + others
         return relatives + others
 
     def _build_note_schemas(

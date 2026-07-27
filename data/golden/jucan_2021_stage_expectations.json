@@ -1,0 +1,76 @@
+{
+  "version": 2,
+  "status": "ready",
+  "document_key": "jucan_2021_annual_report",
+  "required_semantic_section_types": [
+    "management_discussion",
+    "financial_statement",
+    "company_overview"
+  ],
+  "core_metrics": {
+    "revenue": {
+      "2021": 1311334600.52,
+      "2020": 1279195406.04
+    },
+    "net_cash_from_operating_activities": {
+      "2021": 465398314.38,
+      "2020": 232760752.03
+    }
+  },
+  "serving_gate": {
+    "min_source_grounding_rate": 0.95,
+    "max_implausible_period_ratio": 0.0,
+    "min_statements_with_metrics_ratio": 1.0
+  },
+  "retrieval_cases": [
+    {
+      "id": "q_revenue_2021",
+      "question": "2021年营业收入是多少？",
+      "expect_route": "structured",
+      "expect_metric_key": "revenue",
+      "expect_period": "2021",
+      "expect_value": 1311334600.52
+    },
+    {
+      "id": "q_revenue_2020",
+      "question": "2020年营业收入是多少？",
+      "expect_route": "structured",
+      "expect_metric_key": "revenue",
+      "expect_period": "2020",
+      "expect_value": 1279195406.04
+    },
+    {
+      "id": "q_ocf_2021",
+      "question": "2021年经营活动产生的现金流量净额是多少？",
+      "expect_route": "structured",
+      "expect_metric_key": "net_cash_from_operating_activities",
+      "expect_period": "2021",
+      "expect_value": 465398314.38
+    },
+    {
+      "id": "q_mda_overview",
+      "question": "管理层如何讨论与分析公司经营情况？",
+      "expect_route": "semantic",
+      "expect_section_types": ["management_discussion"],
+      "expect_keywords": ["经营", "收入", "业务"]
+    },
+    {
+      "id": "q_market_risk_graph",
+      "question": "公司面临哪些市场风险或风险暴露？",
+      "expect_route": "graph",
+      "expect_graph_relation_types": ["HAS_RISK"]
+    }
+  ],
+  "notes": {
+    "status": "ready",
+    "fill_required": false,
+    "company": "聚灿光电科技股份有限公司",
+    "company_short": "聚灿光电",
+    "ticker": "300708",
+    "year": 2021,
+    "industry": "半导体光电",
+    "company_aliases": ["聚灿光电", "300708"],
+    "pdf_filename": "2022-01-29__聚灿光电科技股份有限公司__300708__聚灿光电__2021年__年度报告.pdf",
+    "source": "Filled from consolidated income / cash-flow rows (营业收入; 经营活动产生的现金流量净额). Cash-flow columns used amount columns only; YoY% 99.95 discarded. Relative current/prior periods remapped to 2021/2020 via report year."
+  }
+}

@@ -1,8 +1,12 @@
 # Pipeline Eval Status & Next Optimizations
 
-样本：指南针 2021 年报（174 页，`table_pdf`）  
+验收套件（命令 / 通过标准 / 样本分层）：`docs/acceptance_suite.md`
+
+样本：指南针 2021 年报（174 页，`table_pdf`）— **Smoke**  
+Regression：聚灿光电 2021（`data/golden/jucan_2021_stage_expectations.json`，ready；L3 5/5）  
 Baseline：`data/reports/eval/baseline_scorecard.json`  
-跑分：`py -3.11 scripts/run_stage_eval.py --compare-baseline`
+跑分：`python scripts/run_stage_eval.py --compare-baseline`  
+门禁：`python scripts/run_acceptance_suite.py --profile all`（先 smoke 再 regression）
 
 ## 当前指标（P4–P6 后）
 
@@ -32,6 +36,7 @@ Baseline：`data/reports/eval/baseline_scorecard.json`
 ## 可后置
 
 - 重复块再降、旁支表章节噪声
-- 第二份年报泛化回归
-- 外部财报字段伪 golden
-- CER/TEDS 全量标注
+- 跨文档同指标冲突策略（`evaluation_system.md` §4.2）
+- API 层 smoke（`/research/query`）进验收套件
+- L4 grounded + critic（LLM 稳定后）
+- 外部财报字段伪 golden / CER/TEDS 全量标注

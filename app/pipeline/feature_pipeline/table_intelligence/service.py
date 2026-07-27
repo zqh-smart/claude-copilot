@@ -619,6 +619,8 @@ class TableIntelligenceService:
             values = [cell for cell in row[1:] if self._parse_numeric_value(cell) is not None]
             numeric_width = max(numeric_width, len(values))
         if numeric_width >= 2:
+            if report_year is not None:
+                return [str(report_year), str(report_year - 1)][:numeric_width]
             return ["current_period", "prior_period"][:numeric_width]
         return periods[:2]
 

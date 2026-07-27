@@ -232,6 +232,19 @@ class StageScorecardService:
         for metric_key, periods in golden_metrics.items():
             actual_periods = index.get(metric_key) or {}
             for period, expected_value in periods.items():
+                # Skeleton goldens may leave expect values as null until filled.
+                if expected_value is None:
+                    details.append(
+                        {
+                            "metric_key": metric_key,
+                            "period": period,
+                            "expected": None,
+                            "actual": actual_periods.get(period),
+                            "matched": None,
+                            "skipped": "unfilled_golden",
+                        }
+                    )
+                    continue
                 total += 1
                 actual_value = actual_periods.get(period)
                 ok = self._values_equal(actual_value, expected_value)

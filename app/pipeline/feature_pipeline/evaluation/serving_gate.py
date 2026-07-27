@@ -87,7 +87,8 @@ class ServingGateService:
         stmt_metrics_ratio = schema_stage.get("statements_with_metrics_ratio")
         core_match = schema_stage.get("core_metric_exact_match")
 
-        if expectations.get("core_metrics"):
+        filled_core = self._has_filled_core_metrics(expectations)
+        if filled_core:
             if core_match is None:
                 failures.append("core_metric_exact_match_unavailable")
             elif float(core_match) < 1.0 - 1e-9:
@@ -109,7 +110,7 @@ class ServingGateService:
                 failures.append(
                     f"statements_with_metrics_ratio<{min_stmt_metrics}:{stmt_metrics_ratio}"
                 )
-        elif expectations.get("core_metrics"):
+        elif filled_core:
             failures.append("no_metric_facts_for_expected_core_metrics")
 
         tiny_ratio = scorecard.get("stages", {}).get("chunking", {}).get("tiny_segment_ratio")
@@ -222,6 +223,16 @@ class ServingGateService:
         if document.financial_schema is not None:
             document.financial_schema.metadata["serving_gate"] = gate.to_dict()
         return serving, gate
+
+    @staticmethod
+    def _has_filled_core_metrics(expectations: dict[str, Any]) -> bool:
+        core = expectations.get("core_metrics") or {}
+        for periods in core.values():
+            if not isinstance(periods, dict):
+                continue
+            if any(value is not None for value in periods.values()):
+                return True
+        return False
 
     def _grounded_fact_keys(self, document: ParsedDocument) -> list[str]:
         schema = document.financial_schema

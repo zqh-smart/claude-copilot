@@ -117,6 +117,14 @@ docker compose up -d postgres qdrant neo4j
 python scripts/run_serving_ingest_eval.py
 ```
 
+Acceptance suite (smoke / regression profiles): `docs/acceptance_suite.md`
+
+```bash
+python scripts/run_acceptance_suite.py --profile smoke
+python scripts/run_acceptance_suite.py --profile regression
+python scripts/run_acceptance_suite.py --profile all          # smoke then regression gate
+```
+
 ## Coding Conventions
 
 - Python ≥3.11, Pydantic v2 models, explicit type hints (avoid `Any` unless metadata bags)
@@ -131,6 +139,7 @@ python scripts/run_serving_ingest_eval.py
 - `docs/knowledge_graph.md` — graph model and backfill
 - `docs/structured_financial_data_api.md` — companies/metrics/research API
 - `docs/evaluation_system.md` — layered eval (L0–L4) +入库闸门（先评后存）
+- `docs/acceptance_suite.md` — smoke/regression commands and pass criteria
 - `docs/eval_metrics.md` — stage metrics definitions (L1/L2 detail)
 - `docs/pipeline_eval_status.md` — current scorecard snapshot + next optimizations
 - `README.md` — onboarding, env, scripts
