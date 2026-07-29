@@ -138,10 +138,26 @@ Workspace UI: see `docs/acceptance_suite.md` §0 (`web/` Vite console).
 
 ## Agent Chat UI (sibling)
 
-Agent-facing chat pages live in workspace folder `agent-chat-ui-main` (Next.js, LangGraph `messages`).
+Agent-facing chat pages live in workspace folder `agent-chat-ui-main` (Next.js).
+They talk to a **LangGraph API** serving the `agent` graph (messages-compatible), not FastAPI `:8000` directly.
+
+### 1) Start LangGraph agent server (claude_copilot)
+
+```powershell
+# Windows (recommended; uses isolated .venv-langgraph, avoids locking .venv)
+$env:PYTHONUTF8='1'
+.\scripts\run_agent_langgraph.ps1
+# → http://127.0.0.1:2024   graph id: agent
+
+# optional: pin a Serving doc in langgraph.env
+# AGENT_CHAT_DOC_ID=<doc_uuid>
+```
+
+### 2) Start Agent Chat UI
 
 ```bash
 cd ../agent-chat-ui-main
+# .env already points to localhost:2024 / assistant=agent
 pnpm install
 pnpm dev   # http://localhost:3000
 ```
@@ -159,6 +175,7 @@ L3 pass_rate / 逐题对错看板仍在本仓库 `web/`「评测看板」页（`
 
 ## Docs Index
 
+- `docs/agent_chat_ui.md` — Agent Chat UI ↔ LangGraph `agent` bridge
 - `docs/project_architecture.md` — module boundaries
 - `docs/knowledge_graph.md` — graph model and backfill
 - `docs/structured_financial_data_api.md` — companies/metrics/research API

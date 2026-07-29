@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     api_port: int = 8000
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
+    # Agent Chat UI → LangGraph `agent` graph (optional default Serving doc)
+    agent_chat_doc_id: str | None = None
+
     # LLM chat（与 .env 中 LLM_MODEL_* 对齐）
     llm_model_name: str = "qwen3.5"
     llm_model_base_url: str = "http://192.168.0.102:30000/v1"
