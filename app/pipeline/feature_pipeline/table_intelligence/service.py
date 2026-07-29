@@ -385,7 +385,7 @@ class TableIntelligenceService:
                     source_title_text,
                     nearby_text,
                     " ".join(table.headers),
-                    " ".join(row[0] for row in table.rows[:12] if row),
+                    " ".join(row[0] for row in table.rows[:40] if row),
                     table.raw_markdown or "",
                 ]
             )
@@ -457,6 +457,9 @@ class TableIntelligenceService:
             "cash_flow": sum(1 for cue in cash_cues if cue in content_text),
         }
         best_type, best_score = max(scores.items(), key=lambda item: item[1])
+        # A single canonical cash-flow net-amount row is enough to identify the statement.
+        if scores["cash_flow"] >= 1 and scores["cash_flow"] >= best_score:
+            return "cash_flow"
         if best_score >= 2:
             return best_type
         return None

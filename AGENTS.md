@@ -4,27 +4,31 @@
 
 Claude Copilot is a financial document intelligence system. Phase 1 focuses on the document processing foundation (upload → parse → structure → schema → chunk → index → graph), then hybrid retrieval and grounded research via LangGraph.
 
-Engineering references:
+Engineering references (multi-root workspace):
 
 - **Dify**: document pipeline patterns (parser router, status machine, segments, indexing)
-- **Bank-copilot-main**: financial app layout (`app/api`, `app/core`, `app/pipeline`)
+- **agent-chat-ui-main**: LangGraph agent chat pages (`messages` UI); owns all subsequent agent-facing UI
 - **LangGraph**: multi-step research orchestration with critic/revision loops
 
 ## Layout
 
 ```text
-claude_copilot/
+claude_copilot/                  # Backend + internal console (this repo)
 ├── app/                         # Runtime
 │   ├── api/                     # FastAPI routes + thin services
 │   ├── core/                    # config, db, rag, kg, llm, prompts, errors
 │   ├── pipeline/feature_pipeline/  # Document AI pipeline (primary focus)
 │   └── workflows/               # LangGraph graphs (research live; risk/reporting stubs)
+├── web/                         # Vite console: docs / research Q&A / metrics / L3 eval (not agent chat)
 ├── src/claude_copilot/          # Installable domain package (schemas, entity resolution)
 ├── tests/                       # pytest
 ├── scripts/                     # backfill, smoke, benchmarks
 ├── data/                        # documents, golden, fixtures, reports
 ├── docs/                        # architecture and API docs
 └── .agents/skills/              # Agent skills for this repo
+
+# Sibling workspace folder (not in this repo):
+agent-chat-ui-main/              # Next.js Agent Chat UI → LangGraph `messages` chat pages
 ```
 
 **Boundary rules:**
@@ -33,6 +37,8 @@ claude_copilot/
 - Runtime orchestration lives in `app/`.
 - Prefer protocols (`*Protocol`) over concrete backends so local JSON / Postgres / Qdrant / Neo4j stay swappable.
 - Keep API routes thin; business logic in services / pipeline / core.
+- **Agent chat UI**: implement/change in `agent-chat-ui-main`, not in `claude_copilot/web/`.
+- **L3 / docs workbench**: stay in `claude_copilot/web/` (eval board + research cards).
 
 ## Default Commands
 
@@ -47,6 +53,9 @@ uv run pytest -q
 uv run ruff check .
 uv run uvicorn app.main:app --reload
 docker compose up -d                         # postgres, qdrant, redis, neo4j
+
+# Workspace console (separate terminal)
+cd web && npm install && npm run dev         # http://localhost:5173 → proxies /api to :8000
 ```
 
 ## Document Pipeline
@@ -124,6 +133,21 @@ python scripts/run_acceptance_suite.py --profile smoke
 python scripts/run_acceptance_suite.py --profile regression
 python scripts/run_acceptance_suite.py --profile all          # smoke then regression gate
 ```
+
+Workspace UI: see `docs/acceptance_suite.md` §0 (`web/` Vite console).
+
+## Agent Chat UI (sibling)
+
+Agent-facing chat pages live in workspace folder `agent-chat-ui-main` (Next.js, LangGraph `messages`).
+
+```bash
+cd ../agent-chat-ui-main
+pnpm install
+pnpm dev   # http://localhost:3000
+```
+
+Do not grow a parallel agent chat product inside `claude_copilot/web/`.  
+L3 pass_rate / 逐题对错看板仍在本仓库 `web/`「评测看板」页（`GET /api/v1/eval/serving*`）。
 
 ## Coding Conventions
 

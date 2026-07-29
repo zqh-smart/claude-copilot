@@ -217,9 +217,13 @@ class RetrievalOrchestrator:
                     company_id,
                     analysis=analysis,
                     top_k=top_k,
+                    document_id=doc_id,
                 )
                 if not metrics:
-                    warnings.append("SQL route returned no matching financial metrics")
+                    warnings.append(
+                        "SQL route returned no matching financial metrics "
+                        f"(doc_id={doc_id[:12]}…; prefer a Serving-ingested annual report)"
+                    )
 
         if "graph" in analysis.routes:
             if self._graph_store is None:
@@ -251,6 +255,7 @@ class RetrievalOrchestrator:
         *,
         analysis: QueryAnalysis,
         top_k: int,
+        document_id: str | None = None,
     ) -> list[FinancialMetricObservation]:
         observations: list[FinancialMetricObservation] = []
         metric_keys = analysis.metric_keys or [None]
@@ -260,6 +265,7 @@ class RetrievalOrchestrator:
                     company_id,
                     year=analysis.years[0] if len(analysis.years) == 1 else None,
                     metric_key=metric_key,
+                    document_id=document_id,
                     limit=max(20, top_k * 10),
                 )
             )

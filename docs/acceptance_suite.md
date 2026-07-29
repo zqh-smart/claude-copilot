@@ -5,15 +5,38 @@
 
 ---
 
+## 0. 工作台前端（推荐查看结果）
+
+避免只盯长 JSON：本地起 API + Vite 控制台。
+
+```bash
+# 终端 1 — API（需 docker: postgres/qdrant/neo4j）
+uvicorn app.main:app --reload --port 8000
+
+# 终端 2 — UI
+cd web
+npm install
+npm run dev
+# 打开 http://localhost:5173
+```
+
+控制台能力：文档列表、研究问答（路由/指标/证据卡）、公司指标表、**L3 评测看板**（pass_rate + 逐题 PASS/FAIL）、上传 PDF。原始 JSON 折叠在「详情」。
+
+> Agent 对话页不在本仓库：见工作区 sibling `agent-chat-ui-main`（`pnpm dev` → :3000）。  
+> L3 看板在本仓库 `web/`「评测看板」Tab，数据来自 `GET /api/v1/eval/serving` 与 `/serving/{doc_id}`。
+
+---
+
 ## 1. 样本分层
 
 | 集合 | 样本 | Golden | 状态 |
 |------|------|--------|------|
 | **Smoke** | 指南针 2021（300803） | `data/golden/znz_2021_stage_expectations.json` | ✔ ready（L2/L3 硅基复验 8/8） |
 | **Regression** | 聚灿光电 2021（300708） | `data/golden/jucan_2021_stage_expectations.json` | ✔ ready（L2 exact=1.0；L3 5/5） |
+| **Regression** | 天华新能 2021（300390） | `data/golden/tianhua_2021_stage_expectations.json` | ✔ ready（L2 exact=1.0；L3 5/5） |
 | Stress | 扫描件 / 复杂表 | 后置 | — |
 
-**门禁约定**：改 pipeline / serving / 检索后，先跑 Smoke，再跑 Regression；**两份都过**才可宣称 Knowledge Layer「检索可用」。
+**门禁约定**：改 pipeline / serving / 检索后，先跑 Smoke，再跑 Regression；**全部 ready 样本都过**才可宣称 Knowledge Layer「检索可用」。
 
 PDF 默认目录（本机）：
 
@@ -25,6 +48,7 @@ Z:/BaiduNetdiskDownload/阶段12：LLM大型复杂项目实战/项目实战2：�
 |------|--------|
 | Smoke | `2022-01-25__北京指南针科技发展股份有限公司__300803__指南针__2021年__年度报告.pdf` |
 | Regression | `2022-01-29__聚灿光电科技股份有限公司__300708__聚灿光电__2021年__年度报告.pdf` |
+| Regression | `2022-02-08__苏州天华新能源科技股份有限公司__300390__天华新能__2021年__年度报告.pdf` |
 
 ---
 
@@ -91,32 +115,15 @@ python scripts/run_serving_ingest_eval.py \
 python scripts/run_acceptance_suite.py --profile smoke
 ```
 
-### 3.2 Regression（聚灿光电，日常门禁第二关）
+### 3.2 Regression（聚灿光电 + 天华新能，日常门禁第二关）
 
 ```bash
 python scripts/run_acceptance_suite.py --profile regression
 ```
 
-等价手写：
+会依次跑 `REGRESSION_SAMPLES`（`jucan_2021`、`tianhua_2021`）的 L2 stage_eval + Serving/L3。
 
-```bash
-PDF="Z:/BaiduNetdiskDownload/阶段12：LLM大型复杂项目实战/项目实战2：大模型金融对话交互系统/allpdf-part1/2022-01-29__聚灿光电科技股份有限公司__300708__聚灿光电__2021年__年度报告.pdf"
-GOLDEN=data/golden/jucan_2021_stage_expectations.json
-
-python scripts/run_stage_eval.py \
-  --pdf-path "$PDF" \
-  --expectations "$GOLDEN" \
-  --output data/reports/eval/jucan_2021_scorecard.json
-
-python scripts/run_serving_ingest_eval.py \
-  --pdf-path "$PDF" \
-  --expectations "$GOLDEN" \
-  --storage-backend postgres \
-  --vector-backend qdrant \
-  --graph-backend neo4j
-```
-
-双样本一键：
+全套件一键（先 smoke 再 regression）：
 
 ```bash
 python scripts/run_acceptance_suite.py --profile all
@@ -134,8 +141,6 @@ python scripts/run_l4_research_eval.py
 python scripts/run_l4_research_eval.py --doc-id <uuid>
 python scripts/run_l4_research_eval.py --case-ids q_revenue_2021 q_mda_overview
 ```
-
-LLM 不可用时 exit `4`，并写入 `data/reports/l4_eval/llm_unavailable.json`；不阻断 L2/L3 验收。
 
 LLM 不可用时 exit `4`，并写入 `data/reports/l4_eval/llm_unavailable.json`；不阻断 L2/L3 验收。
 
@@ -204,7 +209,9 @@ python -m pytest tests/test_serving_gate.py tests/test_serving_facts.py tests/te
 
 ---
 
-## 5. 聚灿光电 golden 数值来源
+## 5. Regression golden 数值来源
+
+### 聚灿光电（300708）
 
 | 指标 | 2021 | 2020 |
 |------|-----:|-----:|
@@ -214,6 +221,15 @@ python -m pytest tests/test_serving_gate.py tests/test_serving_facts.py tests/te
 现金流行核对：`经营活动产生的现金流量净额 | 465,398,314.38 | 232,760,752.03 | 99.95`（末列同比%已丢弃）。  
 相对期间 `current_period`/`prior_period` 在 schema 映射中按报告年度解析为 2021/2020。
 
+### 天华新能（300390）
+
+| 指标 | 2021 | 2020 |
+|------|-----:|-----:|
+| revenue（营业收入） | 469378042.95 | 565068173.71 |
+| net_cash_from_operating_activities | 180482013.62 | 349953492.93 |
+
+现金流行核对：`经营活动产生的现金流量净额 | 180,482,013.62 | 349,953,492.93 | -48.43`（末列同比%已丢弃）。
+
 ---
 
 ## 6. 最近复验（硅基）
@@ -221,9 +237,10 @@ python -m pytest tests/test_serving_gate.py tests/test_serving_facts.py tests/te
 | 样本 | L2 | L3 | 备注 |
 |------|----|----|------|
 | 指南针 Smoke | exact/grounding 达标 | 8/8 | collection `document_segments_bge_m3` |
-| 聚灿 Regression | `core_metric_exact_match=1.0` | **5/5** | 报告 `c58087fa…_serving_eval.json` |
+| 聚灿 Regression | `core_metric_exact_match=1.0` | **5/5** | — |
+| 天华新能 Regression | `core_metric_exact_match=1.0` | **5/5** | 报告 `c8fb1d29…_serving_eval.json` |
 
-日期参考：2026-07-27。
+日期参考：2026-07-29。
 
 ---
 

@@ -2,11 +2,12 @@
 
 验收套件（命令 / 通过标准 / 样本分层）：`docs/acceptance_suite.md`
 
-样本：指南针 2021 年报（174 页，`table_pdf`）— **Smoke**  
-Regression：聚灿光电 2021（`data/golden/jucan_2021_stage_expectations.json`，ready；L3 5/5）  
+样本：指南针 2021 年报 — **Smoke**  
+Regression：聚灿光电 2021 + 天华新能 2021（`jucan_*` / `tianhua_*` golden，均 ready）  
 Baseline：`data/reports/eval/baseline_scorecard.json`  
 跑分：`python scripts/run_stage_eval.py --compare-baseline`  
-门禁：`python scripts/run_acceptance_suite.py --profile all`（先 smoke 再 regression）
+门禁：`python scripts/run_acceptance_suite.py --profile all`  
+工作台：`cd web && npm run dev`（API：`uvicorn app.main:app --reload`）
 
 ## 当前指标（P4–P6 后）
 

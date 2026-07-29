@@ -54,12 +54,14 @@ class StubFinancialRepository:
         year=None,
         metric_key=None,
         statement_type=None,
+        document_id=None,
         limit=500,
     ):
         items = [
             item
             for item in self.items
             if item.company_id == company_id
+            and (document_id is None or item.document_id == document_id)
             and (year is None or item.period_year == year)
             and (metric_key is None or item.metric_key == metric_key)
         ]

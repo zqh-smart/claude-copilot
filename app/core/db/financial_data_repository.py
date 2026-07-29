@@ -85,10 +85,13 @@ class LocalFinancialDataRepository:
         year: int | None = None,
         metric_key: str | None = None,
         statement_type: str | None = None,
+        document_id: str | None = None,
         limit: int = 500,
     ) -> list[FinancialMetricObservation]:
         observations: list[FinancialMetricObservation] = []
         for record in self._completed_company_documents():
+            if document_id is not None and record.doc_id != document_id:
+                continue
             company = record.metadata.company or ""
             if build_company_id(company) != company_id:
                 continue
@@ -208,6 +211,7 @@ class PostgresFinancialDataRepository:
         year: int | None = None,
         metric_key: str | None = None,
         statement_type: str | None = None,
+        document_id: str | None = None,
         limit: int = 500,
     ) -> list[FinancialMetricObservation]:
         with self._session_factory() as session:
@@ -225,7 +229,18 @@ class PostgresFinancialDataRepository:
                 for document in documents
                 if (company := str((document.metadata_json or {}).get("company") or "").strip())
                 and build_company_id(company) == company_id
+                and (document_id is None or document.doc_id == document_id)
             }
+            if not matching_documents and document_id:
+                # Research is document-scoped: still allow metrics for that doc even if
+                # company_id derivation drifted from serving ingest naming.
+                document = next((item for item in documents if item.doc_id == document_id), None)
+                if document is None:
+                    document = session.execute(
+                        select(DocumentORM).where(DocumentORM.doc_id == document_id)
+                    ).scalar_one_or_none()
+                if document is not None:
+                    matching_documents = {document.doc_id: document}
             if not matching_documents:
                 return []
 
@@ -258,14 +273,17 @@ class PostgresFinancialDataRepository:
                 if year is not None and period_year != year:
                     continue
                 document = matching_documents[row.doc_id]
-                company = str(document.metadata_json.get("company"))
+                company = str((document.metadata_json or {}).get("company") or "")
+                resolved_company_id = (
+                    build_company_id(company) if company.strip() else company_id
+                )
                 value = _restore_value(row.value_numeric, row.value_text)
                 observations.append(
                     FinancialMetricObservation(
-                        company_id=company_id,
+                        company_id=resolved_company_id or company_id,
                         company=company,
                         document_id=row.doc_id,
-                        document_year=document.metadata_json.get("year"),
+                        document_year=(document.metadata_json or {}).get("year"),
                         metric_key=row.metric_key or "",
                         period=row.period or "",
                         period_year=period_year,

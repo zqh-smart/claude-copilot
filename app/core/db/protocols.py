@@ -67,6 +67,7 @@ class FinancialDataRepositoryProtocol(Protocol):
         year: int | None = None,
         metric_key: str | None = None,
         statement_type: str | None = None,
+        document_id: str | None = None,
         limit: int = 500,
     ) -> list[FinancialMetricObservation]:
         ...

@@ -21,13 +21,22 @@ SMOKE = {
     "golden": ROOT / "data" / "golden" / "znz_2021_stage_expectations.json",
     "scorecard": ROOT / "data" / "reports" / "eval" / "latest_scorecard.json",
 }
-REGRESSION = {
-    "name": "jucan_2021",
-    "pdf": PDF_DIR
-    / "2022-01-29__聚灿光电科技股份有限公司__300708__聚灿光电__2021年__年度报告.pdf",
-    "golden": ROOT / "data" / "golden" / "jucan_2021_stage_expectations.json",
-    "scorecard": ROOT / "data" / "reports" / "eval" / "jucan_2021_scorecard.json",
-}
+REGRESSION_SAMPLES = [
+    {
+        "name": "jucan_2021",
+        "pdf": PDF_DIR
+        / "2022-01-29__聚灿光电科技股份有限公司__300708__聚灿光电__2021年__年度报告.pdf",
+        "golden": ROOT / "data" / "golden" / "jucan_2021_stage_expectations.json",
+        "scorecard": ROOT / "data" / "reports" / "eval" / "jucan_2021_scorecard.json",
+    },
+    {
+        "name": "tianhua_2021",
+        "pdf": PDF_DIR
+        / "2022-02-08__苏州天华新能源科技股份有限公司__300390__天华新能__2021年__年度报告.pdf",
+        "golden": ROOT / "data" / "golden" / "tianhua_2021_stage_expectations.json",
+        "scorecard": ROOT / "data" / "reports" / "eval" / "tianhua_2021_scorecard.json",
+    },
+]
 
 
 def parse_args() -> argparse.Namespace:
@@ -148,7 +157,7 @@ def main() -> int:
     if args.profile in {"smoke", "all"}:
         samples.append(SMOKE)
     if args.profile in {"regression", "all"}:
-        samples.append(REGRESSION)
+        samples.extend(REGRESSION_SAMPLES)
 
     worst = 0
     for sample in samples:
