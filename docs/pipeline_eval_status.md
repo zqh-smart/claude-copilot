@@ -40,3 +40,17 @@ Baseline：`data/reports/eval/baseline_scorecard.json`
 - L4 grounded + critic 纳入硬门禁（LLM 稳定后；现有 `run_l4_research_eval.py`）
 - 冲突策略 / API smoke 的 acceptance 脚本级硬断言（单测与 `--with-api` 已有）
 - 外部财报字段伪 golden / CER/TEDS 全量标注
+
+## 混合检索（近期）
+
+- **BM25-lite 词法通道**：`app/core/db/lexical.py`（中英分词 + 长度归一），Local/Postgres segment repo 共用
+- **Query expansion**：管理层/风险/营收/增长等双语扩展（`query_expansion.py`）
+- **章节提示加权**：`QueryAnalyzer.section_hints` → retriever 对 `management_discussion` 等章节 +0.15 boost
+- **证据元数据回传**：`ResearchHit.metadata` 含 `section_type`，L3 语义题可校验章节命中
+- **fusion_summary**：Orchestrator 三通道可读摘要（`FusionSummary` → `ResearchPreviewResponse`）
+- **Graph 2-hop**：风险/行业/事件二跳路径（`app/core/kg/store.py`）
+- **SQL 公司级回退**：当前 doc 无指标时按 company 查（带 warning）
+- **P2f doc 级指标入库**：重复 ingest 时 `prefer_document_id` + 同 doc 去重（`metrics_index` 优先 + 现金流量表）
+- **Graph HAS_RISK 排序**：风险问句优先 `HAS_RISK` 于 `AFFECTED_BY`（修复 jucan L3 图题回归）
+- **P2e 工作台 fusion UI**：`web/src/App.tsx` 研究卡展示混合检索摘要（routes / counts / highlights）
+- 回归：`pytest tests/core/rag tests/core/kg -q`（19 passed）

@@ -1,7 +1,10 @@
 {
   "dependencies": ["."],
   "graphs": {
-    "agent": "./app/workflows/agent_chat/graph.py:graph"
+    "agent": "./app/workflows/agent_chat/graph.py:graph",
+    "orchestrator": "./app/workflows/orchestrator/graph.py:graph",
+    "quant": "./app/workflows/quant/graph.py:graph",
+    "risk": "./app/workflows/risk/graph.py:graph"
   },
   "env": "./langgraph.env"
 }

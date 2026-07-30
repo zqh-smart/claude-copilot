@@ -30,6 +30,27 @@ function formatValue(value: number | string | null | undefined) {
   return String(value);
 }
 
+const ROUTE_LABELS: Record<string, string> = {
+  vector: "语义",
+  sql: "结构化",
+  graph: "图谱",
+};
+
+const INTENT_LABELS: Record<string, string> = {
+  semantic: "语义检索",
+  structured: "结构化查询",
+  relational: "关系查询",
+  hybrid: "混合检索",
+};
+
+function formatFusionRoute(route: string) {
+  return ROUTE_LABELS[route] ?? route;
+}
+
+function formatFusionIntent(intent: string) {
+  return INTENT_LABELS[intent] ?? intent;
+}
+
 export default function App() {
   const [tab, setTab] = useState<Tab>("research");
   const [health, setHealth] = useState("checking");
@@ -328,6 +349,41 @@ export default function App() {
                     </span>
                   )}
                 </div>
+
+                {research.fusion_summary && (
+                  <div className="panel fusion-panel">
+                    <h3>混合检索摘要</h3>
+                    <div className="row">
+                      <span className="chip">
+                        {formatFusionIntent(research.fusion_summary.query_intent)}
+                      </span>
+                      {research.fusion_summary.routes.map((route) => (
+                        <span key={route} className="chip good">
+                          {formatFusionRoute(route)}
+                        </span>
+                      ))}
+                      <span className="chip muted-chip">
+                        语义 {research.fusion_summary.vector_snippet_count}
+                      </span>
+                      <span className="chip muted-chip">
+                        指标 {research.fusion_summary.metric_count}
+                      </span>
+                      <span className="chip muted-chip">
+                        图谱 {research.fusion_summary.graph_path_count}
+                      </span>
+                    </div>
+                    {research.fusion_summary.summary && (
+                      <p className="fusion-summary">{research.fusion_summary.summary}</p>
+                    )}
+                    {(research.fusion_summary.highlights?.length ?? 0) > 0 && (
+                      <ul className="fusion-highlights">
+                        {research.fusion_summary.highlights.slice(0, 6).map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
 
                 <div className="panel">
                   <h3>回答</h3>

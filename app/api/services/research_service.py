@@ -1,12 +1,15 @@
+import re
+
 from app.core.db import build_company_id
 from app.core.llm import GroundedResearchEngine
-from app.core.prompts import RESEARCH_SYSTEM_PROMPT
 from app.core.rag import LocalRetriever, RetrievalOrchestrator
 from app.pipeline.feature_pipeline.pipeline_service import DocumentPipelineService
 from app.workflows.research.graph import build_research_graph
 from src.claude_copilot.schemas.research import (
     CriticIssue,
     CriticReview,
+    FusionSummary,
+    GroundedCitation,
     GroundedSynthesis,
     MetricCalculation,
     QueryAnalysis,
@@ -68,6 +71,11 @@ class ResearchService:
                 for item in result.get("calculations", [])
             ],
             graph_paths=result.get("graph_paths", []),
+            fusion_summary=(
+                FusionSummary.model_validate(result["fusion_summary"])
+                if result.get("fusion_summary")
+                else None
+            ),
             warnings=result.get("warnings", []),
             synthesis=GroundedSynthesis.model_validate(result["synthesis"]),
             critic=CriticReview.model_validate(result["critic"]),
@@ -89,6 +97,7 @@ class ResearchService:
                         "segment_id": segment.segment_id,
                         "score": round(score, 4),
                         "content": segment.content,
+                        "metadata": dict(segment.metadata or {}),
                     }
                     for segment, score in result.vector_hits
                 ],
@@ -102,6 +111,11 @@ class ResearchService:
                 "graph_paths": [
                     item.model_dump(mode="json") for item in result.graph_paths
                 ],
+                "fusion_summary": (
+                    result.fusion_summary.model_dump(mode="json")
+                    if result.fusion_summary is not None
+                    else None
+                ),
                 "warnings": result.warnings,
             }
 
@@ -116,6 +130,7 @@ class ResearchService:
                     "segment_id": segment.segment_id,
                     "score": round(score, 4),
                     "content": segment.content,
+                    "metadata": dict(segment.metadata or {}),
                 }
                 for segment, score in hits
             ],
@@ -126,6 +141,7 @@ class ResearchService:
             "metrics": [],
             "calculations": [],
             "graph_paths": [],
+            "fusion_summary": None,
             "warnings": [],
         }
 
@@ -153,6 +169,7 @@ class ResearchService:
             synthesis = self._fallback_synthesis(
                 state,
                 limitation=f"LLM synthesis failed: {type(exc).__name__}",
+                evidence=evidence,
             )
             return {
                 "evidence": evidence,
@@ -247,38 +264,301 @@ class ResearchService:
         state: dict,
         *,
         limitation: str = "Formal LLM grounded synthesis is not configured.",
+        evidence: list[dict] | None = None,
     ) -> GroundedSynthesis:
-        evidence_parts = []
-        if state.get("metrics"):
-            evidence_parts.append(
-                "；".join(
-                    (
-                        f"{item['metric_key']}({item['period']})="
-                        f"{item['value']} {item.get('unit') or ''} "
-                        f"{item.get('currency') or ''}"
-                    ).strip()
-                    for item in state["metrics"][:10]
+        evidence_items = list(evidence or [])
+        if not evidence_items and self._grounded_engine is not None:
+            evidence_items = self._grounded_engine.build_evidence(state)
+
+        graph_paths = state.get("graph_paths") or []
+        query_analysis = state.get("query_analysis") or {}
+        graph_rel_types = self._graph_relationship_types(graph_paths, evidence_items)
+        fallback_mode = self._select_fallback_mode(
+            state,
+            graph_rel_types=graph_rel_types,
+            query_analysis=query_analysis,
+        )
+
+        citations: list[GroundedCitation] = []
+        key_findings: list[str] = []
+        answer_parts: list[str] = []
+        synthesis_note = "（注：LLM 综合生成暂不可用，以下为基于检索证据的简要草稿。）"
+
+        if fallback_mode == "industry":
+            industries = self._extract_industry_names(graph_paths, evidence_items)
+            if industries:
+                answer_parts.append(
+                    f"公司经营所在行业为：{'、'.join(industries)}。"
                 )
+                key_findings.append(f"行业：{'、'.join(industries)}")
+                for evidence_id in self._graph_evidence_ids(
+                    evidence_items, "OPERATES_IN"
+                )[:1]:
+                    citations.append(
+                        GroundedCitation(
+                            evidence_id=evidence_id,
+                            claim=f"公司所在行业为 {industries[0]}",
+                        )
+                    )
+
+        elif fallback_mode == "metric_graph":
+            metric_keys = self._extract_graph_metric_keys(graph_paths, evidence_items)
+            if metric_keys:
+                display = "、".join(metric_keys[:12])
+                if len(metric_keys) > 12:
+                    display = f"{display} 等共 {len(metric_keys)} 项"
+                answer_parts.append(f"公司报告并关联的财务指标包括：{display}。")
+                key_findings.append(f"关联指标：{display}")
+                for evidence_id in self._graph_evidence_ids(
+                    evidence_items, "REPORTS_METRIC"
+                )[:3]:
+                    citations.append(
+                        GroundedCitation(
+                            evidence_id=evidence_id,
+                            claim="公司 REPORTS_METRIC 关系关联财务指标",
+                        )
+                    )
+
+        elif fallback_mode == "vector":
+            vector_items = [
+                item for item in evidence_items if item.get("source_type") == "vector"
+            ]
+            if not vector_items and state.get("hits"):
+                vector_items = [
+                    {
+                        "evidence_id": f"V{index}",
+                        "source_type": "vector",
+                        "content": hit["content"],
+                    }
+                    for index, hit in enumerate(state["hits"][:2], start=1)
+                ]
+            snippets: list[str] = []
+            for item in vector_items[:2]:
+                snippet = self._clean_vector_snippet(item.get("content", ""))
+                if not snippet:
+                    continue
+                evidence_id = str(item.get("evidence_id") or "")
+                marker = f"[{evidence_id}]" if evidence_id else ""
+                snippets.append(f"{marker}{snippet}")
+                if evidence_id:
+                    citations.append(
+                        GroundedCitation(
+                            evidence_id=evidence_id,
+                            claim=snippet[:120],
+                        )
+                    )
+            if snippets:
+                answer_parts.append("根据检索到的相关段落：")
+                answer_parts.extend(snippets)
+                key_findings.extend(snippets[:2])
+
+        elif fallback_mode == "structured" and state.get("metrics"):
+            metric_lines = [
+                (
+                    f"{item['metric_key']}({item['period']})="
+                    f"{item['value']} {item.get('unit') or ''} "
+                    f"{item.get('currency') or ''}"
+                ).strip()
+                for item in state["metrics"][:10]
+            ]
+            answer_parts.append(
+                "检索到的结构化指标如下：" + "；".join(metric_lines) + "。"
             )
-        if state.get("hits"):
-            evidence_parts.extend(
-                item["content"][:180] for item in state["hits"][:3]
-            )
-        if state.get("graph_paths"):
-            evidence_parts.extend(
-                item["summary"] for item in state["graph_paths"][:5]
-            )
-        if not evidence_parts:
-            answer = (
-                f"{RESEARCH_SYSTEM_PROMPT}\n\n"
-                "当前没有检索到足够的文本或结构化证据，无法生成可靠回答。"
-            )
+            key_findings.extend(metric_lines[:3])
+            for index, item in enumerate(state["metrics"][:3], start=1):
+                citations.append(
+                    GroundedCitation(
+                        evidence_id=f"S{index}",
+                        claim=(
+                            f"{item['metric_key']}({item['period']})={item['value']}"
+                        ),
+                    )
+                )
+
+        if not answer_parts:
+            answer = "当前没有检索到足够的文本或结构化证据，无法生成可靠回答。"
         else:
-            answer = "\n\n".join(evidence_parts)
+            answer = "\n\n".join(answer_parts) + f"\n\n{synthesis_note}"
+
         return GroundedSynthesis(
             answer=answer,
-            key_findings=[],
-            citations=[],
+            key_findings=key_findings,
+            citations=citations,
             confidence=0.25,
             limitations=[limitation],
         )
+
+    @staticmethod
+    def _graph_relationship_types(
+        graph_paths: list[dict],
+        evidence_items: list[dict],
+    ) -> set[str]:
+        rel_types: set[str] = set()
+        for path in graph_paths:
+            for relationship in path.get("relationships") or []:
+                rel_type = relationship.get("relationship_type")
+                if rel_type:
+                    rel_types.add(str(rel_type))
+        for item in evidence_items:
+            if item.get("source_type") != "graph":
+                continue
+            for relationship in item.get("relationships") or []:
+                rel_type = relationship.get("relationship_type")
+                if rel_type:
+                    rel_types.add(str(rel_type))
+        return rel_types
+
+    @staticmethod
+    def _select_fallback_mode(
+        state: dict,
+        *,
+        graph_rel_types: set[str],
+        query_analysis: dict,
+    ) -> str:
+        question = state.get("question", "")
+        intent = query_analysis.get("intent", "semantic")
+        routes = list(query_analysis.get("routes") or [])
+
+        if "行业" in question and "OPERATES_IN" in graph_rel_types:
+            return "industry"
+        if (
+            any(term in question for term in ("指标", "关联", "报告"))
+            and "REPORTS_METRIC" in graph_rel_types
+        ):
+            return "metric_graph"
+        if "OPERATES_IN" in graph_rel_types and "REPORTS_METRIC" not in graph_rel_types:
+            return "industry"
+        if "REPORTS_METRIC" in graph_rel_types and "OPERATES_IN" not in graph_rel_types:
+            return "metric_graph"
+        if intent == "structured" or ("sql" in routes and "vector" not in routes):
+            return "structured"
+        if intent == "semantic" or "vector" in routes:
+            return "vector"
+        if state.get("metrics"):
+            return "structured"
+        if state.get("hits"):
+            return "vector"
+        return "vector"
+
+    @staticmethod
+    def _extract_industry_names(
+        graph_paths: list[dict],
+        evidence_items: list[dict],
+    ) -> list[str]:
+        names: list[str] = []
+        seen: set[str] = set()
+
+        def add_name(name: str | None) -> None:
+            cleaned = (name or "").strip()
+            if cleaned and cleaned not in seen:
+                seen.add(cleaned)
+                names.append(cleaned)
+
+        for path in graph_paths:
+            node_map = {
+                node.get("node_id"): node for node in path.get("nodes") or []
+            }
+            for relationship in path.get("relationships") or []:
+                if relationship.get("relationship_type") != "OPERATES_IN":
+                    continue
+                target = node_map.get(relationship.get("target_node_id"))
+                if target is not None:
+                    add_name(target.get("name"))
+            for node in path.get("nodes") or []:
+                if node.get("node_type") == "industry":
+                    add_name(node.get("name"))
+
+        for item in evidence_items:
+            if item.get("source_type") != "graph":
+                continue
+            node_map = {
+                node.get("node_id"): node for node in item.get("nodes") or []
+            }
+            for relationship in item.get("relationships") or []:
+                if relationship.get("relationship_type") != "OPERATES_IN":
+                    continue
+                target = node_map.get(relationship.get("target_node_id"))
+                if target is not None:
+                    add_name(target.get("name"))
+            for node in item.get("nodes") or []:
+                if node.get("node_type") == "industry":
+                    add_name(node.get("name"))
+        return names
+
+    @staticmethod
+    def _extract_graph_metric_keys(
+        graph_paths: list[dict],
+        evidence_items: list[dict],
+    ) -> list[str]:
+        keys: list[str] = []
+        seen: set[str] = set()
+
+        def add_key(raw_key: str | None) -> None:
+            cleaned = (raw_key or "").strip()
+            if cleaned and cleaned not in seen:
+                seen.add(cleaned)
+                keys.append(cleaned)
+
+        def collect_from_path(path: dict) -> None:
+            node_map = {
+                node.get("node_id"): node for node in path.get("nodes") or []
+            }
+            for relationship in path.get("relationships") or []:
+                if relationship.get("relationship_type") != "REPORTS_METRIC":
+                    continue
+                target = node_map.get(relationship.get("target_node_id"))
+                if target is None:
+                    continue
+                properties = target.get("properties") or {}
+                add_key(target.get("name") or properties.get("metric_key"))
+            for node in path.get("nodes") or []:
+                if node.get("node_type") != "metric":
+                    continue
+                properties = node.get("properties") or {}
+                add_key(node.get("name") or properties.get("metric_key"))
+
+        for path in graph_paths:
+            collect_from_path(path)
+        for item in evidence_items:
+            if item.get("source_type") == "graph":
+                collect_from_path(item)
+        return keys
+
+    @staticmethod
+    def _graph_evidence_ids(
+        evidence_items: list[dict],
+        relationship_type: str,
+    ) -> list[str]:
+        evidence_ids: list[str] = []
+        for item in evidence_items:
+            if item.get("source_type") != "graph":
+                continue
+            relationships = item.get("relationships") or []
+            if any(
+                rel.get("relationship_type") == relationship_type
+                for rel in relationships
+            ):
+                evidence_id = item.get("evidence_id")
+                if evidence_id:
+                    evidence_ids.append(str(evidence_id))
+        return evidence_ids
+
+    @staticmethod
+    def _clean_vector_snippet(content: str, *, max_len: int = 220) -> str:
+        lines: list[str] = []
+        seen: set[str] = set()
+        for raw_line in content.splitlines():
+            line = raw_line.strip()
+            if not line or line in seen:
+                continue
+            seen.add(line)
+            lines.append(line)
+        text = re.sub(r"\s+", " ", " ".join(lines)).strip()
+        if len(text) <= max_len:
+            return text
+        truncated = text[:max_len]
+        for separator in ("。", "；", "，", ".", ";", ","):
+            index = truncated.rfind(separator)
+            if index > max_len // 2:
+                return truncated[: index + 1].strip()
+        return truncated.rstrip() + "…"

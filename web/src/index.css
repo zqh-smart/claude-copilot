@@ -98,6 +98,26 @@ textarea {
   font-size: 1rem;
 }
 
+.fusion-panel {
+  border-left: 4px solid var(--accent);
+}
+
+.fusion-summary {
+  margin: 12px 0 0;
+  color: var(--ink);
+}
+
+.fusion-highlights {
+  margin: 10px 0 0;
+  padding-left: 1.2rem;
+  color: var(--ink-soft);
+}
+
+.muted-chip {
+  background: var(--bg-muted);
+  color: var(--ink-soft);
+}
+
 .stack {
   display: flex;
   flex-direction: column;

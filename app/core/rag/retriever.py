@@ -7,6 +7,8 @@ from app.core.rag.reranking import (
 from app.core.rag.vector_store import VectorStoreProtocol
 from src.claude_copilot.schemas.document import DocumentSegment
 
+_SECTION_BOOST = 0.15
+
 
 class LocalRetriever:
     def __init__(
@@ -33,6 +35,7 @@ class LocalRetriever:
         *,
         doc_id: str,
         top_k: int = 3,
+        section_hints: list[str] | None = None,
     ) -> list[tuple[DocumentSegment, float]]:
         merged: dict[str, dict[str, object]] = {}
         candidate_k = max(top_k, top_k * self._candidate_multiplier)
@@ -62,7 +65,7 @@ class LocalRetriever:
             fallback_segments = self._segment_repository.list_for_document(doc_id)[:top_k]
             return [(segment, 0.01) for segment in fallback_segments]
 
-        candidates = self._build_candidates(merged)
+        candidates = self._build_candidates(merged, section_hints=section_hints)
         reranked = self._reranker.rerank(question, candidates, keep_top_k=top_k)
         if reranked:
             return reranked
@@ -91,7 +94,10 @@ class LocalRetriever:
     def _build_candidates(
         self,
         merged: dict[str, dict[str, object]],
+        *,
+        section_hints: list[str] | None = None,
     ) -> list[tuple[DocumentSegment, float]]:
+        hints = set(section_hints or [])
         candidates: list[tuple[DocumentSegment, float]] = []
         for item in merged.values():
             segment = item["segment"]
@@ -101,6 +107,10 @@ class LocalRetriever:
                 vector_score * self._vector_weight
                 + lexical_score * self._lexical_weight
             )
+            if hints:
+                section_type = (segment.metadata or {}).get("section_type")
+                if section_type in hints:
+                    combined_score += _SECTION_BOOST
             candidates.append((segment, combined_score))
 
         candidates.sort(

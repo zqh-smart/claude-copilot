@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import defaultdict
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -108,29 +109,105 @@ class LocalKnowledgeGraphStore:
             if company_id and graph.company_id != company_id:
                 continue
             node_map = {node.node_id: node for node in graph.nodes}
-            for relationship in graph.relationships:
-                source = node_map.get(relationship.source_node_id)
-                target = node_map.get(relationship.target_node_id)
-                if source is None or target is None:
+            paths.extend(
+                self._collect_paths(
+                    node_map=node_map,
+                    relationships=graph.relationships,
+                    query=query,
+                    terms=terms,
+                )
+            )
+        deduped = {path.path_id: path for path in paths}
+        return sorted(deduped.values(), key=lambda item: (-item.score, item.path_id))[:limit]
+
+    @staticmethod
+    def _collect_paths(
+        *,
+        node_map: dict[str, KnowledgeGraphNode],
+        relationships: list[KnowledgeGraphRelationship],
+        query: str,
+        terms: set[str],
+    ) -> list[GraphPath]:
+        paths: list[GraphPath] = []
+        for relationship in relationships:
+            path = LocalKnowledgeGraphStore._score_edge(
+                node_map=node_map,
+                relationship=relationship,
+                query=query,
+                terms=terms,
+            )
+            if path is not None:
+                paths.append(path)
+
+        outgoing: dict[str, list[KnowledgeGraphRelationship]] = defaultdict(list)
+        for relationship in relationships:
+            if relationship.source_node_id in node_map and relationship.target_node_id in node_map:
+                outgoing[relationship.source_node_id].append(relationship)
+
+        for first in relationships:
+            source = node_map.get(first.source_node_id)
+            middle = node_map.get(first.target_node_id)
+            if source is None or middle is None:
+                continue
+            for second in outgoing.get(middle.node_id, []):
+                if second.source_node_id != middle.node_id:
                     continue
-                haystack = self._path_text(source, target, relationship)
-                matched = sum(term in haystack for term in terms)
-                type_bonus = self._type_bonus(query, source, target, relationship)
-                if terms and matched == 0 and type_bonus == 0:
+                end = node_map.get(second.target_node_id)
+                if end is None or end.node_id == source.node_id:
                     continue
-                score = min(1.0, 0.2 + matched / max(len(terms), 1) * 0.6 + type_bonus)
-                paths.append(
-                    GraphPath(
-                        path_id=relationship.relationship_id,
-                        summary=(
-                            f"{source.name} -[{relationship.relationship_type}]-> {target.name}"
-                        ),
-                        score=round(score, 4),
-                        nodes=[source, target],
-                        relationships=[relationship],
+                haystack = " ".join(
+                    (
+                        LocalKnowledgeGraphStore._path_text(source, middle, first),
+                        LocalKnowledgeGraphStore._path_text(middle, end, second),
                     )
                 )
-        return sorted(paths, key=lambda item: (-item.score, item.path_id))[:limit]
+                matched = sum(term in haystack for term in terms)
+                bonus = max(
+                    LocalKnowledgeGraphStore._type_bonus(query, source, middle, first),
+                    LocalKnowledgeGraphStore._type_bonus(query, middle, end, second),
+                )
+                if terms and matched == 0 and bonus == 0:
+                    continue
+                score = min(1.0, 0.15 + matched / max(len(terms), 1) * 0.5 + bonus)
+                paths.append(
+                    GraphPath(
+                        path_id=f"{first.relationship_id}::{second.relationship_id}",
+                        summary=(
+                            f"{source.name} -[{first.relationship_type}]-> {middle.name} "
+                            f"-[{second.relationship_type}]-> {end.name}"
+                        ),
+                        score=round(score, 4),
+                        nodes=[source, middle, end],
+                        relationships=[first, second],
+                    )
+                )
+        return paths
+
+    @staticmethod
+    def _score_edge(
+        *,
+        node_map: dict[str, KnowledgeGraphNode],
+        relationship: KnowledgeGraphRelationship,
+        query: str,
+        terms: set[str],
+    ) -> GraphPath | None:
+        source = node_map.get(relationship.source_node_id)
+        target = node_map.get(relationship.target_node_id)
+        if source is None or target is None:
+            return None
+        haystack = LocalKnowledgeGraphStore._path_text(source, target, relationship)
+        matched = sum(term in haystack for term in terms)
+        type_bonus = LocalKnowledgeGraphStore._type_bonus(query, source, target, relationship)
+        if terms and matched == 0 and type_bonus == 0:
+            return None
+        score = min(1.0, 0.2 + matched / max(len(terms), 1) * 0.6 + type_bonus)
+        return GraphPath(
+            path_id=relationship.relationship_id,
+            summary=f"{source.name} -[{relationship.relationship_type}]-> {target.name}",
+            score=round(score, 4),
+            nodes=[source, target],
+            relationships=[relationship],
+        )
 
     def _path(self, document_id: str) -> Path:
         safe_name = re.sub(r"[^A-Za-z0-9_.-]", "_", document_id)
@@ -169,7 +246,10 @@ class LocalKnowledgeGraphStore:
         normalized = query.casefold()
         node_types = {source.node_type, target.node_type}
         if ("risk" in normalized or "风险" in normalized) and "risk" in node_types:
-            return 0.2
+            bonus = 0.2
+            if relationship.relationship_type == "HAS_RISK":
+                bonus += 0.06
+            return bonus
         if (
             any(term in normalized for term in ("metric", "revenue", "指标", "营收", "利润"))
             and "metric" in node_types
@@ -450,29 +530,12 @@ class _InMemoryGraphSearch(LocalKnowledgeGraphStore):
             return []
         node_map = {node.node_id: node for node in self._graph.nodes}
         terms = self._query_terms(query)
-        paths = []
-        for relationship in self._graph.relationships:
-            source = node_map.get(relationship.source_node_id)
-            target = node_map.get(relationship.target_node_id)
-            if source is None or target is None:
-                continue
-            haystack = self._path_text(source, target, relationship)
-            matched = sum(term in haystack for term in terms)
-            bonus = self._type_bonus(query, source, target, relationship)
-            if terms and matched == 0 and bonus == 0:
-                continue
-            paths.append(
-                GraphPath(
-                    path_id=relationship.relationship_id,
-                    summary=f"{source.name} -[{relationship.relationship_type}]-> {target.name}",
-                    score=round(
-                        min(1.0, 0.2 + matched / max(len(terms), 1) * 0.6 + bonus),
-                        4,
-                    ),
-                    nodes=[source, target],
-                    relationships=[relationship],
-                )
-            )
+        paths = self._collect_paths(
+            node_map=node_map,
+            relationships=self._graph.relationships,
+            query=query,
+            terms=terms,
+        )
         return sorted(paths, key=lambda item: (-item.score, item.path_id))[:limit]
 
 

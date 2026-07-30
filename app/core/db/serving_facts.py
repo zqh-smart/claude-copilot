@@ -147,8 +147,13 @@ def candidate_from_observation(
     )
 
 
-def _candidate_sort_key(candidate: MetricConflictCandidate) -> tuple[Any, ...]:
+def _candidate_sort_key(
+    candidate: MetricConflictCandidate,
+    *,
+    prefer_document_id: str | None = None,
+) -> tuple[Any, ...]:
     return (
+        prefer_document_id is not None and candidate.document_id == prefer_document_id,
         candidate.has_provenance and candidate.is_grounded,
         candidate.is_grounded,
         candidate.has_provenance,
@@ -166,11 +171,57 @@ def _conflict_warning(
     return f"conflicting {metric_key} values for {period}; {detail}"
 
 
+def _fact_dedup_sort_key(
+    fact: FinancialMetricFact,
+    *,
+    schema: FinancialSchema | None = None,
+) -> tuple[Any, ...]:
+    title = (fact.source_table_title or "").casefold()
+    cash_flow_table = "现金流量" in title or "cash flow" in title
+    canonical = None
+    if schema is not None and schema.metrics_index:
+        canonical = schema.metrics_index.get(fact.metric_key, {}).get(fact.period)
+    matches_canonical = (
+        canonical is not None and not metric_values_conflict(fact.value, canonical)
+    )
+    return (
+        matches_canonical,
+        is_grounded_metric_fact(fact, schema),
+        cash_flow_table,
+        bool(fact.source_table_id),
+        fact.source_table_id or "",
+    )
+
+
+def dedupe_serving_metric_facts(
+    facts: list[FinancialMetricFact],
+    *,
+    schema: FinancialSchema | None = None,
+) -> list[FinancialMetricFact]:
+    """Keep one fact per metric_key+period before cross-document conflict checks."""
+    grouped: dict[tuple[str, str], list[FinancialMetricFact]] = {}
+    for fact in facts:
+        if not fact.metric_key or not fact.period:
+            continue
+        key = (fact.metric_key, fact.period)
+        grouped.setdefault(key, []).append(fact)
+    deduped: list[FinancialMetricFact] = []
+    for candidates in grouped.values():
+        if len(candidates) == 1:
+            deduped.append(candidates[0])
+            continue
+        deduped.append(
+            max(candidates, key=lambda fact: _fact_dedup_sort_key(fact, schema=schema))
+        )
+    return deduped
+
+
 def resolve_metric_conflict(
     candidates: list[MetricConflictCandidate],
     *,
     metric_key: str,
     period: str,
+    prefer_document_id: str | None = None,
 ) -> MetricConflictResolution:
     if not candidates:
         return MetricConflictResolution(winner=None, warnings=[], suppressed_document_ids=[])
@@ -202,7 +253,13 @@ def resolve_metric_conflict(
         )
 
     if len(preferred) > 1:
-        winner = max(preferred, key=_candidate_sort_key)
+        winner = max(
+            preferred,
+            key=lambda candidate: _candidate_sort_key(
+                candidate,
+                prefer_document_id=prefer_document_id,
+            ),
+        )
         detail = (
             "multiple grounded facts with provenance remain; "
             f"kept document {winner.document_id}"
@@ -217,7 +274,13 @@ def resolve_metric_conflict(
             ],
         )
 
-    winner = max(candidates, key=_candidate_sort_key)
+    winner = max(
+        candidates,
+        key=lambda candidate: _candidate_sort_key(
+            candidate,
+            prefer_document_id=prefer_document_id,
+        ),
+    )
     detail = (
         "no grounded fact with provenance to resolve conflict; "
         f"kept document {winner.document_id} without silent overwrite"

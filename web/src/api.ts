@@ -37,12 +37,23 @@ export type MetricObservation = {
   document_id?: string | null;
 };
 
+export type FusionSummary = {
+  query_intent: string;
+  routes: string[];
+  vector_snippet_count: number;
+  metric_count: number;
+  graph_path_count: number;
+  highlights: string[];
+  summary: string;
+};
+
 export type ResearchResponse = {
   doc_id: string;
   question: string;
   answer: string;
   grounded?: boolean;
   warnings?: string[];
+  fusion_summary?: FusionSummary | null;
   query_analysis?: {
     intent: string;
     routes: string[];

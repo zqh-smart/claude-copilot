@@ -91,6 +91,7 @@ class SiliconEmbeddingService:
                 "Content-Type": "application/json",
             },
             timeout=timeout,
+            trust_env=False,
         )
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:

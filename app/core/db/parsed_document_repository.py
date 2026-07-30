@@ -19,6 +19,7 @@ from app.core.db.postgres_models import DocumentORM, FinancialItemORM, ParsedDoc
 from app.core.db.serving_facts import (
     MetricConflictCandidate,
     candidate_from_fact,
+    dedupe_serving_metric_facts,
     metric_period_key,
     metric_values_conflict,
     prepare_serving_metric_facts,
@@ -109,7 +110,10 @@ class PostgresParsedDocumentRepository:
         parsed_document: ParsedDocument,
         schema: FinancialSchema,
     ) -> tuple[list, list[str]]:
-        serving_facts = prepare_serving_metric_facts(schema)
+        serving_facts = dedupe_serving_metric_facts(
+            prepare_serving_metric_facts(schema),
+            schema=schema,
+        )
         company = parsed_document.metadata.company or schema.company or ""
         company_id = build_company_id(company)
         if not company_id:
@@ -165,6 +169,7 @@ class PostgresParsedDocumentRepository:
                 candidates,
                 metric_key=fact.metric_key,
                 period=fact.period,
+                prefer_document_id=parsed_document.doc_id,
             )
             warnings.extend(resolution.warnings)
             if resolution.winner is None:

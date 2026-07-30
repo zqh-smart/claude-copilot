@@ -11,6 +11,7 @@ class ResearchState(TypedDict, total=False):
     metrics: list[dict]
     calculations: list[dict]
     graph_paths: list[dict]
+    fusion_summary: dict | None
     warnings: list[str]
     evidence: list[dict]
     synthesis: dict

@@ -16,6 +16,7 @@ class ResearchHit(BaseModel):
     segment_id: str
     score: float
     content: str
+    metadata: dict[str, object] = Field(default_factory=dict)
 
 
 class QueryAnalysis(BaseModel):
@@ -24,6 +25,7 @@ class QueryAnalysis(BaseModel):
     metric_keys: list[str] = Field(default_factory=list)
     years: list[int] = Field(default_factory=list)
     needs_growth: bool = False
+    section_hints: list[str] = Field(default_factory=list)
 
 
 class MetricCalculation(BaseModel):
@@ -31,6 +33,18 @@ class MetricCalculation(BaseModel):
     yearly_values: dict[int, float] = Field(default_factory=dict)
     yoy_growth: dict[int, float] = Field(default_factory=dict)
     cagr: float | None = None
+
+
+class FusionSummary(BaseModel):
+    """Human-readable fusion of vector / SQL / graph retrieval channels."""
+
+    query_intent: str
+    routes: list[str] = Field(default_factory=list)
+    vector_snippet_count: int = 0
+    metric_count: int = 0
+    graph_path_count: int = 0
+    highlights: list[str] = Field(default_factory=list)
+    summary: str = ""
 
 
 class GroundedCitation(BaseModel):
@@ -75,6 +89,7 @@ class ResearchPreviewResponse(BaseModel):
     metrics: list[FinancialMetricObservation] = Field(default_factory=list)
     calculations: list[MetricCalculation] = Field(default_factory=list)
     graph_paths: list[GraphPath] = Field(default_factory=list)
+    fusion_summary: FusionSummary | None = None
     warnings: list[str] = Field(default_factory=list)
     synthesis: GroundedSynthesis | None = None
     critic: CriticReview | None = None

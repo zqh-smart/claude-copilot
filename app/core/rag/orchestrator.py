@@ -15,7 +15,7 @@ from app.core.kg import KnowledgeGraphStoreProtocol
 from app.core.rag.retriever import LocalRetriever
 from src.claude_copilot.schemas.financial_data import FinancialMetricObservation
 from src.claude_copilot.schemas.knowledge_graph import GraphPath
-from src.claude_copilot.schemas.research import MetricCalculation, QueryAnalysis
+from src.claude_copilot.schemas.research import MetricCalculation, QueryAnalysis, FusionSummary
 
 
 @dataclass
@@ -25,6 +25,7 @@ class OrchestratedRetrievalResult:
     metrics: list[FinancialMetricObservation] = field(default_factory=list)
     calculations: list[MetricCalculation] = field(default_factory=list)
     graph_paths: list[GraphPath] = field(default_factory=list)
+    fusion_summary: FusionSummary | None = None
     warnings: list[str] = field(default_factory=list)
 
 
@@ -118,6 +119,26 @@ class QueryAnalyzer:
         "分部",
         "竞争对手",
     )
+    _SECTION_HINTS: dict[str, tuple[str, ...]] = {
+        "management_discussion": (
+            "管理层",
+            "讨论与分析",
+            "md&a",
+            "经营情况",
+            "management",
+            "mda",
+        ),
+        "risk_section": ("风险", "risk", "暴露"),
+        "company_overview": ("公司简介", "公司概况", "overview", "基本情况"),
+        "financial_statement": (
+            "利润表",
+            "资产负债表",
+            "现金流量",
+            "income statement",
+            "balance sheet",
+            "cash flow statement",
+        ),
+    }
 
     def analyze(self, question: str) -> QueryAnalysis:
         normalized = re.sub(r"\s+", " ", question).strip().casefold()
@@ -144,6 +165,7 @@ class QueryAnalyzer:
         has_structured_cue = any(cue in normalized for cue in self._STRUCTURED_CUES)
         needs_growth = any(cue in normalized for cue in self._GROWTH_CUES)
         wants_graph = any(cue in normalized for cue in self._GRAPH_CUES)
+        section_hints = self._infer_section_hints(normalized)
 
         wants_structured = bool(metric_keys or years or has_structured_cue)
         if wants_graph and (wants_structured or has_semantic_cue):
@@ -171,7 +193,15 @@ class QueryAnalyzer:
             metric_keys=metric_keys,
             years=years,
             needs_growth=needs_growth,
+            section_hints=section_hints,
         )
+
+    def _infer_section_hints(self, normalized: str) -> list[str]:
+        hints: list[str] = []
+        for section_type, cues in self._SECTION_HINTS.items():
+            if any(cue in normalized for cue in cues):
+                hints.append(section_type)
+        return hints
 
 
 class RetrievalOrchestrator:
@@ -207,6 +237,7 @@ class RetrievalOrchestrator:
                 question,
                 doc_id=doc_id,
                 top_k=top_k,
+                section_hints=analysis.section_hints,
             )
 
         if "sql" in analysis.routes:
@@ -224,6 +255,10 @@ class RetrievalOrchestrator:
                         "SQL route returned no matching financial metrics "
                         f"(doc_id={doc_id[:12]}…; prefer a Serving-ingested annual report)"
                     )
+                elif doc_id and not any(item.document_id == doc_id for item in metrics):
+                    warnings.append(
+                        f"SQL metrics resolved from company scope; none tagged doc_id={doc_id[:12]}…"
+                    )
 
         if "graph" in analysis.routes:
             if self._graph_store is None:
@@ -240,13 +275,84 @@ class RetrievalOrchestrator:
 
         calculations, calculation_warnings = self._calculate(metrics)
         warnings.extend(calculation_warnings)
+        fusion_summary = self._build_fusion_summary(
+            analysis=analysis,
+            vector_hits=vector_hits,
+            metrics=metrics,
+            calculations=calculations,
+            graph_paths=graph_paths,
+        )
         return OrchestratedRetrievalResult(
             analysis=analysis,
             vector_hits=vector_hits,
             metrics=metrics,
             calculations=calculations,
             graph_paths=graph_paths,
+            fusion_summary=fusion_summary,
             warnings=warnings,
+        )
+
+    def _build_fusion_summary(
+        self,
+        *,
+        analysis: QueryAnalysis,
+        vector_hits: list[tuple],
+        metrics: list[FinancialMetricObservation],
+        calculations: list[MetricCalculation],
+        graph_paths: list[GraphPath],
+    ) -> FusionSummary:
+        highlights: list[str] = []
+
+        for segment, score in vector_hits[:3]:
+            section_type = (segment.metadata or {}).get("section_type")
+            prefix = f"[语义·{section_type}]" if section_type else "[语义]"
+            snippet = segment.content.strip().replace("\n", " ")[:120]
+            highlights.append(f"{prefix} {snippet} (score={score:.3f})")
+
+        seen_metric_keys: set[tuple[str, str]] = set()
+        for item in metrics[:8]:
+            key = (item.metric_key, str(item.period))
+            if key in seen_metric_keys:
+                continue
+            seen_metric_keys.add(key)
+            highlights.append(
+                f"[结构化] {item.metric_key} · {item.period} = {item.value}"
+            )
+
+        for calc in calculations[:3]:
+            if calc.yoy_growth:
+                latest_year = max(calc.yoy_growth)
+                rate = calc.yoy_growth[latest_year]
+                highlights.append(
+                    f"[计算] {calc.metric_key} YoY({latest_year}) = {rate:.2%}"
+                )
+            elif calc.cagr is not None:
+                highlights.append(f"[计算] {calc.metric_key} CAGR = {calc.cagr:.2%}")
+
+        for path in graph_paths[:3]:
+            highlights.append(f"[图谱] {path.summary}")
+
+        route_labels = {
+            "vector": "语义片段",
+            "sql": "结构化指标",
+            "graph": "关系路径",
+        }
+        active = [route_labels.get(route, route) for route in analysis.routes]
+        summary_parts = [
+            f"意图={analysis.intent}，启用通道：{' + '.join(active) or '无'}。",
+            f"召回：语义 {len(vector_hits)} 条、指标 {len(metrics)} 条、图谱 {len(graph_paths)} 条。",
+        ]
+        if highlights:
+            summary_parts.append(f"要点：{'；'.join(highlights[:4])}。")
+
+        return FusionSummary(
+            query_intent=analysis.intent,
+            routes=list(analysis.routes),
+            vector_snippet_count=len(vector_hits),
+            metric_count=len(metrics),
+            graph_path_count=len(graph_paths),
+            highlights=highlights,
+            summary="".join(summary_parts),
         )
 
     def _retrieve_metrics(
@@ -269,6 +375,17 @@ class RetrievalOrchestrator:
                     limit=max(20, top_k * 10),
                 )
             )
+        if not observations and document_id is not None:
+            for metric_key in metric_keys:
+                observations.extend(
+                    self._financial_repository.query_metrics(
+                        company_id,
+                        year=analysis.years[0] if len(analysis.years) == 1 else None,
+                        metric_key=metric_key,
+                        document_id=None,
+                        limit=max(20, top_k * 10),
+                    )
+                )
         if len(analysis.years) > 1:
             year_filter = set(analysis.years)
             observations = [item for item in observations if item.period_year in year_filter]

@@ -34,6 +34,7 @@ class JsonChatClient:
                 "Content-Type": "application/json",
             },
             timeout=timeout,
+            trust_env=False,
         )
 
     def complete_json(self, *, system_prompt: str, user_prompt: str) -> dict[str, Any]:
@@ -43,6 +44,8 @@ class JsonChatClient:
                 "model": self._model,
                 "temperature": self._temperature,
                 "response_format": {"type": "json_object"},
+                # Local qwen3.5 thinking models otherwise fill reasoning_content and leave content null.
+                "chat_template_kwargs": {"enable_thinking": False},
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
@@ -53,7 +56,8 @@ class JsonChatClient:
         choices = response.json().get("choices") or []
         if not choices:
             raise ValueError("LLM response did not contain choices.")
-        content = choices[0].get("message", {}).get("content") or ""
+        message = choices[0].get("message") or {}
+        content = message.get("content") or message.get("reasoning_content") or ""
         return self._parse_json(content)
 
     def _parse_json(self, content: str) -> dict[str, Any]:

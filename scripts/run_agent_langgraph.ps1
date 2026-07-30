@@ -18,5 +18,6 @@ if (-not (Test-Path ".\langgraph.env")) {
   Write-Host "Created langgraph.env from example — fill SILICON_KEY / LLM settings."
 }
 
-Write-Host "Starting LangGraph on http://127.0.0.1:2024 (graph id: agent)"
-& .\.venv-langgraph\Scripts\langgraph.exe dev --port 2024 --no-browser
+$port = if ($env:LANGGRAPH_PORT) { $env:LANGGRAPH_PORT } else { "2025" }
+Write-Host "Starting LangGraph on http://127.0.0.1:$port (graph id: agent)"
+& .\.venv-langgraph\Scripts\langgraph.exe dev --port $port --no-browser

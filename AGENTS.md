@@ -147,7 +147,7 @@ They talk to a **LangGraph API** serving the `agent` graph (messages-compatible)
 # Windows (recommended; uses isolated .venv-langgraph, avoids locking .venv)
 $env:PYTHONUTF8='1'
 .\scripts\run_agent_langgraph.ps1
-# → http://127.0.0.1:2024   graph id: agent
+# → http://127.0.0.1:2025   graph id: agent  (override with LANGGRAPH_PORT)
 
 # optional: pin a Serving doc in langgraph.env
 # AGENT_CHAT_DOC_ID=<doc_uuid>
@@ -157,7 +157,7 @@ $env:PYTHONUTF8='1'
 
 ```bash
 cd ../agent-chat-ui-main
-# .env already points to localhost:2024 / assistant=agent
+# .env already points to localhost:2025 / assistant=agent
 pnpm install
 pnpm dev   # http://localhost:3000
 ```
@@ -183,6 +183,7 @@ L3 pass_rate / 逐题对错看板仍在本仓库 `web/`「评测看板」页（`
 - `docs/acceptance_suite.md` — smoke/regression commands and pass criteria
 - `docs/eval_metrics.md` — stage metrics definitions (L1/L2 detail)
 - `docs/pipeline_eval_status.md` — current scorecard snapshot + next optimizations
+- `docs/loop_playbook.md` — autonomous `/loop` instructions (Living Design aligned)
 - `README.md` — onboarding, env, scripts
 
 ## Skills Index

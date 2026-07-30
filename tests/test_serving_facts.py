@@ -1,6 +1,7 @@
 from app.core.db.serving_facts import (
     MetricConflictCandidate,
     candidate_from_fact,
+    dedupe_serving_metric_facts,
     enrich_serving_fact_provenance,
     prepare_serving_metric_facts,
     resolve_metric_conflict,
@@ -146,7 +147,118 @@ def test_resolve_metric_conflict_keeps_loser_from_becoming_sole_survivor() -> No
     assert "doc-ungrounded" in resolution.suppressed_document_ids
 
 
+def test_dedupe_serving_metric_facts_prefers_metrics_index_canonical() -> None:
+    subsidiary = _fact(
+        metric_key="net_cash_from_operating_activities",
+        value=93070915.09,
+        source_table_id="table-subsidiary",
+    ).model_copy(update={"source_table_title": "现金流量表"})
+    consolidated = _fact(
+        metric_key="net_cash_from_operating_activities",
+        value=465398314.38,
+        source_table_id="table-consolidated",
+    ).model_copy(update={"source_table_title": "现金流量表"})
+    schema = FinancialSchema(
+        metric_facts=[subsidiary, consolidated],
+        metrics_index={"net_cash_from_operating_activities": {"2021": 465398314.38}},
+        metadata={
+            "serving_gate": {
+                "allow_metric_serving": True,
+                "grounded_fact_keys": [
+                    "net_cash_from_operating_activities::2021::93070915.09",
+                    "net_cash_from_operating_activities::2021::465398314.38",
+                ],
+            }
+        },
+    )
+
+    facts = dedupe_serving_metric_facts(
+        prepare_serving_metric_facts(schema),
+        schema=schema,
+    )
+
+    assert len(facts) == 1
+    assert facts[0].value == 465398314.38
+
+
 def test_enrich_serving_fact_provenance_reads_existing_grounded_flag() -> None:
     fact = _fact(provenance={"source_grounded": True})
     enriched = enrich_serving_fact_provenance(fact, None)
     assert enriched.provenance["source_grounded"] is True
+
+
+def test_dedupe_serving_metric_facts_prefers_cash_flow_table() -> None:
+    consolidated = _fact(
+        metric_key="net_cash_from_operating_activities",
+        value=491409203,
+        source_table_id="table-financials",
+    ).model_copy(update={"source_table_title": "二、财务报表"})
+    cash_flow = _fact(
+        metric_key="net_cash_from_operating_activities",
+        value=373048933,
+        source_table_id="table-cash-flow",
+    ).model_copy(update={"source_table_title": "现金流量表"})
+    schema = _schema(
+        consolidated,
+        cash_flow,
+        grounded_keys=[
+            "net_cash_from_operating_activities::2021::373048933",
+            "net_cash_from_operating_activities::2021::491409203",
+        ],
+    )
+
+    facts = dedupe_serving_metric_facts(
+        prepare_serving_metric_facts(schema),
+        schema=schema,
+    )
+
+    assert len(facts) == 1
+    assert facts[0].value == 373048933
+    assert facts[0].source_table_id == "table-cash-flow"
+
+
+def test_resolve_metric_conflict_prefers_current_document_on_reingest() -> None:
+    old_doc = candidate_from_fact(
+        _fact(
+            metric_key="net_cash_from_operating_activities",
+            value=491409203,
+            source_table_id="table-old",
+        ),
+        document_id="doc-old",
+        document_year=2021,
+        schema=_schema(
+            _fact(
+                metric_key="net_cash_from_operating_activities",
+                value=491409203,
+                source_table_id="table-old",
+            ),
+            grounded_keys=["net_cash_from_operating_activities::2021::491409203"],
+        ),
+    )
+    new_doc = candidate_from_fact(
+        _fact(
+            metric_key="net_cash_from_operating_activities",
+            value=373048933,
+            source_table_id="table-new",
+        ),
+        document_id="doc-new",
+        document_year=2021,
+        schema=_schema(
+            _fact(
+                metric_key="net_cash_from_operating_activities",
+                value=373048933,
+                source_table_id="table-new",
+            ),
+            grounded_keys=["net_cash_from_operating_activities::2021::373048933"],
+        ),
+    )
+
+    resolution = resolve_metric_conflict(
+        [old_doc, new_doc],
+        metric_key="net_cash_from_operating_activities",
+        period="2021",
+        prefer_document_id="doc-new",
+    )
+
+    assert resolution.winner == new_doc
+    assert "doc-old" in resolution.suppressed_document_ids

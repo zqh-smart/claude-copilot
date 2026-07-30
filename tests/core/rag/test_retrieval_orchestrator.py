@@ -118,6 +118,14 @@ def build_orchestrator(tmp_path: Path) -> RetrievalOrchestrator:
     )
 
 
+def test_query_analyzer_infers_management_section_hints() -> None:
+    analysis = QueryAnalyzer().analyze("管理层如何讨论与分析公司经营情况？")
+
+    assert analysis.intent == "semantic"
+    assert analysis.routes == ["vector"]
+    assert "management_discussion" in analysis.section_hints
+
+
 def test_query_analyzer_avoids_overlapping_metric_aliases() -> None:
     analysis = QueryAnalyzer().analyze("2024年净利息收入是多少？")
 
@@ -179,3 +187,21 @@ def test_orchestrator_routes_risk_query_to_vector_and_graph(tmp_path: Path) -> N
     assert result.vector_hits
     assert result.metrics == []
     assert result.graph_paths[0].relationships[0].relationship_type == "HAS_RISK"
+
+
+def test_orchestrator_builds_fusion_summary_for_hybrid_query(tmp_path: Path) -> None:
+    result = build_orchestrator(tmp_path).retrieve(
+        "为什么营收下降？请分析原因",
+        doc_id="doc-1",
+        company_id="acme",
+        top_k=3,
+    )
+
+    assert result.fusion_summary is not None
+    assert result.fusion_summary.query_intent == "hybrid"
+    assert "vector" in result.fusion_summary.routes
+    assert "sql" in result.fusion_summary.routes
+    assert result.fusion_summary.vector_snippet_count >= 1
+    assert result.fusion_summary.metric_count >= 1
+    assert result.fusion_summary.summary
+    assert any("[结构化]" in item or "[语义" in item for item in result.fusion_summary.highlights)

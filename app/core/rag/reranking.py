@@ -52,6 +52,7 @@ class SiliconRerankingService:
                 "Content-Type": "application/json",
             },
             timeout=timeout,
+            trust_env=False,
         )
 
     def rerank(

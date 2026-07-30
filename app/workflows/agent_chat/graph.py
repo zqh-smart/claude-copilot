@@ -68,32 +68,162 @@ def _latest_serving_doc_id() -> str | None:
     return None
 
 
+def _metric_rows(metrics: list[Any]) -> list[tuple[str, str, Any]]:
+    rows: list[tuple[str, str, Any]] = []
+    for item in metrics:
+        if isinstance(item, dict):
+            key = str(item.get("metric_key") or "")
+            period = str(item.get("period") or "")
+            value = item.get("value")
+        else:
+            key = str(getattr(item, "metric_key", None) or "")
+            period = str(getattr(item, "period", None) or "")
+            value = getattr(item, "value", None)
+        if key:
+            rows.append((key, period, value))
+    return rows
+
+
+def _prefer_primary_metrics(rows: list[tuple[str, str, Any]]) -> list[tuple[str, str, Any]]:
+    """Keep one value per (metric_key, period); prefer larger absolute numerics.
+
+    Avoids noisy companions like revenue=4.35 when revenue=469378042.95 exists.
+    """
+    best: dict[tuple[str, str], tuple[str, str, Any]] = {}
+    for key, period, value in rows:
+        slot = (key, period)
+        prev = best.get(slot)
+        if prev is None:
+            best[slot] = (key, period, value)
+            continue
+        prev_num = prev[2] if isinstance(prev[2], (int, float)) and not isinstance(prev[2], bool) else None
+        cur_num = value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+        if cur_num is not None and (prev_num is None or abs(cur_num) > abs(prev_num)):
+            best[slot] = (key, period, value)
+    return list(best.values())
+
+
+def _humanize_warning(warning: str) -> str:
+    lower = warning.lower()
+    if "502" in warning or "bad gateway" in lower:
+        return "本地 LLM 暂时不可用（chat 502）。已保留结构化检索结果，可稍后重试合成。"
+    if "timed out" in lower or "timeout" in lower:
+        return "本地 LLM 超时。已保留结构化检索结果，可稍后重试合成。"
+    if "conflicting revenue" in lower or "conflicting" in lower:
+        return "同指标存在多条候选；已优先保留金额更大的主值。"
+    if "company scope" in lower or "resolved from company scope" in lower:
+        return "结构化指标来自公司范围回退（当前文档未命中时可查同公司其它年报）。"
+    return warning
+
+
+def _format_risk_answer(result: dict[str, Any]) -> str:
+    answer = str(result.get("answer") or "").strip()
+    findings = list(result.get("risk_findings") or [])
+    parts = ["【风险分析 · Risk Agent】"]
+    if answer:
+        parts.append(answer)
+    elif findings:
+        parts.append(f"识别到 {len(findings)} 条 HAS_RISK 关联。")
+    else:
+        parts.append("未检索到图谱风险边；请确认文档已 Serving 入库且含风险披露。")
+    warnings = [str(item) for item in (result.get("warnings") or []) if item]
+    if warnings:
+        parts.append("\n说明：")
+        seen: set[str] = set()
+        for warning in warnings[:4]:
+            text = _humanize_warning(warning)
+            if text in seen:
+                continue
+            seen.add(text)
+            parts.append(f"- {text}")
+    return "\n".join(parts).strip()
+
+
+_ROUTE_LABELS = {"vector": "语义", "sql": "结构化", "graph": "图谱"}
+_INTENT_LABELS = {
+    "semantic": "语义检索",
+    "structured": "结构化查询",
+    "relational": "关系查询",
+    "hybrid": "混合检索",
+}
+
+
+def _fusion_field(fusion: Any, name: str) -> Any:
+    value = getattr(fusion, name, None)
+    if value is not None:
+        return value
+    if isinstance(fusion, dict):
+        return fusion.get(name)
+    return None
+
+
+def _append_fusion_summary(parts: list[str], preview: Any) -> None:
+    fusion = getattr(preview, "fusion_summary", None)
+    if fusion is None:
+        return
+    summary = str(_fusion_field(fusion, "summary") or "").strip()
+    highlights = list(_fusion_field(fusion, "highlights") or [])
+    intent = str(_fusion_field(fusion, "query_intent") or "")
+    routes = list(_fusion_field(fusion, "routes") or [])
+    if not summary and not highlights:
+        return
+    parts.append("\n混合检索摘要：")
+    if intent or routes:
+        labeled_routes = [_ROUTE_LABELS.get(route, route) for route in routes]
+        intent_text = _INTENT_LABELS.get(intent, intent)
+        if labeled_routes:
+            parts.append(f"- 通道：{intent_text}（{' · '.join(labeled_routes)}）")
+        elif intent_text:
+            parts.append(f"- 通道：{intent_text}")
+    if summary:
+        parts.append(f"- {summary}")
+    for item in highlights[:4]:
+        parts.append(f"- {item}")
+
+
 def _format_answer(preview: Any) -> str:
-    answer = (getattr(preview, "answer", None) or "").strip()
     synthesis = getattr(preview, "synthesis", None)
+    synthesis_answer = ""
     if synthesis is not None and getattr(synthesis, "answer", None):
-        answer = str(synthesis.answer).strip() or answer
+        synthesis_answer = str(synthesis.answer).strip()
+    raw_answer = (getattr(preview, "answer", None) or "").strip()
     metrics = getattr(preview, "metrics", None) or []
-    warnings = getattr(preview, "warnings", None) or []
-    parts = [answer or "（未生成文本答案；见下方证据摘要）"]
-    if metrics:
+    warnings = [str(item) for item in (getattr(preview, "warnings", None) or [])]
+    llm_failed = any(
+        ("502" in item) or ("timed out" in item.lower()) or ("timeout" in item.lower()) or ("grounded synthesis failed" in item.lower())
+        for item in warnings
+    )
+    primary = _prefer_primary_metrics(_metric_rows(list(metrics)))
+
+    if synthesis_answer and not llm_failed:
+        lead = synthesis_answer
+    elif primary:
+        key, period, value = primary[0]
+        lead = f"{period}年{key}为 {value}。" if period.isdigit() else f"{key}（{period}）为 {value}。"
+        if llm_failed:
+            lead += "（文本合成暂不可用，以下为检索到的主指标）"
+    else:
+        lead = raw_answer or "（未生成文本答案；见下方证据摘要）"
+
+    parts = [lead]
+    if primary:
         parts.append("\n结构化指标：")
-        for item in metrics[:8]:
-            if isinstance(item, dict):
-                key = item.get("metric_key")
-                period = item.get("period")
-                value = item.get("value")
-            else:
-                key = getattr(item, "metric_key", None)
-                period = getattr(item, "period", None)
-                value = getattr(item, "value", None)
+        for key, period, value in primary[:8]:
             parts.append(f"- {key} · {period} = {value}")
     if warnings:
-        parts.append("\nWarnings：")
-        for warning in warnings[:6]:
-            parts.append(f"- {warning}")
+        parts.append("\n说明：")
+        seen: set[str] = set()
+        for warning in warnings[:8]:
+            text = _humanize_warning(warning)
+            if text in seen:
+                continue
+            seen.add(text)
+            parts.append(f"- {text}")
+            if len(seen) >= 4:
+                break
+    _append_fusion_summary(parts, preview)
     analysis = getattr(preview, "query_analysis", None)
-    if analysis is not None:
+    if analysis is not None and getattr(preview, "fusion_summary", None) is None:
         intent = getattr(analysis, "intent", None) or (analysis.get("intent") if isinstance(analysis, dict) else None)
         routes = getattr(analysis, "routes", None) or (analysis.get("routes") if isinstance(analysis, dict) else None)
         if intent or routes:
@@ -123,11 +253,53 @@ def research_turn(state: AgentChatState, config: RunnableConfig) -> dict[str, An
             "doc_id": None,
         }
 
-    from app.api.dependencies import get_research_service
+    from app.api.dependencies import get_document_pipeline_service, get_research_service
+    from app.workflows.orchestrator.graph import classify_intent
 
-    preview = get_research_service().preview(doc_id=doc_id, question=question, top_k=5)
+    record = get_document_pipeline_service().get_document(doc_id)
+    from app.core.db import build_company_id
+
+    company_id = (
+        build_company_id(record.metadata.company) if record.metadata.company else None
+    )
+    agent_used = classify_intent({"question": question}).get("agent_used", "research")
+
+    if agent_used == "risk":
+        from app.workflows.risk.graph import graph as risk_graph
+
+        risk_result = risk_graph.invoke(
+            {
+                "doc_id": doc_id,
+                "company_id": company_id,
+                "question": question,
+                "top_k": 5,
+            }
+        )
+        content = _format_risk_answer(risk_result)
+    elif agent_used == "quant":
+        from app.workflows.quant.graph import graph as quant_graph
+
+        quant_result = quant_graph.invoke(
+            {
+                "doc_id": doc_id,
+                "company_id": company_id,
+                "question": question,
+                "top_k": 5,
+            }
+        )
+        answer = str(quant_result.get("answer") or "").strip()
+        content = f"【量化 · Quant Agent】\n{answer}" if answer else "【量化 · Quant Agent】未生成计算结果。"
+        warnings = quant_result.get("warnings") or []
+        if warnings:
+            content += "\n说明：\n" + "\n".join(f"- {_humanize_warning(str(w))}" for w in warnings[:4])
+    else:
+        preview = get_research_service().preview(doc_id=doc_id, question=question, top_k=5)
+        content = _format_answer(preview)
+        if agent_used == "structured":
+            content = f"【结构化 · Structured Agent】\n{content}"
+
     return {
-        "messages": [AIMessage(content=_format_answer(preview))],
+        "messages": [AIMessage(content=content)],
         "doc_id": doc_id,
     }
 

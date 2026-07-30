@@ -14,8 +14,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 DEFAULT_GOLDEN = ROOT / "data" / "golden" / "znz_2021_stage_expectations.json"
-SERVING_EVAL_DIR = ROOT / "data" / "reports" / "serving_eval"
 OUT_DIR = ROOT / "data" / "reports" / "l4_eval"
+
+from scripts.retrieval_eval_common import (  # noqa: E402
+    resolve_doc_id_from_expectations,
+    score_retrieval_case,
+    values_equal,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -32,6 +37,11 @@ def parse_args() -> argparse.Namespace:
         nargs="*",
         default=None,
         help="Optional subset of case ids to run.",
+    )
+    parser.add_argument(
+        "--retrieval-only",
+        action="store_true",
+        help="Skip LLM probe; score evidence + structured value match only (L4 offline baseline).",
     )
     return parser.parse_args()
 
@@ -73,13 +83,6 @@ def _probe_llm() -> dict:
     return info
 
 
-def _values_equal(actual, expected) -> bool:
-    try:
-        return abs(float(actual) - float(expected)) <= max(1.0, abs(float(expected)) * 0.001)
-    except (TypeError, ValueError):
-        return str(actual).strip() == str(expected).strip()
-
-
 def _value_in_text(value, text: str) -> bool:
     if not text:
         return False
@@ -93,43 +96,6 @@ def _value_in_text(value, text: str) -> bool:
         return True
     compact = f"{number:.2f}".rstrip("0").rstrip(".")
     return compact in normalized or f"{number:.4f}".rstrip("0").rstrip(".") in normalized
-
-
-def _resolve_doc_id(*, doc_id: str | None, expectations: dict) -> str:
-    if doc_id:
-        return doc_id
-
-    notes = expectations.get("notes") or {}
-    company = notes.get("company")
-    year = notes.get("year")
-
-    if SERVING_EVAL_DIR.exists():
-        reports = sorted(
-            SERVING_EVAL_DIR.glob("*_serving_eval.json"),
-            key=lambda path: path.stat().st_mtime,
-            reverse=True,
-        )
-        for report_path in reports:
-            report = json.loads(report_path.read_text(encoding="utf-8"))
-            resolved = report.get("doc_id")
-            if resolved:
-                return resolved
-
-    from app.api import dependencies
-    from src.claude_copilot.schemas.document import DocumentProcessingStatus
-
-    for record in dependencies.get_document_service().list_documents():
-        if record.status != DocumentProcessingStatus.COMPLETED:
-            continue
-        if company and record.metadata.company and company not in record.metadata.company:
-            continue
-        if year is not None and record.metadata.year not in {None, year}:
-            continue
-        return record.doc_id
-
-    raise FileNotFoundError(
-        "No completed document found. Run serving ingest eval first or pass --doc-id."
-    )
 
 
 def _load_cases(expectations: dict, case_ids: list[str] | None) -> list[dict]:
@@ -163,7 +129,7 @@ def _expect_value_ok(case: dict, preview) -> bool | None:
             continue
         if case.get("expect_period") and str(period) != str(case["expect_period"]):
             continue
-        if _values_equal(value, expected):
+        if values_equal(value, expected):
             return True
 
     answer = preview.answer or ""
@@ -212,8 +178,65 @@ def main() -> int:
     if not cases:
         raise ValueError("No L4 cases found in expectations (l4_cases / retrieval_cases).")
 
-    os.environ["LLM_GROUNDED_SYNTHESIS_ENABLED"] = "true"
+    if args.retrieval_only:
+        os.environ["LLM_GROUNDED_SYNTHESIS_ENABLED"] = "false"
+    else:
+        os.environ["LLM_GROUNDED_SYNTHESIS_ENABLED"] = "true"
     _reset_caches()
+
+    if args.retrieval_only:
+        from app.api import dependencies
+        from app.core.config import get_settings
+
+        settings = get_settings()
+        doc_id = resolve_doc_id_from_expectations(doc_id=args.doc_id, expectations=expectations)
+        research = dependencies.get_research_service()
+        case_results = []
+        t0 = time.perf_counter()
+        for case in cases:
+            preview = research.preview(doc_id=doc_id, question=case["question"], top_k=args.top_k)
+            scored = score_retrieval_case(case, preview)
+            case_results.append(scored)
+            print(json.dumps(scored, ensure_ascii=False, indent=2))
+
+        elapsed = round(time.perf_counter() - t0, 3)
+        passed = sum(1 for item in case_results if item["passed"])
+        report = {
+            "mode": "retrieval_only",
+            "doc_id": doc_id,
+            "document_key": expectations.get("document_key"),
+            "expectations": str(args.expectations),
+            "elapsed_seconds": elapsed,
+            "backends": {
+                "storage": settings.storage_backend,
+                "vector": settings.vector_store_backend,
+                "graph": settings.graph_store_backend,
+                "embedding": settings.embedding_backend,
+            },
+            "l4_retrieval": {
+                "total": len(case_results),
+                "passed": passed,
+                "pass_rate": round(passed / max(len(case_results), 1), 4),
+                "cases": case_results,
+            },
+        }
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
+        out_path = OUT_DIR / f"{doc_id}_l4_retrieval_eval.json"
+        out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(
+            json.dumps(
+                {
+                    "wrote": str(out_path),
+                    "l4_retrieval_pass_rate": report["l4_retrieval"]["pass_rate"],
+                    "elapsed_seconds": elapsed,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        if case_results and passed < len(case_results):
+            return 2
+        return 0
 
     llm_info = _probe_llm()
     print(json.dumps({"llm_probe": llm_info}, ensure_ascii=False, indent=2))
@@ -250,7 +273,7 @@ def main() -> int:
         print("LLM_GROUNDED_SYNTHESIS_ENABLED is false after reset.", file=sys.stderr)
         return 4
 
-    doc_id = _resolve_doc_id(doc_id=args.doc_id, expectations=expectations)
+    doc_id = resolve_doc_id_from_expectations(doc_id=args.doc_id, expectations=expectations)
     research = dependencies.get_research_service()
     if dependencies.get_grounded_research_engine() is None:
         print("Grounded research engine not configured.", file=sys.stderr)
