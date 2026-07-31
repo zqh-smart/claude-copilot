@@ -532,7 +532,8 @@ tick | P6x | Agent/图 | verify | next | blocked?
 7. P6b critic / fusion state 加固
 
 **Phase C — 后置（用户点名）**
-8. P6h Comparator · reporting · §6.2–6.4 BI
+8. ~~P6h Comparator/reporting lite~~ ✅（图已注册）
+9. §6.2–6.4 报告中心 · 对比平台 · BI 产品面（仍需点名）
 ```
 
 ---
