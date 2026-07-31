@@ -86,8 +86,8 @@ Docker: postgres:5432 · qdrant:6333 · neo4j:7687/7474
 | 一 Data Ingestion | §一 | ~70% | parser router 小步；PDF 四路由 | 整栈换 Docling/LlamaParse/Tika |
 | 二 Document AI | §二 | ~75% | serving_gate；stage 小步 | §2.8 多源文档融合引擎 |
 | 三 Knowledge Layer | §三 | **~85%** | 混合检索、GraphRAG MVP、fusion、2-hop | hash/real 混同一 Qdrant collection |
-| 四 Reasoning | §四 | ~25% → **Loop 主战场** | 多 Agent 图、Decomposer、Risk MVP、L4 | 一次堆全量 Comparator/Report |
-| 五 Workflow | §五 | ~30% | LangGraph 注册/编排小步 | 引入 Dify 编排/UI |
+| 四 Reasoning | §四 | **~45% · 门禁起步** | 多 Agent 加深、Comparator lite（点名后） | 一次堆全量 Comparator/Report/BI |
+| 五 Workflow | §五 | **~45% · 起步** | LangGraph 注册/编排小步 | 引入 Dify 编排/UI |
 | 六 Application | §六 | ~40% | agent-chat-ui 克制 UX | 报告中心/对比平台/BI 大产品 |
 
 ### 2.2 系统六大目标（§🧭）
@@ -96,10 +96,10 @@ Docker: postgres:5432 · qdrant:6333 · neo4j:7687/7474
 |------|------|-----------|
 | 多源文档解析 | 🟡 | 维持 3 样本 L2；Stress 样本后置 |
 | 结构化金融知识构建 | ✅ | 不回归 core_metric / grounding |
-| 深度投研分析 | 🟡 | research graph + grounded synthesis（LLM 可用时） |
-| 主动风险识别 | 🟡 | Risk LangGraph MVP（retrieve_risk→summarize）+ HAS_RISK；agent 经 orchestrator 路由 |
-| 自动报告生成 | ❌ | **后置 P5** |
-| 多公司对比分析 | ❌ | **后置 P5** |
+| 深度投研分析 | 🟡 | research + L4 8/8；生产化加深（critic/多轮） |
+| 主动风险识别 | 🟡 | Risk LangGraph MVP + orchestrator 路由；非全量 Risk 产品 |
+| 自动报告生成 | 🟡 | Reporting LangGraph lite（提纲）；§6.2 产品面后置 |
+| 多公司对比分析 | 🟡 | Comparator LangGraph lite（指标矩阵）；§6.3 产品面后置 |
 
 ### 2.3 已验证快照（2026-07-30）
 
@@ -107,9 +107,11 @@ Docker: postgres:5432 · qdrant:6333 · neo4j:7687/7474
 |----|-----|
 | §三 Knowledge 门禁 | ✅ 三样本 L3 全绿 |
 | Phase A（P2） | ✅ 完成（fusion · OCF doc 级 · HAS_RISK 排序 · 工作台 fusion UI） |
-| **Loop 主线** | **Phase B — P6 多智能体** |
-| LangGraph 已注册 | `agent` · `orchestrator` · `quant` · `risk` |
-| P6 已完成 | P6a–P6g · orchestrator · Decomposer-lite；P6h 后置 |
+| **Loop 主线** | Phase B + P6h lite 完成 → §6.2–6.4 产品面仍后置 |
+| LangGraph 已注册 | `agent` · `orchestrator` · `quant` · `risk` · `comparator` · `reporting` |
+| P6 已完成 | P6a–P6g · orchestrator · Decomposer-lite |
+| P6h lite | ✅ Comparator + Reporting LangGraph MVP（无 §6.2–6.4 产品面） |
+| §六 产品面 | ⏸ 报告中心 / 对比平台 / BI **仍后置** |
 | Agent Chat 路由 | `orchestrator.classify_intent` → risk / quant / structured / research（`agent_chat/graph.py`） |
 | L4 retrieval-only | ✅ 指南针 8/8（`l4_retrieval_pass_rate: 1.0`） |
 | L4 完整 eval | ✅ **1.0**（8/8 znz）；证据 ID 清洗 · 合成降级 · 增长因果收紧 |
@@ -122,10 +124,11 @@ Docker: postgres:5432 · qdrant:6333 · neo4j:7687/7474
 
 | 维度 | 完成度 | 说明 |
 |------|--------|------|
-| 六层架构整体 | **~45%** | §四–§六 为主要增量 |
+| 六层架构整体 | **~50%** | §四已起步；§六产品面仍空 |
 | Phase 1 主链 | **~80%** ✅ | 维持 P0 不回归 |
-| §四 Reasoning 门禁 | **未开始** | Loop 目标：L4 + 多 Agent 图 |
-| §五 Workflow 门禁 | **起步** | orchestrator · quant · risk 已注册；reporting 仍 stub |
+| §四 Reasoning 门禁 | **起步** | L4 完整 8/8 + multi-agent 图（research/risk/quant/orchestrator/critic）；非 production-complete |
+| §五 Workflow 门禁 | **起步** | orchestrator · quant · risk · comparator · reporting 已注册 |
+| §六 Application | ~40% | Agent Chat 可用；报告中心/对比平台/BI **后置** |
 
 ---
 
@@ -182,21 +185,22 @@ pnpm dev
 | `quant` | `app/workflows/quant/graph.py` | ✅ MVP | YoY/CAGR · 已注册 langgraph.json |
 | `risk` | `app/workflows/risk/graph.py` | ✅ MVP | retrieve_risk→summarize_risk · HAS_RISK · 已注册 langgraph.json |
 | `research` | `app/workflows/research/graph.py` | ✅ | retrieve→synthesize→critique→revise（**未**注册 langgraph.json；agent 内联 ResearchService） |
-| `reporting` | `app/workflows/reporting/` | ❌ stub | 仅 docstring |
+| `reporting` | `app/workflows/reporting/graph.py` | ✅ lite | 提纲报告 · 已注册；无导出/报告中心 |
+| `comparator` | `app/workflows/comparator/graph.py` | ✅ lite | 双 doc 指标矩阵 · 已注册；无对比平台 UI |
 
 ### 4.2 Living Design §四 Agent — 诚实地图
 
 | 设计 Agent | 实际替代 | 状态 |
 |------------|----------|------|
-| Router Agent | orchestrator `classify_intent` | 🟡 MVP |
-| Task Decomposer | — | ❌ |
+| Router Agent | orchestrator `classify_intent` + `decompose_question` lite | 🟡 MVP |
+| Task Decomposer | `decompose_question` 规则拆句（非 LLM） | 🟡 lite |
 | Research Agent | research graph + GroundedResearchEngine | 🟡 |
 | Risk Agent | `workflows/risk/` LangGraph MVP | 🟡 MVP |
 | Quant Agent | `workflows/quant/` LangGraph MVP | 🟡 MVP |
-| Comparator Agent | — | ❌ |
+| Comparator Agent | `workflows/comparator/` LangGraph lite | 🟡 lite（无 UI） |
 | Critic Agent | research graph critique 节点 | 🟡 |
 
-**禁止**：在文档或代码注释中声称 risk/reporting/Comparator 已「完成」。
+**禁止**：宣称 reporting/Comparator/BI **产品面**已完成；lite 图 ≠ §6.2–6.4。
 
 ### 4.3 检索通道（§三）
 
@@ -323,7 +327,7 @@ docker compose up -d postgres qdrant neo4j
 | **P6e** | Quant 子图显式化 | CAGR/YoY 作为 LangGraph 节点或 tool，供多 Agent 调用 | `orchestrator._calculate` | 增长题不 hallucinate |
 | **P6f** | Agent Chat 多图路由 | `agent` 图按 intent 调 research/risk 子图 | `agent_chat/graph.py` | :3000 风险/营收问句 |
 | P6g | L4 完整（LLM 恢复后） | grounded + critic 批量 | `run_l4_research_eval.py` | ✅ **1.0**（8/8 znz） |
-| P6h | Comparator / reporting | **仅用户点名** | stub 目录 | — |
+| P6h | Comparator / reporting lite | 双 doc 矩阵 + 单 doc 提纲图 | `workflows/comparator` · `workflows/reporting` | ✅ 已注册；§6.2–6.4 产品面仍后置 |
 
 **多智能体搭建原则**
 - 每个 Agent = **LangGraph 子图或节点** + **明确输入/输出 TypedDict** + **至少 1 个 pytest**。
@@ -473,9 +477,9 @@ tick | P6x | Agent/图 | verify | next | blocked?
 | §一 Ingestion | 3 样本 L2 acceptance 全过 |
 | §二 Document AI | `core_metric_exact_match=1.0` + serving_gate allow |
 | §三 Knowledge | 全 ready 样本 L3 `pass_rate=1.0` |
-| §四 Reasoning | L4 批量达标 + critic 稳定（待定义阈值） |
-| §五 Workflow | 除 research 外 ≥1 条 LangGraph 生产流 |
-| §六 Application | Agent Chat 稳定 + 一条产品 API（报告或对比） |
+| §四 Reasoning | **起步**：L4 完整 8/8（znz）+ critic 可跑；多 Agent 图已接线（非 production-complete） |
+| §五 Workflow | 除 research 外 ≥1 条 LangGraph 流：**已满足**（orchestrator/quant/risk） |
+| §六 Application | Agent Chat 稳定；报告/对比/BI 产品 API **后置** |
 
 ---
 
@@ -558,6 +562,8 @@ tick | P6x | Agent/图 | verify | next | blocked?
 
 | 日期 | 变更 |
 |------|------|
+| 2026-07-31 | P6h lite：Comparator + Reporting LangGraph 注册；§6.2–6.4 产品面仍后置 |
+| 2026-07-31 | §四/§五 门禁标「起步」（L4 8/8 + multi-agent）；P6h/§六 报告·对比·BI 明确后置 |
 | 2026-07-30 | **多智能体版 Loop**：主线 P6 · §7 Think-Reflect · 强制静默（禁止每终端汇报） |
 | 2026-07-29 | Phase A 完成：§三门禁 · P2e/f · Agent fusion · L4 `--retrieval-only` |
 | 2026-07-29 | 完善版 playbook 首版 |

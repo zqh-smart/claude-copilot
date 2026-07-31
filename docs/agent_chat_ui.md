@@ -26,8 +26,12 @@ browser :3000 (agent-chat-ui)
 | `orchestrator` | `app/workflows/orchestrator/graph.py` | `classify_intent` + 混合检索编排 |
 | `quant` | `app/workflows/quant/graph.py` | YoY / CAGR 等量化子图 |
 | `risk` | `app/workflows/risk/graph.py` | HAS_RISK 检索 + 规则摘要 |
+| `comparator` | `app/workflows/comparator/graph.py` | 双文档指标对比矩阵（P6h lite，无 UI） |
+| `reporting` | `app/workflows/reporting/graph.py` | 单文档提纲报告（P6h lite，无导出） |
 
 `research` 图（`app/workflows/research/graph.py`）存在但未注册于 `langgraph.json`；`agent` 经 `ResearchService.preview` 内联调用。
+
+`comparator` / `reporting` **不**挂到默认 `agent` 对话路由（对比需 `doc_id_a`+`doc_id_b`）；在 Agent Chat 或 LangGraph Studio 中直选图 ID 调试。§6.2–6.4 产品面未做。
 
 ## Intent 路由
 
@@ -60,7 +64,7 @@ pnpm install
 pnpm dev
 ```
 
-打开 http://localhost:3000 ，Deployment URL=`http://localhost:2025`，Assistant=`agent`（默认）。亦可直选 `orchestrator` / `quant` / `risk` 做专项调试。
+打开 http://localhost:3000 ，Deployment URL=`http://localhost:2025`，Assistant=`agent`（默认）。亦可直选 `orchestrator` / `quant` / `risk` / `comparator` / `reporting` 做专项调试。
 
 Chat LLM 与 `.env` 对齐：`LLM_MODEL_API_TYPE=openai` + 本地 `192.168.0.102:30000`；embedding 仍用硅基。
 
@@ -76,7 +80,7 @@ Chat LLM 与 `.env` 对齐：`LLM_MODEL_API_TYPE=openai` + 本地 `192.168.0.102
 
 | 路径 | 作用 |
 |------|------|
-| `langgraph.json` | 注册 `agent` · `orchestrator` · `quant` · `risk` |
+| `langgraph.json` | 注册 `agent` · `orchestrator` · `quant` · `risk` · `comparator` · `reporting` |
 | `langgraph.env` | Agent 进程环境（与 `.env` 的 LLM/存储对齐；勿提交） |
 | `app/workflows/agent_chat/graph.py` | messages ↔ orchestrator 路由桥 |
 | `app/workflows/orchestrator/graph.py` | `classify_intent` 规则 |
