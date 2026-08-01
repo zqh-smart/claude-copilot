@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from threading import RLock
 
 from app.core.db.lexical import bm25_lite_score, tokenize
 from src.claude_copilot.schemas.document import DocumentSegment
@@ -9,19 +10,23 @@ class LocalSegmentRepository:
     def __init__(self, base_dir: str) -> None:
         self._file_path = Path(base_dir) / "segments_index.json"
         self._file_path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = RLock()
 
     def replace_for_document(self, doc_id: str, segments: list[DocumentSegment]) -> None:
-        payload = self._read_all()
-        payload[doc_id] = [segment.model_dump(mode="json") for segment in segments]
-        self._write_all(payload)
+        with self._lock:
+            payload = self._read_all()
+            payload[doc_id] = [segment.model_dump(mode="json") for segment in segments]
+            self._write_all(payload)
 
     def list_for_document(self, doc_id: str) -> list[DocumentSegment]:
-        payload = self._read_all()
+        with self._lock:
+            payload = self._read_all()
         return [DocumentSegment.model_validate(item) for item in payload.get(doc_id, [])]
 
     def search(self, query: str, *, doc_id: str | None = None, top_k: int = 3) -> list[tuple[DocumentSegment, float]]:
         query_tokens = tokenize(query)
-        payload = self._read_all()
+        with self._lock:
+            payload = self._read_all()
         items = payload.items() if doc_id is None else [(doc_id, payload.get(doc_id, []))]
 
         scored: list[tuple[DocumentSegment, float]] = []
@@ -46,7 +51,9 @@ class LocalSegmentRepository:
         return json.loads(raw)
 
     def _write_all(self, payload: dict[str, list[dict]]) -> None:
-        self._file_path.write_text(
+        temporary = self._file_path.with_suffix(".tmp")
+        temporary.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+        temporary.replace(self._file_path)

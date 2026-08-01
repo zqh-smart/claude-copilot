@@ -550,6 +550,39 @@ def test_pdf_parser_ocr_route_falls_back_when_backend_missing(monkeypatch) -> No
     assert result.quality.text_coverage == 0.5
 
 
+def test_pdf_parser_successful_ocr_uses_recovered_text_for_quality(monkeypatch) -> None:
+    parser = PdfDocumentParser(backend_priority=["ocr_pdf", "native_pdf"])
+    monkeypatch.setattr(
+        parser,
+        "_build_page_profiles",
+        lambda _content: [
+            PdfPageProfile(page_number=1, text="", lines=[], table_groups=[]),
+            PdfPageProfile(page_number=2, text="", lines=[], table_groups=[]),
+        ],
+    )
+    monkeypatch.setattr(parser, "_ocr_extract_page_texts", lambda _content: ["年度报告", "营业收入 100"])
+
+    result = parser.parse(
+        doc_id="doc-ocr-quality",
+        content=b"mock-pdf-content",
+        metadata=build_metadata("scan.pdf", ".pdf"),
+    )
+
+    assert result.metadata.parse_backend == "pymupdf+pytesseract"
+    assert result.quality is not None
+    assert result.quality.text_coverage == 1.0
+    assert result.quality.empty_page_count == 0
+    assert not any(issue.code == "low_text_coverage" for issue in result.issues)
+
+
+def test_pdf_parser_uses_scan_profile_fast_path(monkeypatch) -> None:
+    parser = PdfDocumentParser(backend_priority=["native_pdf"])
+    expected = [PdfPageProfile(page_number=1, text="", lines=[], table_groups=[])]
+    monkeypatch.setattr(parser, "_build_scan_page_profiles", lambda _content: expected)
+
+    assert parser._build_page_profiles(b"image-only-pdf") is expected
+
+
 def test_pdf_parser_detects_header_footer_and_captions() -> None:
     parser = PdfDocumentParser(backend_priority=["table_pdf", "native_pdf"])
     page_profiles = [
@@ -925,6 +958,21 @@ def test_pdf_parser_mineru_page_blocks_prefer_canonical_page_payloads() -> None:
     assert blocks[0].text == "Risk Factors"
     assert blocks[1].page == 1
     assert blocks[1].block_type == "paragraph"
+
+
+def test_pdf_parser_partial_mineru_payloads_keep_original_pdf_page_numbers() -> None:
+    parser = PdfDocumentParser(
+        backend_priority=["mineru_pdf", "native_pdf"],
+        mineru_start_page_id=85,
+        mineru_end_page_id=85,
+    )
+    payloads = [[[{"type": "text", "content": "货币资金"}]]]
+
+    blocks = parser._parse_mineru_page_blocks(doc_id="doc-partial", json_payloads=payloads)
+
+    assert len(blocks) == 1
+    assert blocks[0].page == 86
+    assert blocks[0].block_id.startswith("doc-partial-mineru-page-86-")
 
 
 def test_chunking_service_consumes_page_blocks_and_tables() -> None:

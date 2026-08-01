@@ -1,12 +1,19 @@
+from datetime import UTC, datetime
 from decimal import Decimal
-from datetime import datetime
 
 from app.core.db.postgres_mappers import (
     document_record_from_orm,
     document_record_to_orm,
+    ingestion_job_from_orm,
+    ingestion_job_to_orm,
     metric_fact_to_orm,
     note_fact_to_orm,
     split_fact_value,
+)
+from src.claude_copilot.schemas.ingestion import (
+    IngestionJob,
+    IngestionJobEvent,
+    IngestionJobStatus,
 )
 from src.claude_copilot.schemas.document import (
     DocumentMetadata,
@@ -28,8 +35,8 @@ def test_document_record_mapper_round_trip() -> None:
         doc_id="doc-map-1",
         filename="report.pdf",
         status=DocumentProcessingStatus.COMPLETED,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
         storage_path="/tmp/report.pdf",
         parsed_path="postgres:parsed_documents/doc-map-1",
         segment_count=2,
@@ -42,6 +49,34 @@ def test_document_record_mapper_round_trip() -> None:
     assert restored.doc_id == record.doc_id
     assert restored.status == record.status
     assert restored.parsed_path == record.parsed_path
+
+
+def test_ingestion_job_mapper_round_trip_preserves_progress_and_events() -> None:
+    now = datetime.now(UTC)
+    job = IngestionJob(
+        job_id="job-map-1",
+        doc_id="doc-map-1",
+        filename="report.pdf",
+        status=IngestionJobStatus.RUNNING,
+        stage="cleaning",
+        progress_percent=35,
+        attempt=1,
+        max_attempts=3,
+        created_at=now,
+        updated_at=now,
+        events=[
+            IngestionJobEvent(
+                timestamp=now,
+                status=IngestionJobStatus.RUNNING,
+                stage="cleaning",
+                progress_percent=35,
+            )
+        ],
+    )
+
+    restored = ingestion_job_from_orm(ingestion_job_to_orm(job))
+
+    assert restored == job
 
 
 def test_financial_fact_mappers_preserve_numeric_and_provenance() -> None:

@@ -28,10 +28,12 @@ browser :3000 (agent-chat-ui)
 | `risk` | `app/workflows/risk/graph.py` | HAS_RISK 检索 + 规则摘要 |
 | `comparator` | `app/workflows/comparator/graph.py` | 双文档指标对比矩阵（P6h lite，无 UI） |
 | `reporting` | `app/workflows/reporting/graph.py` | 单文档提纲报告（P6h lite，无导出） |
+| `comparison_workflow` | `app/workflows/comparison_workflow/graph.py` | §5.4 lite：对比矩阵 + 风险对照 |
+| `report_workflow` | `app/workflows/report_workflow/graph.py` | §5.5 lite：提纲 + Quant 快照（无 PDF） |
 
 `research` 图（`app/workflows/research/graph.py`）存在但未注册于 `langgraph.json`；`agent` 经 `ResearchService.preview` 内联调用。
 
-`comparator` / `reporting` **不**挂到默认 `agent` 对话路由（对比需 `doc_id_a`+`doc_id_b`）；在 Agent Chat 或 LangGraph Studio 中直选图 ID 调试。§6.2–6.4 产品面未做。
+`comparator` / `reporting` 已挂入默认 `agent` 的 intent 路由（对比需第二 doc）。§6.2–6.4 产品面未做。
 
 ## Intent 路由
 
@@ -40,8 +42,10 @@ browser :3000 (agent-chat-ui)
 | Intent | 触发示例 | Agent Chat 行为 |
 |--------|----------|-----------------|
 | `risk` | 市场风险、风险暴露 | 调用 `risk` 子图 |
+| `compare` | 对比两家、比较营收 | 调用 `comparator`（需 `doc_id_b` / `AGENT_CHAT_DOC_ID_B`） |
 | `quant` | 同比增长、CAGR | 调用 `quant` 子图 |
 | `structured` | 某期营业收入是多少 | `ResearchService.preview` + 结构化前缀 |
+| `report` | 生成提纲报告、写一份报告 | 调用 `reporting` 提纲子图 |
 | `research` | 管理层展望、原因分析等 | `ResearchService.preview`（默认） |
 
 502/超时时 Agent 仍返回结构化指标 + **混合检索摘要**（`fusion_summary`），不空答。

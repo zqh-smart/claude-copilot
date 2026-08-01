@@ -37,13 +37,33 @@ REGRESSION_SAMPLES = [
         "scorecard": ROOT / "data" / "reports" / "eval" / "tianhua_2021_scorecard.json",
     },
 ]
+STRESS = {
+    "name": "gongtong_2021_scanned_pdf",
+    "golden": ROOT / "data" / "golden" / "gongtong_2021_pdf_stress.json",
+}
+TABLE_STRESS = {
+    "name": "gongtong_2021_scanned_balance_sheet",
+    "golden": ROOT / "data" / "golden" / "gongtong_2021_table_stress.json",
+}
+CONFLICT = {
+    "name": "guangzhou_langqi_2020_2021_conflict",
+    "golden": ROOT / "data" / "golden" / "guangzhou_langqi_conflict_e2e.json",
+}
 
 
-def parse_args() -> argparse.Namespace:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run acceptance suite profiles")
     parser.add_argument(
         "--profile",
-        choices=("smoke", "regression", "all"),
+        choices=(
+            "smoke",
+            "regression",
+            "stress",
+            "table-stress",
+            "conflict",
+            "soak",
+            "all",
+        ),
         default="smoke",
     )
     parser.add_argument(
@@ -58,10 +78,27 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--with-api",
+        dest="with_api",
         action="store_true",
-        help="After serving eval, run HTTP API smoke (TestClient)",
+        default=True,
+        help="After serving eval, run HTTP API smoke (default)",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--skip-api",
+        dest="with_api",
+        action="store_false",
+        help="Skip HTTP API smoke after serving eval",
+    )
+    parser.add_argument(
+        "--skip-invariants",
+        action="store_true",
+        help="Skip deterministic serving-gate/conflict invariant tests",
+    )
+    return parser
+
+
+def parse_args() -> argparse.Namespace:
+    return build_parser().parse_args()
 
 
 def _golden_status(path: Path) -> str:
@@ -75,6 +112,19 @@ def _run(cmd: list[str]) -> int:
     print("+", " ".join(cmd), flush=True)
     completed = subprocess.run(cmd, cwd=ROOT)
     return int(completed.returncode)
+
+
+def _run_invariants() -> int:
+    return _run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            str(ROOT / "tests" / "test_serving_gate.py"),
+            str(ROOT / "tests" / "test_serving_facts.py"),
+        ]
+    )
 
 
 def _run_sample(
@@ -150,9 +200,78 @@ def _run_sample(
     return 0
 
 
+def _run_stress(sample: dict) -> int:
+    expectations = json.loads(sample["golden"].read_text(encoding="utf-8"))
+    matches = sorted(PDF_DIR.glob(expectations["document"]["filename_glob"]))
+    if len(matches) != 1:
+        pattern = expectations["document"]["filename_glob"]
+        print(f"STRESS_PDF_MATCH_COUNT {len(matches)} pattern={pattern}")
+        return 1
+    return _run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "run_pdf_stress_eval.py"),
+            "--pdf-path",
+            str(matches[0]),
+            "--expectations",
+            str(sample["golden"]),
+        ]
+    )
+
+
+def _run_table_stress(sample: dict) -> int:
+    expectations = json.loads(sample["golden"].read_text(encoding="utf-8"))
+    matches = sorted(PDF_DIR.glob(expectations["document"]["filename_glob"]))
+    if len(matches) != 1:
+        pattern = expectations["document"]["filename_glob"]
+        print(f"TABLE_STRESS_PDF_MATCH_COUNT {len(matches)} pattern={pattern}")
+        return 1
+    return _run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "run_pdf_table_stress_eval.py"),
+            "--pdf-path",
+            str(matches[0]),
+            "--expectations",
+            str(sample["golden"]),
+        ]
+    )
+
+
+def _run_conflict(sample: dict) -> int:
+    expectations = json.loads(sample["golden"].read_text(encoding="utf-8"))
+    matches: list[Path] = []
+    for document in expectations["documents"]:
+        document_matches = sorted(PDF_DIR.glob(document["filename_glob"]))
+        if len(document_matches) != 1:
+            print(
+                f"CONFLICT_PDF_MATCH_COUNT {len(document_matches)} "
+                f"pattern={document['filename_glob']}"
+            )
+            return 1
+        matches.append(document_matches[0])
+    command = [
+        sys.executable,
+        str(ROOT / "scripts" / "run_conflict_e2e.py"),
+        "--expectations",
+        str(sample["golden"]),
+    ]
+    for path in matches:
+        command.extend(["--pdf-path", str(path)])
+    return _run(command)
+
+
+def _run_worker_soak() -> int:
+    return _run([sys.executable, str(ROOT / "scripts" / "run_ingestion_worker_soak.py")])
+
+
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
     args = parse_args()
+    if not args.skip_invariants:
+        code = _run_invariants()
+        if code != 0:
+            return code
     samples: list[dict] = []
     if args.profile in {"smoke", "all"}:
         samples.append(SMOKE)
@@ -168,6 +287,14 @@ def main() -> int:
             with_api=args.with_api,
         )
         worst = max(worst, code)
+    if args.profile in {"stress", "all"}:
+        worst = max(worst, _run_stress(STRESS))
+    if args.profile in {"table-stress", "all"}:
+        worst = max(worst, _run_table_stress(TABLE_STRESS))
+    if args.profile in {"conflict", "all"}:
+        worst = max(worst, _run_conflict(CONFLICT))
+    if args.profile in {"soak", "all"}:
+        worst = max(worst, _run_worker_soak())
     return worst
 
 

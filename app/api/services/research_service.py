@@ -2,6 +2,7 @@ import re
 
 from app.core.db import build_company_id
 from app.core.llm import GroundedResearchEngine
+from app.core.observability import Observability
 from app.core.rag import LocalRetriever, RetrievalOrchestrator
 from app.pipeline.feature_pipeline.pipeline_service import DocumentPipelineService
 from app.workflows.research.graph import build_research_graph
@@ -26,12 +27,16 @@ class ResearchService:
         retriever: LocalRetriever,
         orchestrator: RetrievalOrchestrator | None = None,
         grounded_engine: GroundedResearchEngine | None = None,
+        observability: Observability | None = None,
+        capture_trace_content: bool = False,
         max_revisions: int = 1,
     ) -> None:
         self._document_pipeline_service = document_pipeline_service
         self._retriever = retriever
         self._orchestrator = orchestrator
         self._grounded_engine = grounded_engine
+        self._observability = observability or Observability()
+        self._capture_trace_content = capture_trace_content
         self._max_revisions = max(0, max_revisions)
         self._graph = build_research_graph(
             self._run_retrieval,
@@ -41,6 +46,26 @@ class ResearchService:
         )
 
     def preview(self, *, doc_id: str, question: str, top_k: int) -> ResearchPreviewResponse:
+        inputs = {"doc_id": doc_id, "top_k": top_k, "question_length": len(question)}
+        if self._capture_trace_content:
+            inputs["question"] = question
+        with self._observability.trace(
+            "research.preview",
+            inputs=inputs,
+            metadata={"service": "ResearchService"},
+        ) as span:
+            response = self._preview(doc_id=doc_id, question=question, top_k=top_k)
+            span.set_output(
+                {
+                    "grounded": response.grounded,
+                    "hit_count": len(response.hits),
+                    "warning_count": len(response.warnings),
+                    "revision_count": response.revision_count,
+                }
+            )
+            return response
+
+    def _preview(self, *, doc_id: str, question: str, top_k: int) -> ResearchPreviewResponse:
         record = self._document_pipeline_service.get_document(doc_id)
         company_id = (
             build_company_id(record.metadata.company)
@@ -213,25 +238,50 @@ class ResearchService:
                 "grounded": review.passed,
             }
         except Exception as exc:
+            message = str(exc)
+            is_timeout = "timeout" in message.lower() or "timed out" in message.lower()
+            # Soft-fail timeouts: keep draft, skip revise burn, never mark grounded.
             review = CriticReview(
                 passed=False,
                 score=0.0,
                 issues=[
                     CriticIssue(
                         category="logic_error",
-                        severity="high",
-                        message=f"Critic execution failed: {type(exc).__name__}",
+                        severity="medium" if is_timeout else "high",
+                        message=(
+                            f"Critic timed out: {type(exc).__name__}"
+                            if is_timeout
+                            else f"Critic execution failed: {type(exc).__name__}"
+                        ),
                     )
                 ],
-                summary="Critic failed; answer cannot be marked grounded.",
+                summary=(
+                    "Critic timed out; answer kept but not marked grounded."
+                    if is_timeout
+                    else "Critic failed; answer cannot be marked grounded."
+                ),
             )
+            # Still apply deterministic citation checks when possible.
+            try:
+                review = self._grounded_engine._apply_deterministic_checks(
+                    review,
+                    synthesis,
+                    state.get("evidence", []),
+                )
+            except Exception:  # noqa: BLE001
+                pass
             return {
                 "critic": review.model_dump(mode="json"),
                 "grounded": False,
                 "warnings": [
                     *state.get("warnings", []),
-                    f"critic failed: {exc}",
+                    (
+                        f"critic timed out: {exc}"
+                        if is_timeout
+                        else f"critic failed: {exc}"
+                    ),
                 ],
+                # Soft-fail: keep draft, skip revision burn (critic already unavailable).
                 "revision_count": state.get("max_revisions", 0),
             }
 

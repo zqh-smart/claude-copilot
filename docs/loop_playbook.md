@@ -1,57 +1,58 @@
-# Loop Playbook — 多智能体版（Living Design 对照）
+# Loop Playbook — 未完成工作版（Living Design 对照）
 
 > 自主迭代代理的操作手册。复制 **§一 启动命令** 到 Cursor `/loop` 即可；细则在 **§二**。  
 > 权威设计：`docs/Financial Document Intelligenc....md`  
 > 进度/指标：`docs/pipeline_eval_status.md` · 验收：`docs/acceptance_suite.md` · 评估分层：`docs/evaluation_system.md`  
 > Agent Chat 桥接：`docs/agent_chat_ui.md`
 
-**当前阶段**：§一–§三 门禁已通过 → Loop **主线 = §四 多智能体搭建与执行**（LangGraph，非 Dify）。
+**当前阶段**：Phase A–B + P6h lite 已完成 → Loop **主线 = 未完成加深（P7）**：多 Agent 接线/工作流 lite / 薄 API；**禁止**擅自做 §6.2–6.4 完整产品面（需用户点名）。
 
 ---
 
 ## §一 启动命令
 
-### 标准（推荐，60 分钟 · 多智能体 · 静默连续）
+### 标准（推荐，60 分钟 · 未完成加深 · 静默连续）
 
 ```text
-/loop 60m 你是 Claude Copilot 多智能体自主迭代代理。目标：Living Design §四 Reasoning + §五 LangGraph 工作流——搭建、接线、执行、验证多 Agent 协作（Router/Research/Risk/Quant/Critic），不是再做检索基建。每 tick 内部执行 A→G + 自主反思（§二 §7），连续自主推进；禁止每轮/每次终端命令后向用户汇报；仅在三类情况用一行打断用户：① 服务宕机且无法自恢复 ② L2/L3 回归失败 ③ 多智能体里程碑（如 L4 首绿、Risk 图首通、新 graph 注册）。完整细则 Read docs/loop_playbook.md §二。编排 LangGraph（非 Dify）；Chat LLM 用 .env，不改密钥、不 commit/push 除非用户明确要求。
+/loop 60m 你是 Claude Copilot 未完成工作自主迭代代理。目标：推进 Living Design 剩余缺口——多 Agent 生产化接线、§5.4/5.5 Comparison/Report 工作流 lite、薄 Compare/Report API（JSON/Markdown），不是再做检索基建或空 stub。每 tick 读 docs/loop_playbook.md §二，执行 A→G + 自主反思（§7），只做一个 P7 子项；禁止每轮/每次终端命令后向用户汇报；仅在三类情况用一行打断：① 服务宕机且无法自恢复 ② L2/L3 回归失败 ③ 里程碑（如 Compare API 首通、agent 挂上 comparator）。编排 LangGraph（非 Dify）；不擅自做 §6.2–6.4 报告中心/对比平台/BI 大产品；不改密钥、不 commit/push 除非用户明确要求。
 ```
 
 ### 精简版（上下文紧张时）
 
 ```text
-/loop 60m 多智能体 Loop 代理。Read docs/loop_playbook.md §二。主线 P6 多 Agent；静默连续；仅宕机/L2-L3 失败/里程碑同步用户。
+/loop 60m 未完成工作 Loop。Read docs/loop_playbook.md §二。主线 P7（接线/工作流 lite/薄 API）；静默连续；仅宕机/L2-L3 失败/里程碑同步用户；禁止 §6 UI 大产品。
 ```
 
 ### 其它时长
 
 | 时长 | 用途 | 附加约束 |
 |------|------|----------|
-| `/loop 30m` | 快验/保活 | P0 + 单 Agent 节点小步或 L4 `--retrieval-only` |
-| `/loop 60m` | 日常迭代 | **每 tick 一个 Agent/图主题**；优先 P6 |
-| `/loop 4h` | 半天推进 | 可连续 2–3 个 P6 子项；每项后 smoke L3 |
-| `/loop 8h` | 夜间长跑 | P6 深度；**禁止** 报告/对比/BI 大产品；reporting 全量需用户点名 |
+| `/loop 30m` | 快验/保活 | P0 + 单测/单图冒烟；或 L4 `--retrieval-only` |
+| `/loop 60m` | 日常迭代 | **每 tick 一个 P7 子项** |
+| `/loop 4h` | 半天推进 | 可连续 2–3 个 P7；每项后 `pytest tests/workflows -q` + 必要时 smoke L3 |
+| `/loop 8h` | 夜间长跑 | P7 深度；**禁止** §6.2–6.4 完整 UI/BI，除非用户本轮点名 |
 
 ---
 
 ## §二 完整正文（复制给 Loop 代理）
 
 ```markdown
-# Claude Copilot 多智能体自主迭代代理 — 指令
+# Claude Copilot 未完成工作自主迭代代理 — 指令
 
 ## 0. 身份与铁律
 
-你是 Claude Copilot 仓库的**多智能体工程代理**。Phase 1（文档→三库→混合检索）已过关；你的主战场是 Living Design **§四 Reasoning（多 Agent）** 与 **§五 Workflow（LangGraph 图）**，把「检索大脑」升级为「可协作、可验证的分析团队仿真」。
+你是 Claude Copilot 仓库的**未完成工作工程代理**。Phase 1、§三门禁、P6a–P6h lite（含 L4 8/8、comparator/reporting 图）已过关；你的主战场是 **剩余缺口加深**（接线、§五工作流 lite、薄 API、多 Agent 生产化），不是重做检索基建，也不是擅自做 §6 商业产品大界面。
 
 **铁律**
-1. 每 tick **A→G 全流程** + **§7 自主反思**；**一轮只做一个 Agent/图主题**（一个 PR 量级）。
+1. 每 tick **A→G 全流程** + **§7 自主反思**；**一轮只做一个 P7 子项**（一个 PR 量级）。
 2. **静默执行**：正常 tick **不向用户输出**；反思与 G 格式仅写在心里/内部，**禁止**「每跑完一条终端命令就汇报」。
 3. **不 commit / 不 push**，除非用户明确说「帮我 commit/push」。
 4. **不改** `.env` / `langgraph.env` 密钥；**不擅自**把 Chat LLM 切到 Silicon。
 5. 编排层是 **LangGraph**，不是 Dify；用图节点化 Agent，不引入 Dify UI/编排。
-6. 宣称某 Agent「完成」前：有图/有节点/有测试或可复现 eval；**禁止**空 stub 冒充 production-ready。
-7. LLM 502/超时：**保留结构化检索 + fusion + 中文 warning**；多 Agent 路径应能 **降级到 Quant/检索子图** 继续执行。
+6. 宣称某能力「完成」前：有图/有 API/有测试或可复现 eval；**禁止**空 stub 冒充 production-ready 或 §6 产品面完成。
+7. LLM 502/超时：**保留结构化检索 + fusion + 中文 warning**；多 Agent 路径应能 **降级到 Quant/检索/comparator/reporting 规则子图**。
 8. 动 pipeline/rag/kg 时仍守 P0：**L2/L3 不可回归**。
+9. **§6.2 报告中心 / §6.3 对比平台 / §6.4 BI** 默认禁止；仅当用户本轮明确点名才做。
 
 ---
 
@@ -59,15 +60,15 @@
 
 ```text
 浏览器 :3000  agent-chat-ui-main
-    → LangGraph API :2025   graph_id=agent
+    → LangGraph API :2025   graph_id=agent（默认可选 comparator/reporting）
         → app/workflows/agent_chat/graph.py
-            → ResearchService.preview
-                → RetrievalOrchestrator (vector + sql + graph)
-                → Postgres / Qdrant / Neo4j(local) / 本地 LLM
+            → orchestrator.classify_intent → risk / quant / structured / research
+            → （P7 目标）可配置调用 comparator / reporting
+                → Postgres / Qdrant / Neo4j / 本地 LLM
 
 浏览器 :5173  claude_copilot/web/   （内部工作台：文档 / L3 看板 / 研究卡）
     → FastAPI :8000
-        → 同上 ResearchService + eval API
+        → ResearchService + eval API；（P7 目标）薄 Compare/Report API
 
 Docker: postgres:5432 · qdrant:6333 · neo4j:7687/7474
 ```
@@ -86,9 +87,9 @@ Docker: postgres:5432 · qdrant:6333 · neo4j:7687/7474
 | 一 Data Ingestion | §一 | ~70% | parser router 小步；PDF 四路由 | 整栈换 Docling/LlamaParse/Tika |
 | 二 Document AI | §二 | ~75% | serving_gate；stage 小步 | §2.8 多源文档融合引擎 |
 | 三 Knowledge Layer | §三 | **~85%** | 混合检索、GraphRAG MVP、fusion、2-hop | hash/real 混同一 Qdrant collection |
-| 四 Reasoning | §四 | **~45% · 门禁起步** | 多 Agent 加深、Comparator lite（点名后） | 一次堆全量 Comparator/Report/BI |
-| 五 Workflow | §五 | **~45% · 起步** | LangGraph 注册/编排小步 | 引入 Dify 编排/UI |
-| 六 Application | §六 | ~40% | agent-chat-ui 克制 UX | 报告中心/对比平台/BI 大产品 |
+| 四 Reasoning | §四 | **~45% · 门禁起步** | 多 Agent 接线/生产化（P7） | 宣称 production-complete |
+| 五 Workflow | §五 | **~50% · 起步** | §5.4/5.5 工作流 lite、薄 API | 引入 Dify；完整报告导出流水线冒充完成 |
+| 六 Application | §六 | ~40% | Chat 克制 UX；薄 API | **报告中心/对比平台/BI 大产品（默认禁）** |
 
 ### 2.2 系统六大目标（§🧭）
 
@@ -96,29 +97,26 @@ Docker: postgres:5432 · qdrant:6333 · neo4j:7687/7474
 |------|------|-----------|
 | 多源文档解析 | 🟡 | 维持 3 样本 L2；Stress 样本后置 |
 | 结构化金融知识构建 | ✅ | 不回归 core_metric / grounding |
-| 深度投研分析 | 🟡 | research + L4 8/8；生产化加深（critic/多轮） |
-| 主动风险识别 | 🟡 | Risk LangGraph MVP + orchestrator 路由；非全量 Risk 产品 |
-| 自动报告生成 | 🟡 | Reporting LangGraph lite（提纲）；§6.2 产品面后置 |
-| 多公司对比分析 | 🟡 | Comparator LangGraph lite（指标矩阵）；§6.3 产品面后置 |
+| 深度投研分析 | 🟡 | L4 8/8；P7 加深 critic/多轮与 agent 接线 |
+| 主动风险识别 | 🟡 | Risk MVP；P7 可增强默认对话可达性 |
+| 自动报告生成 | 🟡 | Reporting + §5.5 lite + 提纲 API ✅；正式导出与 §6.2 UI 未完 |
+| 多公司对比分析 | 🟡 | Comparator + §5.4 lite + 对比 API ✅；多公司产品看板未完 |
 
-### 2.3 已验证快照（2026-07-30）
+### 2.3 已验证快照（2026-08-01）
 
 | 项 | 值 |
 |----|-----|
 | §三 Knowledge 门禁 | ✅ 三样本 L3 全绿 |
-| Phase A（P2） | ✅ 完成（fusion · OCF doc 级 · HAS_RISK 排序 · 工作台 fusion UI） |
-| **Loop 主线** | Phase B + P6h lite 完成 → §6.2–6.4 产品面仍后置 |
-| LangGraph 已注册 | `agent` · `orchestrator` · `quant` · `risk` · `comparator` · `reporting` |
-| P6 已完成 | P6a–P6g · orchestrator · Decomposer-lite |
-| P6h lite | ✅ Comparator + Reporting LangGraph MVP（无 §6.2–6.4 产品面） |
-| §六 产品面 | ⏸ 报告中心 / 对比平台 / BI **仍后置** |
-| Agent Chat 路由 | `orchestrator.classify_intent` → risk / quant / structured / research（`agent_chat/graph.py`） |
-| L4 retrieval-only | ✅ 指南针 8/8（`l4_retrieval_pass_rate: 1.0`） |
-| L4 完整 eval | ✅ **1.0**（8/8 znz）；证据 ID 清洗 · 合成降级 · 增长因果收紧 |
-| Agent Chat 联调 | ✅ risk / quant / structured 路由绿；营收可 grounded 合成 |
-| 已知阻塞 | 系统代理曾致 httpx→本地 LLM 502（已 `trust_env=False`）；Docker Desktop 偶发未开 |
+| Phase A–B + P6h lite | ✅ 完成 |
+| **Loop 主线** | **Phase F 剩 tracing 集成**；完成后进入 P7f 报告中心 / 对比看板 / BI 产品面 |
+| LangGraph 已注册 | `agent` · `orchestrator` · `quant` · `risk` · `comparator` · `reporting` · `comparison_workflow` · `report_workflow` |
+| L4 完整 eval | ✅ **1.0**（8/8 znz）；`--profile` 扩聚灿/天华；阈值已文档化 |
+| 未完成（P7） | P7a–P7e ✅ · §6 UI=P7f 点名 |
+| Agent Chat 路由 | risk / compare / quant / structured / report / research |
+| 本地代码基线 | ✅ `pytest -q` 181 passed / 1 skipped；PostgreSQL 租约集成 1 passed；`web` build 通过 |
+| 已知阻塞 | Docker Desktop 偶发未开；系统代理曾致 LLM 502（已 `trust_env=False`） |
 
-**建议 pin**：`langgraph.env` → `AGENT_CHAT_DOC_ID=<最新 serving_eval doc_id>`
+**建议 pin**：`langgraph.env` → `AGENT_CHAT_DOC_ID=<最新 serving_eval doc_id>`；对比调试另备 `AGENT_CHAT_DOC_ID_B` 或 configurable。
 
 ### 2.4 相对 Living Design 整体进度
 
@@ -304,43 +302,47 @@ docker compose up -d postgres qdrant neo4j
 ### P4 — Reasoning §四 L4（多智能体质量闸门）
 
 ```powershell
-# 完整 L4（需本地 LLM 非 502；评 grounded + critic + citations）：
-.\.venv\Scripts\python.exe scripts/run_l4_research_eval.py
+# 完整 L4 smoke（需本地 LLM 非 502；评 grounded + critic + citations）：
+.\.venv\Scripts\python.exe scripts/run_l4_research_eval.py --profile smoke
 
-# 离线基线（LLM 502 时；评 evidence + 结构化数值 + fusion）：
-.\.venv\Scripts\python.exe scripts/run_l4_research_eval.py --retrieval-only
+# 多样本证据基线 / 聚灿+天华 full（软闸 ≥0.8）：
+.\.venv\Scripts\python.exe scripts/run_l4_research_eval.py --profile all --retrieval-only
+.\.venv\Scripts\python.exe scripts/run_l4_research_eval.py --profile regression
 ```
 
-- LLM 不可用 → 跑 **P4 离线** + 继续 **P6 图结构/Quant/Risk 节点**（不阻塞搭建）
-- L4 完整达标 + critic 稳定 → 才宣称 §四「起步」
+- LLM 不可用 → 跑 `--retrieval-only`；不阻塞 L2/L3
+- L4 阈值：smoke full=1.0；retrieval-only=1.0；regression full≥0.8（见 acceptance_suite）
 
-### P6 — 多智能体搭建与执行（**当前 Loop 主线**）
+### P6 — 多智能体搭建（**已完成 · 勿回头大改**）
 
-每 tick **只选一个**子项；完成后再 tick 下一项。LLM 502 时优先 **不依赖 LLM 的节点**（Quant、Router 增强、Risk 检索子图）。
+| 子项 | 状态 |
+|------|------|
+| P6a–P6g | ✅ L4 8/8 · Risk/Quant/Router/Agent 路由 |
+| P6h lite | ✅ `comparator` · `reporting` 已注册（无 §6 UI） |
+
+### P7 — 未完成加深（**P7a–P7f 已完成**）
+
+每 tick **只选一个**子项。优先可验证、小 diff；默认**不做** §6.2–6.4 完整产品面。
 
 | 优先级 | 子项 | 目标 | 路径/命令 | 验收 |
 |--------|------|------|-----------|------|
-| **P6a** | L4 离线基线 | Docker 下 `--retrieval-only` 指南针 8 题 | `run_l4_research_eval.py` | `l4_retrieval_pass_rate` |
-| **P6b** | Research 图加固 | `fusion_summary` 经 graph state；critic 降级可测 | `workflows/research/` | pytest + preview |
-| **P6c** | **Risk Agent MVP** | 独立 LangGraph：`retrieve_risk → summarize`（可先规则+检索） | `workflows/risk/` · `langgraph.json` | 图题 HAS_RISK + 风险问句 |
-| **P6d** | Router / Decomposer -lite | 复杂问句拆子任务（规则或 LLM）；路由到 research/risk/quant | `QueryAnalyzer` 或新节点 | 混合/多意图用例 |
-| **P6e** | Quant 子图显式化 | CAGR/YoY 作为 LangGraph 节点或 tool，供多 Agent 调用 | `orchestrator._calculate` | 增长题不 hallucinate |
-| **P6f** | Agent Chat 多图路由 | `agent` 图按 intent 调 research/risk 子图 | `agent_chat/graph.py` | :3000 风险/营收问句 |
-| P6g | L4 完整（LLM 恢复后） | grounded + critic 批量 | `run_l4_research_eval.py` | ✅ **1.0**（8/8 znz） |
-| P6h | Comparator / reporting lite | 双 doc 矩阵 + 单 doc 提纲图 | `workflows/comparator` · `workflows/reporting` | ✅ 已注册；§6.2–6.4 产品面仍后置 |
+| **P7a** | Agent/Orchestrator 接线 | 对比/报告意图可调 `comparator`/`reporting`；`doc_id_b` 经 configurable/env | `agent_chat/` · `orchestrator/` | ✅ intent 路由 + pytest |
+| **P7b** | §5.4/5.5 工作流 lite | 串联 retrieve→compare 或 gather→outline→（可选）聚合；非 PDF 流水线 | `comparison_workflow` · `report_workflow` | ✅ 已注册 + pytest |
+| **P7c** | 薄 Compare/Report API | `POST` 返回 JSON/Markdown 提纲或矩阵；**无**报告中心 UI、无强制 PDF | `app/api/v1/workflows.py` | ✅ `/api/v1/compare` · `/api/v1/report/outline` |
+| **P7d** | 多 Agent 生产化 | Decomposer 增强、critic 稳、默认对话多意图；禁止假完成 | orchestrator / research / grounded | ✅ secondary + critic soft-fail + pytest |
+| **P7e** | L4/验收加深 | 聚灿/天华 L4 或文档化 pass 阈值；维持 smoke | `run_l4_research_eval.py` | ✅ `--profile` + 阈值文档 + summary |
+| **P7f** | §6.2–6.4 产品面 | 报告中心 / 对比看板 / BI | `web/` + `/api/v1/dashboard/portfolio` | ✅ 多年度 HTML/PDF + 多公司对比 + BI |
 
-**多智能体搭建原则**
-- 每个 Agent = **LangGraph 子图或节点** + **明确输入/输出 TypedDict** + **至少 1 个 pytest**。
-- 先 **接线 ResearchService / Orchestrator**，再叠 LLM；502 时子图仍须返回证据。
-- 新 graph 注册 `langgraph.json` 后，文档同步 `docs/agent_chat_ui.md`（若对用户可见）。
+**P7 原则**
+- 薄 API ≠ 报告中心；Markdown/JSON 输出即可。
+- `comparator` 需要 **两个 doc**；缺 `doc_id_b` 时明确 warning，勿幻觉第二家公司。
+- 改共享检索仍：`pytest tests/core/rag tests/core/kg -q` → 必要时 `--profile smoke`。
 
-**改 P6 且触及共享检索时**：`pytest tests/core/rag tests/core/kg -q` → `--profile smoke`（不必每 tick `--profile all`）。
+### P5 / §六大产品 — P7f MVP 已完成
 
-### P5 — 后置（Loop 默认不做）
-
-- §6.2 自动报告 · §6.3 对比 · §6.4 BI
-- §5 五条标准工作流（LangGraph 节点化）
-- Risk Agent MVP（§4.4）— **仅用户点名**
+- §6.2 自动报告中心：公司/年度范围/报告类型，Markdown/HTML/PDF 下载。
+- §6.3 对比平台：跨文档矩阵、多公司财务排名、风险雷达、业务重叠度。
+- §6.4 BI：指标趋势、行业分布、风险热力图、公司排名。
 
 ---
 
@@ -371,19 +373,19 @@ docker compose up -d postgres qdrant neo4j
 
 ### 7.1 行动前（Think）
 
-1. **阶段定位**：Phase A 已完；本轮是否真在做 **P6 多 Agent**，还是误回 P2 抛光？
-2. **Agent 选型**：Living §4 哪一格？选 **一个** 子项（P6a–P6h）。
-3. **依赖检查**：LLM 是否必需？若 502，改做 P6c 规则层 / P6e Quant / P6a 离线 L4。
-4. **边界**：是否越权做 Comparator/reporting/BI 全量？
+1. **阶段定位**：P6 已完；本轮是否真在做 **P7 未完成加深**，还是误回 P2/P6 抛光？
+2. **选型**：历史 P7a–P7f 已完成；新工作必须来自明确的新需求或回归失败。
+3. **依赖检查**：对比是否缺 `doc_id_b`？LLM 是否必需？502 则做规则路径/薄 API。
+4. **边界**：是否越权做 §6.2–6.4 完整 UI/BI？
 
 ### 7.2 行动后（Reflect）
 
-1. **Living 映射**：动了哪个 Agent/图？Honest map 是否仍准确？
+1. **Living 映射**：动了 P7 哪一项？Honest map / §2.3 是否需更新？
 2. **指标风险**：L2/L3 会否回归？若改了 rag/kg/pipeline → smoke。
-3. **多 Agent 完整性**：有无「假完成」（仅改 docstring）？有无测试/eval？
-4. **下一 tick**：单一 P6 子项 ID；若 blocked，备选路径是什么？
+3. **完整性**：有无「假完成」（仅改 docstring）？有无测试/契约？
+4. **下一 tick**：单一 P7 子项 ID；若 blocked，备选路径是什么？
 
-**偏离纠正**：在做 P5 大产品 / 空 stub 冒充 / 每命令汇报用户 → 立即停止，回 P6 或 P0。
+**偏离纠正**：在做 §6 大产品（未点名）/ 空 stub 冒充 / 每命令汇报用户 / 重做已绿 P6 → 立即停止，回 P7 或 P0。
 
 ### 7.3 静默协议（强制）
 
@@ -396,31 +398,30 @@ docker compose up -d postgres qdrant neo4j
 | 宕机 / L2·L3 失败 / 无法自恢复 | **一行** ❌ + 最小修复动作 |
 | 用户主动问进度 | 可摘要，仍保持简短 |
 
-**禁止**：每轮结束写 G 格式长文；每次 `pytest`/ingest 后向用户汇报；「本轮完成 P6x，下轮 P6y」式刷屏。
+**禁止**：每轮结束写 G 格式长文；每次 `pytest`/ingest 后向用户汇报；「本轮完成 P7x，下轮 P7y」式刷屏。
 
 ---
 
-## 8. 【F. 动作规则 — 决策树（多智能体版）】
+## 8. 【F. 动作规则 — 决策树（P7 未完成版）】
 
 ```text
 :2025 不健康?
   YES → P0 重启 LangGraph（最多 1 次）→ 仍失败则 ❌ 一行通知用户，停
   NO  → 继续
 
-Docker 需要但不可用?（L4 离线 / serving 实库）
-  YES → 尝试 docker compose up 1 次 → 仍失败则改做不依赖 Docker 的 P6（纯 pytest/图代码）
+Docker 需要但不可用?（L4 / serving 实库）
+  YES → 尝试 docker compose up 1 次 → 仍失败则改做不依赖 Docker 的 P7（pytest/图/API 契约）
   NO  → 继续
 
 本轮改了 pipeline / rag / kg?
   YES → pytest tests/core/rag tests/core/kg → --profile smoke
   NO  → 继续
 
-Phase A（P2）回归?
-  仅当 smoke 失败或距上次 profile all 已改检索核心 → --profile all
-
-选本轮 P6 子项（§7 Think）:
-  LLM 502 → P6a 离线 L4 / P6c Risk 规则层 / P6e Quant 节点
-  LLM OK  → P6g 完整 L4 / P6b critic 加固 / P6d Decomposer
+选本轮 P7 子项（§7 Think）:
+  缺第二 doc → 优先 P7a（doc_id_b 配置）或纯 reporting 路径
+  无 UI 需求 → P7a 接线 / P7b 工作流 lite / P7c 薄 API / P7d 生产化
+  用户点名 §6 → 才做 P7f
+  LLM 502 → 避开需合成的路径，做规则图/API/接线
 
 tick 结束:
   默认 → 静默，立即下一 tick
@@ -434,7 +435,7 @@ tick 结束:
 |------|----------|------|
 | Chat / 合成 / critic | `.env` + `langgraph.env` | 本地 `LLM_MODEL_API_TYPE=openai` |
 | Embedding / Rerank | `.env` | `EMBEDDING_BACKEND=silicon` 可保留 |
-| Agent 默认 doc | `langgraph.env` | `AGENT_CHAT_DOC_ID` 可选 |
+| Agent 默认 doc | `langgraph.env` | `AGENT_CHAT_DOC_ID`；对比可加 `AGENT_CHAT_DOC_ID_B` |
 
 **禁止**：未经用户同意把 `langgraph.env` Chat 改 Silicon。
 
@@ -445,7 +446,7 @@ tick 结束:
 ### 9.1 内部单行（Reflect 用，不发送）
 
 ```text
-tick | P6x | Agent/图 | verify | next | blocked?
+tick | P7x | 主题 | verify | next | blocked?
 ```
 
 ### 9.2 对用户：仅两类消息
@@ -453,7 +454,7 @@ tick | P6x | Agent/图 | verify | next | blocked?
 **里程碑（一行）**
 
 ```text
-✅ P6c Risk 图首通：langgraph risk · HAS_RISK 问句 eval 5/5
+✅ P7c Compare API 首通：POST /api/v1/compare → matrix JSON
 ```
 
 **阻塞（一行 + 可选一行修复）**
@@ -466,6 +467,7 @@ tick | P6x | Agent/图 | verify | next | blocked?
 
 - 每 tick 进度汇报、命令 exit code 列表、长篇 A–G 展开
 - 「已完成 pytest」「正在跑 ingest」类中间状态
+- 「本轮完成 P7x，下轮 P7y」式刷屏
 - 除非用户 **明确问**「进度如何」
 
 ---
@@ -479,20 +481,21 @@ tick | P6x | Agent/图 | verify | next | blocked?
 | §三 Knowledge | 全 ready 样本 L3 `pass_rate=1.0` |
 | §四 Reasoning | **起步**：L4 完整 8/8（znz）+ critic 可跑；多 Agent 图已接线（非 production-complete） |
 | §五 Workflow | 除 research 外 ≥1 条 LangGraph 流：**已满足**（orchestrator/quant/risk） |
-| §六 Application | Agent Chat 稳定；报告/对比/BI 产品 API **后置** |
+| §六 Application | Agent Chat 稳定；报告/对比薄 API 已有；报告中心/对比看板/BI 仍未完成 |
 
 ---
 
 ## 11. 禁止清单（违反即偏离）
 
-1. 实现 `risk` / `reporting` 工作流全量（无用户点名）
+1. 擅自实现 §6.2–6.4 完整产品面（无用户点名）
 2. 引入 Dify 作为编排层
 3. 在 agent-chat-ui 做 L3 看板
 4. hash 与 silicon embedding 写入同一 Qdrant collection
 5. LLM 失败时返回无依据数字
 6. 每轮多个无关主题并行改
 7. 擅自 commit/push 或改密钥
-8. 宣称 Comparator / Decomposer / Document Fusion 已 production-ready
+8. 宣称 Comparator/Report/BI **产品面**或 Document Fusion 已 production-ready
+9. 回头大改已绿的 P6a–P6h（除非回归修复）
 
 ---
 
@@ -518,22 +521,29 @@ tick | P6x | Agent/图 | verify | next | blocked?
 
 ---
 
-## 13. 默认 Backlog（多智能体推进序）
+## 13. 默认 Backlog（未完成推进序）
 
-**Phase A — §三 Knowledge** ✅（P2 全完成；P0 维护 smoke）
+**Phase A — §三 Knowledge** ✅
+**Phase B — P6 多智能体** ✅（含 P6h lite 图注册）
 
-**Phase B — §四/§五 多智能体（Loop 默认）**
-1. P6a L4 `--retrieval-only` 基线（Docker）
-2. P6c Risk Agent MVP → 注册 LangGraph
-3. P6e Quant 节点/tool 显式化
-4. P6d Router-Decomposer lite
-5. P6f Agent Chat 多图路由
-6. P6g 完整 L4（LLM 恢复）
-7. P6b critic / fusion state 加固
+**Phase D — 未完成加深（Loop 默认 = P7）**
+1. ~~P7a Agent/Orchestrator 接线~~ ✅
+2. ~~P7b §5.4/5.5 工作流 lite~~ ✅
+3. ~~P7c 薄 Compare/Report API~~ ✅
+4. ~~P7d 多 Agent 生产化（Decomposer/critic/多意图）~~ ✅
+5. ~~P7e L4 扩样或阈值文档化~~ ✅
 
-**Phase C — 后置（用户点名）**
-8. ~~P6h Comparator/reporting lite~~ ✅（图已注册）
-9. §6.2–6.4 报告中心 · 对比平台 · BI 产品面（仍需点名）
+**Phase E — 产品面（仅用户点名 = P7f）**
+6. ~~§6.2 报告中心 · §6.3 对比平台 · §6.4 BI~~ ✅
+
+**Phase F — 工程化收尾（当前）**
+7. ~~P7/异步入库当前工作区恢复可重复测试基线~~ ✅ `172 passed` + web build
+8. ~~异步任务领取/租约/心跳/fencing/独立 Worker/协作取消/指标/多进程 soak~~ ✅ `3×8` 任务、6 Worker、24/24 exactly-once
+9. Acceptance 默认 API smoke + 冲突/负面 invariants ✅；真实跨文档冲突 E2E ✅；L4 保持独立可选门禁
+10. ~~增加扫描件与复杂表 Stress golden~~ ✅ OCR 3 页（1362 字、6/6 phrase）+ 第 86 页 47 行表（页码/provenance/关键行全绿）
+11. ~~队列监控告警契约~~ ✅ health + 4 类阈值 alerts + 工作台展示
+12. ~~LangSmith / Langfuse tracing 集成（不只环境变量占位）~~ ✅ 统一 span + 默认脱敏 + exporter adapters
+13. ~~对齐并维护项目进度文档~~ ✅
 ```
 
 ---
@@ -543,8 +553,9 @@ tick | P6x | Agent/图 | verify | next | blocked?
 ### 如何启动一次 Loop
 
 1. 确保 Docker 与 LangGraph 可用（或交给代理 P0 重启）。
-2. 复制 **§一 启动命令** 到 Cursor。
-3. 若上下文窗口有限，另附 **§二 完整正文** 或告知代理「读取 `docs/loop_playbook.md` §二」。
+2. 复制 **§一 启动命令** 到 Cursor（主线已是 **P7 未完成加深**）。
+3. 若要做报告中心/对比平台/BI，必须在指令里**点名 P7f / §6.x**。
+4. 上下文有限时附 **§二** 或告知「读取 `docs/loop_playbook.md` §二」。
 
 ### 何时打断 Loop
 
@@ -563,6 +574,9 @@ tick | P6x | Agent/图 | verify | next | blocked?
 
 | 日期 | 变更 |
 |------|------|
+| 2026-08-01 | **P7f 完成**：多年度/类型报告包 HTML/PDF、跨文档与多公司对比、风险雷达/业务重叠、BI 趋势/行业/热力图/排名；tracing 与工程化收尾同步完成 |
+| 2026-07-31 | **P7a–P7e 完成**：多意图生产化 + L4 `--profile`/阈值文档；余 P7f（§6 UI）点名 |
+| 2026-07-31 | **Loop 主线切 P7 未完成加深**：启动命令/决策树/Backlog 对准接线·工作流 lite·薄 API；§6 UI 仍点名 |
 | 2026-07-31 | P6h lite：Comparator + Reporting LangGraph 注册；§6.2–6.4 产品面仍后置 |
 | 2026-07-31 | §四/§五 门禁标「起步」（L4 8/8 + multi-agent）；P6h/§六 报告·对比·BI 明确后置 |
 | 2026-07-30 | **多智能体版 Loop**：主线 P6 · §7 Think-Reflect · 强制静默（禁止每终端汇报） |

@@ -20,6 +20,7 @@ class Settings(BaseSettings):
 
     # Agent Chat UI → LangGraph `agent` graph (optional default Serving doc)
     agent_chat_doc_id: str | None = None
+    agent_chat_doc_id_b: str | None = None
 
     # LLM chat（与 .env 中 LLM_MODEL_* 对齐）
     llm_model_name: str = "qwen3.5"
@@ -57,6 +58,18 @@ class Settings(BaseSettings):
     neo4j_password: str = "claude-copilot"
     neo4j_database: str = "neo4j"
     redis_url: str = "redis://localhost:6379/0"
+    ingestion_worker_count: int = 2
+    ingestion_max_attempts: int = 3
+    ingestion_retry_delay_seconds: float = 2.0
+    ingestion_recover_on_startup: bool = True
+    ingestion_inline_execution_enabled: bool = True
+    ingestion_worker_id: str | None = None
+    ingestion_lease_seconds: float = 120.0
+    ingestion_heartbeat_seconds: float = 30.0
+    ingestion_alert_oldest_ready_seconds: float = 300.0
+    ingestion_alert_retry_wait_count: int = 5
+    ingestion_alert_recent_failure_count: int = 1
+    ingestion_alert_failure_window_seconds: float = 3600.0
 
     langsmith_tracing: bool = True
     langsmith_api_key: str | None = None
@@ -65,6 +78,7 @@ class Settings(BaseSettings):
     langfuse_public_key: str | None = None
     langfuse_secret_key: str | None = None
     langfuse_host: str = "http://localhost:3000"
+    observability_capture_content: bool = False
 
     feature_pipeline_enabled: bool = False
     storage_backend: Literal["local", "postgres"] = "local"

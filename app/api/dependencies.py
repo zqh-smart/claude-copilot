@@ -4,15 +4,18 @@ from qdrant_client import QdrantClient
 
 from app.api.services.document_service import DocumentService
 from app.api.services.financial_data_service import FinancialDataService
+from app.api.services.ingestion_job_service import IngestionJobService
 from app.api.services.research_service import ResearchService
 from app.core.config import get_settings
 from app.core.db import (
     LocalDocumentRepository,
     LocalFinancialDataRepository,
+    LocalIngestionJobRepository,
     LocalParsedDocumentRepository,
     LocalSegmentRepository,
     PostgresDocumentRepository,
     PostgresFinancialDataRepository,
+    PostgresIngestionJobRepository,
     PostgresParsedDocumentRepository,
     PostgresSegmentRepository,
     get_postgres_session_factory,
@@ -23,6 +26,7 @@ from app.core.kg import (
     NoOpKnowledgeGraphStore,
 )
 from app.core.llm import GroundedResearchEngine, build_json_chat_client
+from app.core.observability import build_observability
 from app.core.rag import (
     LocalRetriever,
     NoOpVectorStore,
@@ -68,6 +72,14 @@ def get_financial_data_repository():
         get_document_repository(),
         get_parsed_document_repository(),
     )
+
+
+@lru_cache
+def get_ingestion_job_repository():
+    settings = get_settings()
+    if settings.storage_backend == "postgres":
+        return PostgresIngestionJobRepository(get_postgres_session_factory())
+    return LocalIngestionJobRepository(settings.parsed_data_path)
 
 
 @lru_cache
@@ -134,6 +146,11 @@ def get_grounded_research_engine():
 
 
 @lru_cache
+def get_observability():
+    return build_observability(get_settings())
+
+
+@lru_cache
 def get_document_pipeline_service() -> DocumentPipelineService:
     settings = get_settings()
     return DocumentPipelineService(
@@ -152,6 +169,29 @@ def get_document_pipeline_service() -> DocumentPipelineService:
 @lru_cache
 def get_document_service() -> DocumentService:
     return DocumentService(get_document_pipeline_service())
+
+
+@lru_cache
+def get_ingestion_job_service() -> IngestionJobService:
+    settings = get_settings()
+    service = IngestionJobService(
+        pipeline_service=get_document_pipeline_service(),
+        repository=get_ingestion_job_repository(),
+        worker_count=settings.ingestion_worker_count,
+        default_max_attempts=settings.ingestion_max_attempts,
+        retry_delay_seconds=settings.ingestion_retry_delay_seconds,
+        lease_seconds=settings.ingestion_lease_seconds,
+        heartbeat_seconds=settings.ingestion_heartbeat_seconds,
+        worker_id=settings.ingestion_worker_id,
+        inline_execution_enabled=settings.ingestion_inline_execution_enabled,
+        alert_oldest_ready_seconds=settings.ingestion_alert_oldest_ready_seconds,
+        alert_retry_wait_count=settings.ingestion_alert_retry_wait_count,
+        alert_recent_failure_count=settings.ingestion_alert_recent_failure_count,
+        alert_failure_window_seconds=settings.ingestion_alert_failure_window_seconds,
+    )
+    if settings.ingestion_recover_on_startup and settings.ingestion_inline_execution_enabled:
+        service.recover_incomplete()
+    return service
 
 
 @lru_cache
@@ -180,5 +220,7 @@ def get_research_service() -> ResearchService:
             graph_store=get_graph_store(),
         ),
         grounded_engine=get_grounded_research_engine(),
+        observability=get_observability(),
+        capture_trace_content=settings.observability_capture_content,
         max_revisions=settings.llm_max_revisions,
     )

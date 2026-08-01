@@ -39,7 +39,10 @@ def _base_doc(*, company: str | None = "指南针", year: int | None = 2021) -> 
                 document_id="gate-doc",
                 position=0,
                 content="管理层讨论与分析：报告期内主营业务稳定增长，收入与利润均有提升。",
-                metadata={"content_type": "semantic_section", "section_type": "management_discussion"},
+                metadata={
+                    "content_type": "semantic_section",
+                    "section_type": "management_discussion",
+                },
             ),
             DocumentSegment(
                 segment_id="s2",
@@ -120,3 +123,20 @@ def test_serving_gate_blocks_ungrounded_core_metric() -> None:
     )
     assert gate.allow_metric_serving is False
     assert any(item.startswith("core_metric_exact_match") for item in gate.failures)
+
+
+def test_serving_gate_blocks_implausible_period() -> None:
+    document = _base_doc()
+    assert document.financial_schema is not None
+    fact = document.financial_schema.metric_facts[0]
+    fact.period = "202021"
+    document.financial_schema.metrics_index = {"revenue": {"202021": fact.value}}
+    document.financial_schema.statements[0].period_headers = ["202021"]
+    document.financial_schema.statements[0].metrics = {
+        "revenue": {"202021": fact.value}
+    }
+
+    gate = ServingGateService().evaluate(document)
+
+    assert gate.allow_metric_serving is False
+    assert any(item.startswith("implausible_period_ratio>") for item in gate.failures)

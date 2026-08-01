@@ -9,6 +9,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function requestArtifact(path: string, init: RequestInit): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch(`${API_BASE}${path}`, init);
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `${response.status} ${response.statusText}`);
+  }
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] ?? "research-report";
+  return { blob: await response.blob(), filename };
+}
+
 export type DocumentRecord = {
   doc_id: string;
   filename: string;
@@ -20,6 +31,49 @@ export type DocumentRecord = {
     year?: number | null;
     doc_type?: string | null;
   };
+};
+
+export type IngestionJobEvent = {
+  timestamp: string;
+  status: string;
+  stage?: string | null;
+  progress_percent: number;
+  message?: string | null;
+};
+
+export type IngestionJob = {
+  job_id: string;
+  doc_id: string;
+  filename: string;
+  status: string;
+  stage: string;
+  progress_percent: number;
+  attempt: number;
+  max_attempts: number;
+  created_at: string;
+  updated_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  error_message?: string | null;
+  events: IngestionJobEvent[];
+};
+
+export type IngestionQueueMetrics = {
+  generated_at: string;
+  status_counts: Record<string, number>;
+  active_worker_count: number;
+  cancellation_requested_count: number;
+  oldest_ready_age_seconds?: number | null;
+  expired_lease_count: number;
+  recent_failed_count: number;
+  health_status: "ok" | "warning" | "critical";
+  alerts: Array<{
+    code: string;
+    severity: "warning" | "critical";
+    message: string;
+    observed_value: number;
+    threshold: number;
+  }>;
 };
 
 export type CompanySummary = {
@@ -35,6 +89,70 @@ export type MetricObservation = {
   value: number | string;
   statement_type?: string | null;
   document_id?: string | null;
+};
+
+export type MetricTrend = {
+  company: CompanySummary;
+  metric_key: string;
+  unit?: string | null;
+  currency?: string | null;
+  points: Array<{
+    year: number;
+    period: string;
+    value: number;
+    yoy_growth?: number | null;
+    document_id: string;
+  }>;
+  cagr?: number | null;
+  warnings: string[];
+};
+
+export type CompareResponse = {
+  answer_markdown: string;
+  matrix: Array<Record<string, unknown>>;
+  highlights: string[];
+  warnings: string[];
+  workflow: string;
+};
+
+export type ReportOutlineResponse = {
+  answer_markdown: string;
+  sections: Array<Record<string, unknown>>;
+  warnings: string[];
+  workflow: string;
+};
+
+export type PortfolioDashboard = {
+  company_ids: string[];
+  rankings: Array<{
+    metric_key: string;
+    items: Array<{
+      company_id: string;
+      company_name: string;
+      year: number;
+      value: number;
+      unit?: string | null;
+      currency?: string | null;
+    }>;
+  }>;
+  industry_distribution: Array<{
+    industry: string;
+    company_count: number;
+    company_ids: string[];
+  }>;
+  risk_heatmap: Array<{
+    company_id: string;
+    company_name: string;
+    categories: Record<string, number>;
+    total: number;
+  }>;
+  business_overlap: Array<{
+    company_id_a: string;
+    company_id_b: string;
+    shared_segments: string[];
+    score: number;
+  }>;
+  warnings: string[];
 };
 
 export type FusionSummary = {
@@ -107,11 +225,74 @@ export type ScorecardSummary = {
 export const api = {
   health: () => request<{ status: string }>("/health"),
   listDocuments: () => request<DocumentRecord[]>("/api/v1/documents"),
+  listIngestionJobs: () => request<IngestionJob[]>("/api/v1/documents/jobs"),
+  getIngestionMetrics: () =>
+    request<IngestionQueueMetrics>("/api/v1/documents/jobs/metrics"),
   listCompanies: () => request<CompanySummary[]>("/api/v1/companies"),
   queryMetrics: (companyId: string, metricKey = "revenue") =>
     request<{ items: MetricObservation[] }>(
       `/api/v1/companies/${encodeURIComponent(companyId)}/metrics?metric_key=${encodeURIComponent(metricKey)}&limit=50`,
     ),
+  metricTrend: (companyId: string, metricKey: string) =>
+    request<MetricTrend>(
+      `/api/v1/companies/${encodeURIComponent(companyId)}/metrics/${encodeURIComponent(metricKey)}/trend`,
+    ),
+  compareDocuments: (payload: {
+    doc_id_a: string;
+    doc_id_b: string;
+    question: string;
+    period?: string | null;
+    metric_keys?: string[] | null;
+    use_workflow: boolean;
+  }) =>
+    request<CompareResponse>("/api/v1/compare", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  reportOutline: (payload: {
+    doc_id: string;
+    question: string;
+    top_k: number;
+    use_workflow: boolean;
+  }) =>
+    request<ReportOutlineResponse>("/api/v1/report/outline", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  reportExport: (payload: {
+    doc_id: string;
+    question: string;
+    top_k: number;
+    use_workflow: boolean;
+    title: string;
+    format: "html" | "pdf";
+  }) =>
+    requestArtifact("/api/v1/report/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  reportBundleExport: (payload: {
+    doc_ids: string[];
+    question: string;
+    top_k: number;
+    report_type: "investment" | "risk";
+    title: string;
+    format: "html" | "pdf";
+  }) =>
+    requestArtifact("/api/v1/report/export-bundle", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  portfolioDashboard: (companyIds: string[], metricKeys: string[]) =>
+    request<PortfolioDashboard>("/api/v1/dashboard/portfolio", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ company_ids: companyIds, metric_keys: metricKeys }),
+    }),
   research: (docId: string, question: string, topK = 5) =>
     request<ResearchResponse>("/api/v1/research/query", {
       method: "POST",
@@ -129,5 +310,16 @@ export const api = {
       if (value) body.append(key, value);
     }
     return request<DocumentRecord>("/api/v1/documents/upload", { method: "POST", body });
+  },
+  uploadDocumentAsync: async (file: File, fields: Record<string, string>) => {
+    const body = new FormData();
+    body.append("file", file);
+    for (const [key, value] of Object.entries(fields)) {
+      if (value) body.append(key, value);
+    }
+    return request<IngestionJob>("/api/v1/documents/upload/async", {
+      method: "POST",
+      body,
+    });
   },
 };

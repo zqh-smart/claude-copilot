@@ -32,6 +32,61 @@ class DocumentORM(Base):
     )
 
 
+class IngestionJobORM(Base):
+    __tablename__ = "ingestion_jobs"
+
+    job_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    doc_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("documents.doc_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    stage: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="waiting",
+        server_default="waiting",
+    )
+    progress_percent: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    max_attempts: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=3,
+        server_default="3",
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    worker_id: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    available_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    events: Mapped[list] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+
+    __table_args__ = (
+        Index("ix_ingestion_jobs_created_at", "created_at"),
+        Index("ix_ingestion_jobs_status_updated_at", "status", "updated_at"),
+    )
+
+
 class ParsedDocumentORM(Base):
     __tablename__ = "parsed_documents"
 

@@ -8,13 +8,40 @@ import os
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-DEFAULT_GOLDEN = ROOT / "data" / "golden" / "znz_2021_stage_expectations.json"
+GOLDEN_DIR = ROOT / "data" / "golden"
+DEFAULT_GOLDEN = GOLDEN_DIR / "znz_2021_stage_expectations.json"
 OUT_DIR = ROOT / "data" / "reports" / "l4_eval"
+
+# Documented soft/hard gates (see docs/acceptance_suite.md § L4).
+L4_THRESHOLDS = {
+    "smoke_full_pass_rate": 1.0,  # znz full L4 when LLM available — do not regress
+    "retrieval_only_pass_rate": 1.0,  # all samples before claiming L4-ready evidence
+    "regression_full_min_pass_rate": 0.8,  # jucan/tianhua stretch; report, not hard CI
+}
+
+L4_SAMPLE_CATALOG: list[dict[str, Any]] = [
+    {
+        "name": "znz_2021",
+        "role": "smoke",
+        "golden": GOLDEN_DIR / "znz_2021_stage_expectations.json",
+    },
+    {
+        "name": "jucan_2021",
+        "role": "regression",
+        "golden": GOLDEN_DIR / "jucan_2021_stage_expectations.json",
+    },
+    {
+        "name": "tianhua_2021",
+        "role": "regression",
+        "golden": GOLDEN_DIR / "tianhua_2021_stage_expectations.json",
+    },
+]
 
 from scripts.retrieval_eval_common import (  # noqa: E402
     resolve_doc_id_from_expectations,
@@ -25,11 +52,22 @@ from scripts.retrieval_eval_common import (  # noqa: E402
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="L4 grounded research + critic eval")
-    parser.add_argument("--expectations", type=Path, default=DEFAULT_GOLDEN)
+    parser.add_argument(
+        "--expectations",
+        type=Path,
+        default=None,
+        help="Single golden JSON (default: znz when --profile omitted).",
+    )
+    parser.add_argument(
+        "--profile",
+        choices=("smoke", "regression", "all"),
+        default=None,
+        help="Multi-sample profile: smoke=znz; regression=jucan+tianhua; all=three.",
+    )
     parser.add_argument(
         "--doc-id",
         default=None,
-        help="Completed document id (default: resolve from serving eval report or metadata).",
+        help="Completed document id (single-sample only; default: resolve from serving eval).",
     )
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument(
@@ -44,6 +82,28 @@ def parse_args() -> argparse.Namespace:
         help="Skip LLM probe; score evidence + structured value match only (L4 offline baseline).",
     )
     return parser.parse_args()
+
+
+def resolve_l4_samples(
+    *,
+    profile: str | None,
+    expectations: Path | None,
+) -> list[dict[str, Any]]:
+    """Resolve one or more golden samples for L4 eval."""
+    if profile == "smoke":
+        return [dict(item) for item in L4_SAMPLE_CATALOG if item["role"] == "smoke"]
+    if profile == "regression":
+        return [dict(item) for item in L4_SAMPLE_CATALOG if item["role"] == "regression"]
+    if profile == "all":
+        return [dict(item) for item in L4_SAMPLE_CATALOG]
+    path = expectations or DEFAULT_GOLDEN
+    return [
+        {
+            "name": path.stem.replace("_stage_expectations", ""),
+            "role": "custom",
+            "golden": path,
+        }
+    ]
 
 
 def _reset_caches() -> None:
@@ -170,13 +230,228 @@ def _score_case(case: dict, preview) -> dict:
     }
 
 
+def _gate_status(sample: dict[str, Any], pass_rate: float, *, retrieval_only: bool) -> dict[str, Any]:
+    role = sample.get("role")
+    if retrieval_only:
+        threshold = L4_THRESHOLDS["retrieval_only_pass_rate"]
+        return {
+            "threshold": threshold,
+            "met": pass_rate >= threshold,
+            "kind": "retrieval_only",
+        }
+    if role == "smoke":
+        threshold = L4_THRESHOLDS["smoke_full_pass_rate"]
+        return {
+            "threshold": threshold,
+            "met": pass_rate >= threshold,
+            "kind": "smoke_full",
+        }
+    if role == "regression":
+        threshold = L4_THRESHOLDS["regression_full_min_pass_rate"]
+        return {
+            "threshold": threshold,
+            "met": pass_rate >= threshold,
+            "kind": "regression_full_soft",
+        }
+    return {
+        "threshold": L4_THRESHOLDS["smoke_full_pass_rate"],
+        "met": pass_rate >= L4_THRESHOLDS["smoke_full_pass_rate"],
+        "kind": "custom_full",
+    }
+
+
+def _run_retrieval_sample(
+    *,
+    sample: dict[str, Any],
+    doc_id_override: str | None,
+    top_k: int,
+    case_ids: list[str] | None,
+) -> dict[str, Any]:
+    from app.api import dependencies
+    from app.core.config import get_settings
+
+    golden_path: Path = sample["golden"]
+    expectations = json.loads(golden_path.read_text(encoding="utf-8"))
+    cases = _load_cases(expectations, case_ids)
+    if not cases:
+        raise ValueError(f"No L4 cases in {golden_path}")
+
+    settings = get_settings()
+    doc_id = resolve_doc_id_from_expectations(
+        doc_id=doc_id_override,
+        expectations=expectations,
+    )
+    research = dependencies.get_research_service()
+    case_results = []
+    t0 = time.perf_counter()
+    for case in cases:
+        preview = research.preview(doc_id=doc_id, question=case["question"], top_k=top_k)
+        scored = score_retrieval_case(case, preview)
+        case_results.append(scored)
+        print(json.dumps({"sample": sample["name"], **scored}, ensure_ascii=False, indent=2))
+
+    elapsed = round(time.perf_counter() - t0, 3)
+    passed = sum(1 for item in case_results if item["passed"])
+    pass_rate = round(passed / max(len(case_results), 1), 4)
+    report = {
+        "mode": "retrieval_only",
+        "sample": sample["name"],
+        "role": sample.get("role"),
+        "doc_id": doc_id,
+        "document_key": expectations.get("document_key"),
+        "expectations": str(golden_path),
+        "elapsed_seconds": elapsed,
+        "backends": {
+            "storage": settings.storage_backend,
+            "vector": settings.vector_store_backend,
+            "graph": settings.graph_store_backend,
+            "embedding": settings.embedding_backend,
+        },
+        "gate": _gate_status(sample, pass_rate, retrieval_only=True),
+        "l4_retrieval": {
+            "total": len(case_results),
+            "passed": passed,
+            "pass_rate": pass_rate,
+            "cases": case_results,
+        },
+    }
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = OUT_DIR / f"{doc_id}_l4_retrieval_eval.json"
+    out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    report["wrote"] = str(out_path)
+    return report
+
+
+def _run_full_sample(
+    *,
+    sample: dict[str, Any],
+    doc_id_override: str | None,
+    top_k: int,
+    case_ids: list[str] | None,
+    llm_info: dict,
+) -> dict[str, Any]:
+    from app.api import dependencies
+    from app.core.config import get_settings
+
+    golden_path: Path = sample["golden"]
+    expectations = json.loads(golden_path.read_text(encoding="utf-8"))
+    cases = _load_cases(expectations, case_ids)
+    if not cases:
+        raise ValueError(f"No L4 cases in {golden_path}")
+
+    settings = get_settings()
+    doc_id = resolve_doc_id_from_expectations(
+        doc_id=doc_id_override,
+        expectations=expectations,
+    )
+    research = dependencies.get_research_service()
+    case_results = []
+    t0 = time.perf_counter()
+    for case in cases:
+        preview = research.preview(doc_id=doc_id, question=case["question"], top_k=top_k)
+        scored = _score_case(case, preview)
+        case_results.append(scored)
+        print(json.dumps({"sample": sample["name"], **scored}, ensure_ascii=False, indent=2))
+
+    elapsed = round(time.perf_counter() - t0, 3)
+    passed = sum(1 for item in case_results if item["passed"])
+    pass_rate = round(passed / max(len(case_results), 1), 4)
+    report = {
+        "mode": "full",
+        "sample": sample["name"],
+        "role": sample.get("role"),
+        "doc_id": doc_id,
+        "document_key": expectations.get("document_key"),
+        "expectations": str(golden_path),
+        "elapsed_seconds": elapsed,
+        "llm_probe": llm_info,
+        "backends": {
+            "storage": settings.storage_backend,
+            "vector": settings.vector_store_backend,
+            "graph": settings.graph_store_backend,
+            "embedding": settings.embedding_backend,
+        },
+        "gate": _gate_status(sample, pass_rate, retrieval_only=False),
+        "l4": {
+            "total": len(case_results),
+            "passed": passed,
+            "pass_rate": pass_rate,
+            "grounded_rate": round(
+                sum(1 for item in case_results if item["grounded"]) / max(len(case_results), 1),
+                4,
+            ),
+            "critic_pass_rate": round(
+                sum(1 for item in case_results if item["critic_passed"])
+                / max(len(case_results), 1),
+                4,
+            ),
+            "cases": case_results,
+        },
+    }
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = OUT_DIR / f"{doc_id}_l4_eval.json"
+    out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    report["wrote"] = str(out_path)
+    return report
+
+
+def _write_summary(
+    *,
+    profile: str | None,
+    mode: str,
+    sample_reports: list[dict[str, Any]],
+) -> Path:
+    totals = 0
+    passed = 0
+    for report in sample_reports:
+        block = report.get("l4") or report.get("l4_retrieval") or {}
+        totals += int(block.get("total") or 0)
+        passed += int(block.get("passed") or 0)
+    summary = {
+        "profile": profile or "single",
+        "mode": mode,
+        "thresholds": L4_THRESHOLDS,
+        "samples": [
+            {
+                "name": item.get("sample"),
+                "role": item.get("role"),
+                "doc_id": item.get("doc_id"),
+                "document_key": item.get("document_key"),
+                "pass_rate": (item.get("l4") or item.get("l4_retrieval") or {}).get("pass_rate"),
+                "gate": item.get("gate"),
+                "wrote": item.get("wrote"),
+                "elapsed_seconds": item.get("elapsed_seconds"),
+            }
+            for item in sample_reports
+        ],
+        "aggregate": {
+            "total": totals,
+            "passed": passed,
+            "pass_rate": round(passed / max(totals, 1), 4),
+            "all_gates_met": all(
+                bool((item.get("gate") or {}).get("met")) for item in sample_reports
+            ),
+        },
+    }
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = OUT_DIR / "latest_l4_summary.json"
+    out_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(json.dumps({"wrote_summary": str(out_path), **summary["aggregate"]}, ensure_ascii=False, indent=2))
+    return out_path
+
+
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
     args = parse_args()
-    expectations = json.loads(args.expectations.read_text(encoding="utf-8"))
-    cases = _load_cases(expectations, args.case_ids)
-    if not cases:
-        raise ValueError("No L4 cases found in expectations (l4_cases / retrieval_cases).")
+    samples = resolve_l4_samples(profile=args.profile, expectations=args.expectations)
+    if args.doc_id and len(samples) > 1:
+        print(
+            "--doc-id applies only to single-sample runs; ignoring for multi-sample profile.",
+            file=sys.stderr,
+        )
+        doc_id_override = None
+    else:
+        doc_id_override = args.doc_id
 
     if args.retrieval_only:
         os.environ["LLM_GROUNDED_SYNTHESIS_ENABLED"] = "false"
@@ -185,56 +460,21 @@ def main() -> int:
     _reset_caches()
 
     if args.retrieval_only:
-        from app.api import dependencies
-        from app.core.config import get_settings
-
-        settings = get_settings()
-        doc_id = resolve_doc_id_from_expectations(doc_id=args.doc_id, expectations=expectations)
-        research = dependencies.get_research_service()
-        case_results = []
-        t0 = time.perf_counter()
-        for case in cases:
-            preview = research.preview(doc_id=doc_id, question=case["question"], top_k=args.top_k)
-            scored = score_retrieval_case(case, preview)
-            case_results.append(scored)
-            print(json.dumps(scored, ensure_ascii=False, indent=2))
-
-        elapsed = round(time.perf_counter() - t0, 3)
-        passed = sum(1 for item in case_results if item["passed"])
-        report = {
-            "mode": "retrieval_only",
-            "doc_id": doc_id,
-            "document_key": expectations.get("document_key"),
-            "expectations": str(args.expectations),
-            "elapsed_seconds": elapsed,
-            "backends": {
-                "storage": settings.storage_backend,
-                "vector": settings.vector_store_backend,
-                "graph": settings.graph_store_backend,
-                "embedding": settings.embedding_backend,
-            },
-            "l4_retrieval": {
-                "total": len(case_results),
-                "passed": passed,
-                "pass_rate": round(passed / max(len(case_results), 1), 4),
-                "cases": case_results,
-            },
-        }
-        OUT_DIR.mkdir(parents=True, exist_ok=True)
-        out_path = OUT_DIR / f"{doc_id}_l4_retrieval_eval.json"
-        out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(
-            json.dumps(
-                {
-                    "wrote": str(out_path),
-                    "l4_retrieval_pass_rate": report["l4_retrieval"]["pass_rate"],
-                    "elapsed_seconds": elapsed,
-                },
-                ensure_ascii=False,
-                indent=2,
+        reports = [
+            _run_retrieval_sample(
+                sample=sample,
+                doc_id_override=doc_id_override,
+                top_k=args.top_k,
+                case_ids=args.case_ids,
             )
-        )
-        if case_results and passed < len(case_results):
+            for sample in samples
+        ]
+        _write_summary(profile=args.profile, mode="retrieval_only", sample_reports=reports)
+        if any(
+            (item.get("l4_retrieval") or {}).get("passed", 0)
+            < (item.get("l4_retrieval") or {}).get("total", 0)
+            for item in reports
+        ):
             return 2
         return 0
 
@@ -255,7 +495,8 @@ def main() -> int:
                     "status": "llm_unavailable",
                     "message": message,
                     "llm_probe": llm_info,
-                    "expectations": str(args.expectations),
+                    "profile": args.profile,
+                    "samples": [item["name"] for item in samples],
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -272,67 +513,50 @@ def main() -> int:
     if settings.llm_grounded_synthesis_enabled is not True:
         print("LLM_GROUNDED_SYNTHESIS_ENABLED is false after reset.", file=sys.stderr)
         return 4
-
-    doc_id = resolve_doc_id_from_expectations(doc_id=args.doc_id, expectations=expectations)
-    research = dependencies.get_research_service()
     if dependencies.get_grounded_research_engine() is None:
         print("Grounded research engine not configured.", file=sys.stderr)
         return 4
 
-    case_results = []
-    t0 = time.perf_counter()
-    for case in cases:
-        preview = research.preview(doc_id=doc_id, question=case["question"], top_k=args.top_k)
-        scored = _score_case(case, preview)
-        case_results.append(scored)
-        print(json.dumps(scored, ensure_ascii=False, indent=2))
-
-    elapsed = round(time.perf_counter() - t0, 3)
-    passed = sum(1 for item in case_results if item["passed"])
-    report = {
-        "doc_id": doc_id,
-        "document_key": expectations.get("document_key"),
-        "expectations": str(args.expectations),
-        "elapsed_seconds": elapsed,
-        "llm_probe": llm_info,
-        "backends": {
-            "storage": settings.storage_backend,
-            "vector": settings.vector_store_backend,
-            "graph": settings.graph_store_backend,
-            "embedding": settings.embedding_backend,
-        },
-        "l4": {
-            "total": len(case_results),
-            "passed": passed,
-            "pass_rate": round(passed / max(len(case_results), 1), 4),
-            "grounded_rate": round(
-                sum(1 for item in case_results if item["grounded"]) / max(len(case_results), 1),
-                4,
-            ),
-            "critic_pass_rate": round(
-                sum(1 for item in case_results if item["critic_passed"]) / max(len(case_results), 1),
-                4,
-            ),
-            "cases": case_results,
-        },
-    }
-
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUT_DIR / f"{doc_id}_l4_eval.json"
-    out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(
-        json.dumps(
-            {
-                "wrote": str(out_path),
-                "l4_pass_rate": report["l4"]["pass_rate"],
-                "elapsed_seconds": elapsed,
-            },
-            ensure_ascii=False,
-            indent=2,
+    reports = [
+        _run_full_sample(
+            sample=sample,
+            doc_id_override=doc_id_override,
+            top_k=args.top_k,
+            case_ids=args.case_ids,
+            llm_info=llm_info,
         )
-    )
+        for sample in samples
+    ]
+    _write_summary(profile=args.profile, mode="full", sample_reports=reports)
 
-    if case_results and passed < len(case_results):
+    # Exit: fail hard if smoke/custom below full threshold; regression soft gate only warns.
+    hard_fail = False
+    soft_warn = False
+    for item in reports:
+        block = item.get("l4") or {}
+        rate = float(block.get("pass_rate") or 0.0)
+        role = item.get("role")
+        if role == "regression":
+            if rate < L4_THRESHOLDS["regression_full_min_pass_rate"]:
+                soft_warn = True
+            if block.get("passed", 0) < block.get("total", 0):
+                soft_warn = True
+        else:
+            if block.get("passed", 0) < block.get("total", 0):
+                hard_fail = True
+    if soft_warn and not hard_fail:
+        print(
+            json.dumps(
+                {
+                    "warning": "regression L4 below soft threshold or incomplete",
+                    "threshold": L4_THRESHOLDS["regression_full_min_pass_rate"],
+                },
+                ensure_ascii=False,
+            )
+        )
+    if hard_fail:
+        return 2
+    if soft_warn:
         return 2
     return 0
 

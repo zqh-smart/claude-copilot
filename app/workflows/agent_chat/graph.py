@@ -20,6 +20,7 @@ from app.core.config import get_settings
 class AgentChatState(TypedDict, total=False):
     messages: Annotated[list[AnyMessage], add_messages]
     doc_id: str | None
+    doc_id_b: str | None
 
 
 def _latest_human_text(messages: list[AnyMessage]) -> str:
@@ -49,6 +50,18 @@ def _resolve_doc_id(state: AgentChatState, config: RunnableConfig | None) -> str
     if settings.agent_chat_doc_id:
         return settings.agent_chat_doc_id.strip() or None
     return _latest_serving_doc_id()
+
+
+def _resolve_doc_id_b(state: AgentChatState, config: RunnableConfig | None) -> str | None:
+    if state.get("doc_id_b"):
+        return str(state["doc_id_b"])
+    configurable = (config or {}).get("configurable") or {}
+    if configurable.get("doc_id_b"):
+        return str(configurable["doc_id_b"])
+    settings = get_settings()
+    if settings.agent_chat_doc_id_b:
+        return settings.agent_chat_doc_id_b.strip() or None
+    return None
 
 
 def _latest_serving_doc_id() -> str | None:
@@ -137,6 +150,86 @@ def _format_risk_answer(result: dict[str, Any]) -> str:
             seen.add(text)
             parts.append(f"- {text}")
     return "\n".join(parts).strip()
+
+
+def _invoke_chat_specialist(
+    *,
+    agent_used: str,
+    question: str,
+    doc_id: str,
+    doc_id_b: str | None,
+    company_id: str | None,
+) -> str:
+    """Run one specialist for agent chat; shared by primary and secondary intents."""
+    from app.api.dependencies import get_research_service
+
+    if agent_used == "risk":
+        from app.workflows.risk.graph import graph as risk_graph
+
+        return _format_risk_answer(
+            risk_graph.invoke(
+                {
+                    "doc_id": doc_id,
+                    "company_id": company_id,
+                    "question": question,
+                    "top_k": 5,
+                }
+            )
+        )
+    if agent_used == "compare":
+        from app.workflows.comparison_workflow.graph import graph as comparison_workflow
+
+        if not doc_id_b:
+            return (
+                "【对比 · Comparator】未配置第二份文档。"
+                "请设置环境变量 AGENT_CHAT_DOC_ID_B，"
+                "或在 LangGraph configurable 中传入 doc_id_b。"
+            )
+        result = comparison_workflow.invoke(
+            {
+                "doc_id_a": doc_id,
+                "doc_id_b": doc_id_b,
+                "question": question,
+            }
+        )
+        return str(result.get("answer") or "").strip() or "【对比】未生成对比结果。"
+    if agent_used == "quant":
+        from app.workflows.quant.graph import graph as quant_graph
+
+        quant_result = quant_graph.invoke(
+            {
+                "doc_id": doc_id,
+                "company_id": company_id,
+                "question": question,
+                "top_k": 5,
+            }
+        )
+        answer = str(quant_result.get("answer") or "").strip()
+        content = f"【量化 · Quant Agent】\n{answer}" if answer else "【量化 · Quant Agent】未生成计算结果。"
+        warnings = quant_result.get("warnings") or []
+        if warnings:
+            content += "\n说明：\n" + "\n".join(
+                f"- {_humanize_warning(str(w))}" for w in warnings[:4]
+            )
+        return content
+    if agent_used == "report":
+        from app.workflows.report_workflow.graph import graph as report_workflow
+
+        report_result = report_workflow.invoke(
+            {
+                "doc_id": doc_id,
+                "company_id": company_id,
+                "question": question,
+                "top_k": 5,
+            }
+        )
+        return str(report_result.get("answer") or "").strip() or "【报告提纲】未生成提纲。"
+
+    preview = get_research_service().preview(doc_id=doc_id, question=question, top_k=5)
+    content = _format_answer(preview)
+    if agent_used == "structured":
+        content = f"【结构化 · Structured Agent】\n{content}"
+    return content
 
 
 _ROUTE_LABELS = {"vector": "语义", "sql": "结构化", "graph": "图谱"}
@@ -253,54 +346,59 @@ def research_turn(state: AgentChatState, config: RunnableConfig) -> dict[str, An
             "doc_id": None,
         }
 
-    from app.api.dependencies import get_document_pipeline_service, get_research_service
-    from app.workflows.orchestrator.graph import classify_intent
+    from app.api.dependencies import get_document_pipeline_service
+    from app.core.db import build_company_id
+    from app.workflows.orchestrator.graph import (
+        AgentKind,
+        classify_intent,
+        format_multi_intent_note,
+    )
 
     record = get_document_pipeline_service().get_document(doc_id)
-    from app.core.db import build_company_id
-
     company_id = (
         build_company_id(record.metadata.company) if record.metadata.company else None
     )
-    agent_used = classify_intent({"question": question}).get("agent_used", "research")
+    intent_plan = classify_intent({"question": question})
+    agent_used: AgentKind = intent_plan.get("agent_used") or "research"
+    sub_intents: list[AgentKind] = list(intent_plan.get("sub_intents") or [])
+    secondary: AgentKind | None = intent_plan.get("secondary_intent")
+    doc_id_b = _resolve_doc_id_b(state, config)
 
-    if agent_used == "risk":
-        from app.workflows.risk.graph import graph as risk_graph
+    content = _invoke_chat_specialist(
+        agent_used=agent_used,
+        question=question,
+        doc_id=doc_id,
+        doc_id_b=doc_id_b,
+        company_id=company_id,
+    )
+    secondary_ran: AgentKind | None = None
+    if secondary and secondary != agent_used:
+        try:
+            secondary_block = _invoke_chat_specialist(
+                agent_used=secondary,
+                question=question,
+                doc_id=doc_id,
+                doc_id_b=doc_id_b,
+                company_id=company_id,
+            )
+            if secondary_block.strip():
+                content = f"{content}\n\n——\n【次级 · {secondary}】\n{secondary_block}"
+                secondary_ran = secondary
+        except Exception:  # noqa: BLE001
+            secondary_ran = None
 
-        risk_result = risk_graph.invoke(
-            {
-                "doc_id": doc_id,
-                "company_id": company_id,
-                "question": question,
-                "top_k": 5,
-            }
-        )
-        content = _format_risk_answer(risk_result)
-    elif agent_used == "quant":
-        from app.workflows.quant.graph import graph as quant_graph
-
-        quant_result = quant_graph.invoke(
-            {
-                "doc_id": doc_id,
-                "company_id": company_id,
-                "question": question,
-                "top_k": 5,
-            }
-        )
-        answer = str(quant_result.get("answer") or "").strip()
-        content = f"【量化 · Quant Agent】\n{answer}" if answer else "【量化 · Quant Agent】未生成计算结果。"
-        warnings = quant_result.get("warnings") or []
-        if warnings:
-            content += "\n说明：\n" + "\n".join(f"- {_humanize_warning(str(w))}" for w in warnings[:4])
-    else:
-        preview = get_research_service().preview(doc_id=doc_id, question=question, top_k=5)
-        content = _format_answer(preview)
-        if agent_used == "structured":
-            content = f"【结构化 · Structured Agent】\n{content}"
+    note = format_multi_intent_note(
+        sub_intents,
+        agent_used,
+        secondary_ran=secondary_ran,
+    )
+    if note:
+        content = f"{content}\n{note}"
 
     return {
         "messages": [AIMessage(content=content)],
         "doc_id": doc_id,
+        "doc_id_b": doc_id_b,
     }
 
 

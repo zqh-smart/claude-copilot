@@ -199,15 +199,27 @@ LangGraph 工作流层。
 
 ## 8. 下一步建议
 
-下一轮建议按下面顺序推进：
+> 本节原清单已在 Phase 1 主链完成。当前进度与后续任务以
+> `docs/loop_playbook.md` 和 `docs/acceptance_suite.md` 为准。
 
-1. 建立文档上传接口与文件落盘策略
-2. 实现 parser router 骨架
-3. 统一 `ParsedDocument` 输出协议
-4. 实现 chunking 与 segment 持久化
-5. 接入向量索引
-6. 接入第一个 LangGraph workflow
-7. 接入 LangSmith / Langfuse tracing
+已完成的原始清单：
+
+1. ~~建立文档上传接口与文件落盘策略~~
+2. ~~实现 parser router 骨架~~
+3. ~~统一 `ParsedDocument` 输出协议~~
+4. ~~实现 chunking 与 segment 持久化~~
+5. ~~接入向量索引~~
+6. ~~接入第一个 LangGraph workflow~~
+
+当前规划清单已完成：
+
+1. LangSmith / Langfuse tracing 已接入统一 span 生命周期，默认脱敏并支持可选 exporter。
+2. P7f 已提供报告中心（公司/年度范围/投研或风控、Markdown/HTML/PDF）、
+   多公司财务对比/风险雷达/业务重叠，以及 BI 趋势/行业分布/风险热力图/公司排名。
+
+已完成的工程化收尾：异步任务租约/心跳/独立 Worker/取消/告警、多进程 PostgreSQL soak，
+Acceptance API/负面/真实冲突 E2E，以及扫描 OCR/复杂表 Stress golden；P7f 组合 API 与
+报告文件导出均有契约测试和真实数据/渲染验收。
 
 这样可以保证：
 

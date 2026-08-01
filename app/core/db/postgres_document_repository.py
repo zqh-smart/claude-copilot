@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -45,7 +45,7 @@ class PostgresDocumentRepository:
     ) -> DocumentRecord:
         record = self.get(doc_id)
         record.status = status
-        record.updated_at = datetime.utcnow()
+        record.updated_at = datetime.now(UTC)
         if parsed_path is not None:
             record.parsed_path = parsed_path
         if segment_count is not None:

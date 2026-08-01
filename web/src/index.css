@@ -252,18 +252,125 @@ button.primary:disabled {
 
 .metric-grid,
 .hit-list,
-.case-list {
+.case-list,
+.job-list {
   display: grid;
   gap: 10px;
 }
 
+.dashboard-grid,
+.report-sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.report-card {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 12px;
+  padding: 14px;
+  background: #fff;
+}
+
+.report-card p {
+  margin: 8px 0 0;
+  color: var(--ink-soft);
+}
+
+.markdown-output {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  background: #fff;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.compact-field {
+  max-width: 180px;
+}
+
+.trend-chart {
+  color: var(--accent);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: linear-gradient(180deg, var(--accent-soft), #fff);
+}
+
+.trend-chart svg {
+  display: block;
+  width: 100%;
+  height: 220px;
+}
+
+.trend-chart circle {
+  fill: var(--bg-panel);
+  stroke: currentColor;
+  stroke-width: 3;
+}
+
+.trend-labels {
+  display: flex;
+  justify-content: space-between;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+}
+
+.callout {
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.callout.warn {
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.callout ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
 .metric-card,
 .hit-card,
-.case-card {
+.case-card,
+.job-card {
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 12px;
   background: #fff;
+}
+
+.spread {
+  justify-content: space-between;
+}
+
+.progress-track {
+  width: 100%;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg-muted);
+}
+
+.progress-value {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 180ms ease;
+}
+
+.event-list {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding-left: 22px;
+  color: var(--ink-soft);
+  font-size: 0.86rem;
 }
 
 .metric-card .value {
@@ -305,6 +412,87 @@ td {
   border-radius: 12px;
   padding: 10px 12px;
 }
+
+.company-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.check-card {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 11px;
+  background: #fff;
+}
+
+.bar-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  font-size: 0.84rem;
+}
+
+.bar-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg-muted);
+}
+
+.bar-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.radar-grid-layout {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.radar-card {
+  display: grid;
+  justify-items: center;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+}
+
+.radar-card svg {
+  width: min(100%, 230px);
+  overflow: visible;
+}
+
+.radar-grid,
+.radar-axis {
+  fill: var(--bg-muted);
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.radar-value {
+  fill: color-mix(in srgb, var(--accent) 24%, transparent);
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.radar-card text {
+  font-size: 9px;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  fill: var(--ink-soft);
+}
+
+.risk-heatmap td[data-level="1"] { background: #f8eac7; }
+.risk-heatmap td[data-level="2"] { background: #edbd72; }
+.risk-heatmap td[data-level="3"] { background: #d87955; color: #fff; }
 
 @media (max-width: 960px) {
   .app-shell {

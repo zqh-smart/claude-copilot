@@ -263,19 +263,18 @@ class StageScorecardService:
         all_periods: list[str] = []
         for statement in statements:
             all_periods.extend(statement.period_headers or [])
-        implausible = [
-            period
-            for period in all_periods
-            if re.fullmatch(r"(19|20)\d{2}", period) and not (2000 <= int(period) <= 2035)
-        ]
-        # Also treat clearly weird years outside report window if year known.
+        implausible: list[str] = []
         report_year = document.metadata.year
-        if report_year:
-            for period in all_periods:
-                if re.fullmatch(r"(19|20)\d{2}", period):
-                    year = int(period)
-                    if year < report_year - 5 or year > report_year + 1:
-                        implausible.append(period)
+        for period in all_periods:
+            normalized = str(period).strip()
+            if not re.fullmatch(r"(19|20)\d{2}", normalized):
+                implausible.append(normalized)
+                continue
+            year = int(normalized)
+            if not (2000 <= year <= 2035):
+                implausible.append(normalized)
+            elif report_year and (year < report_year - 5 or year > report_year + 1):
+                implausible.append(normalized)
 
         provenance = sum(1 for fact in metric_facts if fact.source_table_id)
         grounding = SourceGroundingService().evaluate(document)

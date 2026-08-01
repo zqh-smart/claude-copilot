@@ -220,6 +220,7 @@ __marimo__/
 
 # Project-local scratch directories
 .tmp/
+tmp/
 sandbox_test_*/
 
 # Runtime document and index artifacts

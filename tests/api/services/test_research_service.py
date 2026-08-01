@@ -160,6 +160,42 @@ def test_fallback_reports_metric_graph_on_synthesis_failure() -> None:
     assert len(result["synthesis"]["citations"]) >= 1
 
 
+def test_critique_timeout_keeps_draft_and_skips_revision_burn() -> None:
+    class _TimeoutEngine(_FailingGroundedEngine):
+        def critique(self, **kwargs: Any) -> CriticReview:
+            raise TimeoutError("LLM critic timed out after 30s")
+
+        def _apply_deterministic_checks(self, review, synthesis, evidence):  # noqa: ANN001
+            return review
+
+    service = ResearchService(
+        document_pipeline_service=DocumentPipelineService.__new__(DocumentPipelineService),
+        retriever=LocalRetriever.__new__(LocalRetriever),
+        grounded_engine=_TimeoutEngine(),  # type: ignore[arg-type]
+    )
+    state = {
+        "question": "营收为何增长？",
+        "synthesis": GroundedSynthesis(
+            answer="draft kept",
+            confidence=0.4,
+            limitations=[],
+            citations=[],
+        ).model_dump(mode="json"),
+        "evidence": [],
+        "warnings": [],
+        "revision_count": 0,
+        "max_revisions": 1,
+    }
+
+    result = service._critique_answer(state)
+
+    assert result["grounded"] is False
+    assert result["revision_count"] == 1
+    assert "Critic timed out" in result["critic"]["issues"][0]["message"]
+    assert result["critic"]["issues"][0]["severity"] == "medium"
+    assert any("critic timed out" in w for w in result["warnings"])
+
+
 def test_fallback_mda_vector_on_synthesis_failure() -> None:
     service = _make_service()
     repeated_header = "管理层讨论与分析"

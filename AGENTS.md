@@ -183,7 +183,7 @@ L3 pass_rate / 逐题对错看板仍在本仓库 `web/`「评测看板」页（`
 - `docs/acceptance_suite.md` — smoke/regression commands and pass criteria
 - `docs/eval_metrics.md` — stage metrics definitions (L1/L2 detail)
 - `docs/pipeline_eval_status.md` — current scorecard snapshot + next optimizations
-- `docs/loop_playbook.md` — autonomous `/loop` instructions (Living Design aligned)
+- `docs/loop_playbook.md` — autonomous `/loop` instructions（P7a–P7f 已完成；Living Design 对照）
 - `README.md` — onboarding, env, scripts
 
 ## Skills Index

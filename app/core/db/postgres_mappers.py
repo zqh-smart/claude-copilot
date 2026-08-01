@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from app.core.db.postgres_models import DocumentORM, DocumentSegmentORM, FinancialItemORM, ParsedTableORM
+from app.core.db.postgres_models import (
+    DocumentORM,
+    DocumentSegmentORM,
+    FinancialItemORM,
+    IngestionJobORM,
+    ParsedTableORM,
+)
 from src.claude_copilot.schemas.document import (
     DocumentRecord,
     DocumentSegment,
@@ -11,6 +17,7 @@ from src.claude_copilot.schemas.document import (
     ParsedDocument,
     ParsedTable,
 )
+from src.claude_copilot.schemas.ingestion import IngestionJob
 
 
 def document_record_to_orm(record: DocumentRecord) -> DocumentORM:
@@ -42,6 +49,56 @@ def document_record_from_orm(row: DocumentORM) -> DocumentRecord:
         "metadata": row.metadata_json,
     }
     return DocumentRecord.model_validate(payload)
+
+
+def ingestion_job_to_orm(job: IngestionJob) -> IngestionJobORM:
+    return IngestionJobORM(
+        job_id=job.job_id,
+        doc_id=job.doc_id,
+        filename=job.filename,
+        status=job.status.value,
+        stage=job.stage,
+        progress_percent=job.progress_percent,
+        attempt=job.attempt,
+        max_attempts=job.max_attempts,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+        started_at=job.started_at,
+        finished_at=job.finished_at,
+        worker_id=job.worker_id,
+        heartbeat_at=job.heartbeat_at,
+        lease_expires_at=job.lease_expires_at,
+        available_at=job.available_at,
+        cancel_requested_at=job.cancel_requested_at,
+        error_message=job.error_message,
+        events=[event.model_dump(mode="json") for event in job.events],
+    )
+
+
+def ingestion_job_from_orm(row: IngestionJobORM) -> IngestionJob:
+    return IngestionJob.model_validate(
+        {
+            "job_id": row.job_id,
+            "doc_id": row.doc_id,
+            "filename": row.filename,
+            "status": row.status,
+            "stage": row.stage,
+            "progress_percent": row.progress_percent,
+            "attempt": row.attempt,
+            "max_attempts": row.max_attempts,
+            "created_at": row.created_at,
+            "updated_at": row.updated_at,
+            "started_at": row.started_at,
+            "finished_at": row.finished_at,
+            "worker_id": row.worker_id,
+            "heartbeat_at": row.heartbeat_at,
+            "lease_expires_at": row.lease_expires_at,
+            "available_at": row.available_at,
+            "cancel_requested_at": row.cancel_requested_at,
+            "error_message": row.error_message,
+            "events": row.events,
+        }
+    )
 
 
 def parsed_table_to_orm(doc_id: str, table: ParsedTable, table_index: int) -> ParsedTableORM:

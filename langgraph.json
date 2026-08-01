@@ -6,7 +6,9 @@
     "quant": "./app/workflows/quant/graph.py:graph",
     "risk": "./app/workflows/risk/graph.py:graph",
     "comparator": "./app/workflows/comparator/graph.py:graph",
-    "reporting": "./app/workflows/reporting/graph.py:graph"
+    "reporting": "./app/workflows/reporting/graph.py:graph",
+    "comparison_workflow": "./app/workflows/comparison_workflow/graph.py:graph",
+    "report_workflow": "./app/workflows/report_workflow/graph.py:graph"
   },
   "env": "./langgraph.env"
 }

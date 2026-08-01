@@ -98,6 +98,16 @@ Golden 策略（少而精）：
 | 引用完整率 | 关键论断带 evidence id |
 | 降级透明率 | 失败时 `grounded=false` 且有 warnings |
 
+**批量脚本阈值**（`scripts/run_l4_research_eval.py`，见 `docs/acceptance_suite.md`）：
+
+| 闸 | 阈值 |
+|----|------|
+| retrieval-only（znz/聚灿/天华） | `pass_rate == 1.0` |
+| full · smoke（znz） | `pass_rate == 1.0`（不回归） |
+| full · regression（聚灿/天华） | `pass_rate >= 0.8`（软闸） |
+
+多样本：`--profile smoke|regression|all` → 汇总 `data/reports/l4_eval/latest_l4_summary.json`。
+
 L4 依赖 L2+L3；解析再好，检索证据错也会在 L4 暴露。
 
 ---
@@ -106,13 +116,12 @@ L4 依赖 L2+L3；解析再好，检索证据错也会在 L4 暴露。
 
 | 层级 | 已有能力 | 缺口 |
 |------|----------|------|
-| L0/L1/L2 | `StageScorecardService` + `run_stage_eval.py` + `source_grounding` | 多样本 golden；外部伪 golden |
+| L0/L1/L2 | `StageScorecardService` + `run_stage_eval.py` + `source_grounding`；3 个 ready 样本 | Stress/外部伪 golden |
 | L2 扩展 | `ParseEvaluationBenchmarkService` / `DocumentAIGoldenEvaluator` | 与 scorecard 统一入口 |
-| L3 | `RetrievalOrchestrator` + `run_serving_ingest_eval.py` + golden `retrieval_cases` | 多样本 regression；embedding 生产级配置 |
-| L4 | Grounded synthesis + critic | **缺少批量 eval 报告**（需可用 LLM） |
+| L3 | `RetrievalOrchestrator` + `run_serving_ingest_eval.py`；指南针/聚灿/天华全绿；真实跨文档冲突、扫描 OCR 与复杂表 Stress 已建 | 公告/研报混合来源冲突；极端低清/旋转图像 |
+| L4 | Grounded synthesis + critic；批量 `--profile` 与汇总报告 | full regression 仍为软闸；尚未进入 acceptance 硬门禁 |
 
-当前指南针 2021：L2 主闸门已达标；Serving 入库 + L3 `pass_rate=1.0`（见第 7 节）。  
-**结论：解析细节可停；L2/L3 闸门已通。下一步是 L4 批量 eval（修好 LLM 后）或扩 regression 样本。**
+当前指南针 2021：L2/L3 闸门已通；L4 full znz 曾达 8/8。聚灿/天华可用 `--profile regression` 扩评。
 
 ---
 
@@ -159,7 +168,7 @@ L4 依赖 L2+L3；解析再好，检索证据错也会在 L4 暴露。
 |------|------|------|
 | Smoke | 1 份（指南针 2021） | 每次改动必跑；见 `docs/acceptance_suite.md` |
 | Regression | 2–5 份 A 股年报 | 合并前必跑；第二份=`jucan_2021_stage_expectations.json`（ready） |
-| Stress（后置） | 扫描件 / 多栏复杂表 | 路由与 OCR |
+| Stress | 共同药业扫描件 OCR + 第 86 页复杂表 | route/backend、文字/关键短语、表头/行/原页码/provenance |
 
 ### 5.2 Golden 文件最小字段
 
@@ -206,7 +215,7 @@ L4 依赖 L2+L3；解析再好，检索证据错也会在 L4 暴露。
 | ③ 入库闸门代码 | `ServingGateService` 接入 pipeline index/graph | `evaluation/serving_gate.py` | ✔ |
 | ④ 打通 Serving 入库 | Postgres metrics + Qdrant segments + Neo4j | 单文档 E2E | ✔ |
 | ⑤ L3 题集脚本 | 按 `retrieval_cases` 自动打分（含 graph） | `scripts/run_serving_ingest_eval.py` | ✔ 硅基 embedding 复验 pass_rate=1.0（8/8） |
-| ⑥ L4 批量 eval | 固定问题跑 research + critic | 需可用 LLM | 待做 |
+| ⑥ L4 批量 eval | `--profile` 多样本 + 阈值文档 | 需可用 LLM / Docker | ✅ 脚本就绪；full 跑时需 LLM |
 
 ### Serving 入库命令
 

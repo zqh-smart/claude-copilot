@@ -20,12 +20,12 @@ from pypdf import PdfReader
 from app.pipeline.feature_pipeline.parser.helpers import with_parse_metadata
 from src.claude_copilot.schemas.document import (
     DocumentMetadata,
-    ParseIssue,
-    ParseQualityReport,
     ParsedDocument,
     ParsedPageBlock,
     ParsedSection,
     ParsedTable,
+    ParseIssue,
+    ParseQualityReport,
 )
 
 
@@ -145,6 +145,10 @@ class PdfDocumentParser:
         return normalized
 
     def _build_page_profiles(self, content: bytes) -> list[PdfPageProfile]:
+        scan_profiles = self._build_scan_page_profiles(content)
+        if scan_profiles is not None:
+            return scan_profiles
+
         reader = PdfReader(BytesIO(content))
         page_profiles: list[PdfPageProfile] = []
 
@@ -162,6 +166,33 @@ class PdfDocumentParser:
             )
 
         return page_profiles
+
+    def _build_scan_page_profiles(self, content: bytes) -> list[PdfPageProfile] | None:
+        """Fast-path image-only PDFs without paying pypdf's full-page extraction cost."""
+        try:
+            import fitz
+        except Exception:
+            return None
+
+        document = fitz.open(stream=content, filetype="pdf")
+        profiles: list[PdfPageProfile] = []
+        try:
+            for page_number, page in enumerate(document, start=1):
+                text = page.get_text("text") or ""
+                if text.strip():
+                    return None
+                profiles.append(
+                    PdfPageProfile(
+                        page_number=page_number,
+                        text="",
+                        lines=[],
+                        table_groups=[],
+                    )
+                )
+        finally:
+            document.close()
+
+        return profiles
 
     def _select_route(self, page_profiles: list[PdfPageProfile]) -> str:
         needs_ocr = self._should_use_ocr(page_profiles)
@@ -576,6 +607,8 @@ class PdfDocumentParser:
                 continue
 
             page = self._extract_page_number(item)
+            if page is not None:
+                page += self._mineru_start_page_id
             page_key = page or 0
             order_by_page[page_key] += 1
             order = order_by_page[page_key]
@@ -806,7 +839,8 @@ class PdfDocumentParser:
             if not isinstance(payload, list):
                 continue
 
-            for page_index, page_items in enumerate(payload, start=1):
+            first_page_number = self._mineru_start_page_id + 1
+            for page_index, page_items in enumerate(payload, start=first_page_number):
                 if isinstance(page_items, list):
                     for item in page_items:
                         if isinstance(item, dict):
@@ -1369,6 +1403,17 @@ class PdfDocumentParser:
         parsed_page_range = self._resolve_parsed_page_range(scoped_page_profiles)
         empty_page_count = sum(1 for profile in scoped_page_profiles if not profile.has_text)
         text_coverage = 0.0 if parsed_page_count == 0 else (parsed_page_count - empty_page_count) / parsed_page_count
+
+        if route in {"ocr_pdf", "mineru_pdf"} and parsed_page_count:
+            parsed_pages = {
+                block.page
+                for block in parsed_document.page_blocks
+                if block.page is not None and block.text.strip()
+            }
+            parsed_output_coverage = len(parsed_pages) / parsed_page_count
+            if parsed_output_coverage > text_coverage:
+                text_coverage = min(parsed_output_coverage, 1.0)
+                empty_page_count = max(parsed_page_count - len(parsed_pages), 0)
 
         issues = list(parsed_document.issues)
         if empty_page_count:

@@ -1,6 +1,7 @@
 """Database, vector store, and persistence adapters."""
 
 from app.core.db.document_repository import LocalDocumentRepository
+from app.core.db.ingestion_job_repository import LocalIngestionJobRepository
 from app.core.db.financial_data_repository import (
     LocalFinancialDataRepository,
     PostgresFinancialDataRepository,
@@ -11,10 +12,12 @@ from app.core.db.parsed_document_repository import (
     PostgresParsedDocumentRepository,
 )
 from app.core.db.postgres_document_repository import PostgresDocumentRepository
+from app.core.db.postgres_ingestion_job_repository import PostgresIngestionJobRepository
 from app.core.db.postgres_segment_repository import PostgresSegmentRepository
 from app.core.db.protocols import (
     DocumentRepositoryProtocol,
     FinancialDataRepositoryProtocol,
+    IngestionJobRepositoryProtocol,
     ParsedDocumentRepositoryProtocol,
     SegmentRepositoryProtocol,
 )
@@ -25,12 +28,15 @@ from app.core.db.session import get_postgres_engine, get_postgres_session_factor
 __all__ = [
     "DocumentRepositoryProtocol",
     "FinancialDataRepositoryProtocol",
+    "IngestionJobRepositoryProtocol",
     "SegmentRepositoryProtocol",
     "ParsedDocumentRepositoryProtocol",
     "LocalDocumentRepository",
+    "LocalIngestionJobRepository",
     "LocalSegmentRepository",
     "LocalParsedDocumentRepository",
     "PostgresDocumentRepository",
+    "PostgresIngestionJobRepository",
     "PostgresSegmentRepository",
     "PostgresParsedDocumentRepository",
     "LocalFinancialDataRepository",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from unittest.mock import patch
 
 from app.workflows.orchestrator.graph import (
     _is_metric_amount_question,
@@ -11,6 +12,8 @@ from app.workflows.orchestrator.graph import (
     build_orchestrator_graph,
     classify_intent,
     decompose_question,
+    format_multi_intent_note,
+    select_secondary_intent,
 )
 
 
@@ -49,6 +52,30 @@ def test_classify_intent_multi_clause_prefers_higher_priority_agent() -> None:
     result = classify_intent({"question": "2021年营业收入是多少以及有哪些市场风险？"})
     assert result["agent_used"] == "risk"
     assert result["sub_intents"] == ["risk", "structured"]
+    assert result["secondary_intent"] == "structured"
+
+
+def test_select_secondary_intent_picks_safe_specialist() -> None:
+    assert select_secondary_intent(["risk", "structured"], "risk") == "structured"
+    assert select_secondary_intent(["risk", "quant"], "risk") == "quant"
+    # compare / report are not cheap secondaries
+    assert select_secondary_intent(["compare", "risk"], "compare") == "risk"
+    assert select_secondary_intent(["compare", "report"], "compare") is None
+
+
+def test_format_multi_intent_note_mentions_secondary_or_suggestions() -> None:
+    with_secondary = format_multi_intent_note(
+        ["risk", "structured"],
+        "risk",
+        secondary_ran="structured",
+    )
+    assert "多意图" in with_secondary
+    assert "结构化指标" in with_secondary
+    assert "已附带执行次级" in with_secondary
+
+    suggestion_only = format_multi_intent_note(["risk", "compare"], "risk")
+    assert "可再问" in suggestion_only
+    assert "对比两家公司" in suggestion_only
 
 
 def test_classify_intent_hybrid_growth_and_amount_prefers_quant() -> None:
@@ -71,6 +98,63 @@ def test_classify_intent_growth_why_without_amount_stays_quant() -> None:
         classify_intent({"question": "2021年营业收入相对2020年为什么增长？"})["agent_used"]
         == "quant"
     )
+
+
+def test_classify_intent_routes_compare_and_report() -> None:
+    assert classify_intent({"question": "对比两家公司的营业收入"})["agent_used"] == "compare"
+    assert classify_intent({"question": "生成提纲报告"})["agent_used"] == "report"
+    assert classify_intent({"question": "年报里有哪些风险"})["agent_used"] == "risk"
+
+
+def test_default_delegate_compare_missing_doc_id_b_warns() -> None:
+    from app.workflows.orchestrator.graph import _default_delegate_compare
+
+    with patch(
+        "app.workflows.comparison_workflow.graph.graph.invoke"
+    ) as compare_invoke:
+        result = _default_delegate_compare(
+            {"doc_id": "doc-a", "question": "对比两家公司营收"}
+        )
+
+    compare_invoke.assert_not_called()
+    assert result["agent_used"] == "compare"
+    assert "未配置第二份文档" in result["answer"]
+    assert "missing doc_id_b for comparator" in result["warnings"]
+    assert "差额" not in result["answer"]
+
+
+def test_orchestrator_graph_delegates_compare_and_report_with_mocks() -> None:
+    calls: dict[str, str] = {}
+
+    def delegate_compare(state: dict[str, Any]) -> dict[str, Any]:
+        calls["compare"] = str(state.get("doc_id_b") or "")
+        return {"agent_used": "compare", "answer": "compare-answer", "warnings": []}
+
+    def delegate_report(state: dict[str, Any]) -> dict[str, Any]:
+        calls["report"] = state["question"]
+        return {"agent_used": "report", "answer": "report-answer", "warnings": []}
+
+    compiled = build_orchestrator_graph(
+        delegate_compare=delegate_compare,
+        delegate_report=delegate_report,
+    )
+    compare_result = compiled.invoke(
+        {
+            "doc_id": "doc-a",
+            "doc_id_b": "doc-b",
+            "question": "对比两家公司营收",
+        }
+    )
+    assert compare_result["agent_used"] == "compare"
+    assert compare_result["answer"] == "compare-answer"
+    assert calls["compare"] == "doc-b"
+
+    report_result = compiled.invoke(
+        {"doc_id": "doc-a", "question": "生成提纲报告"}
+    )
+    assert report_result["agent_used"] == "report"
+    assert report_result["answer"] == "report-answer"
+    assert "report" in calls
 
 
 def test_orchestrator_graph_delegates_with_mocks() -> None:

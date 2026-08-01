@@ -6,11 +6,13 @@ from app.api.dependencies import get_document_service, get_graph_store, get_rese
 from app.api.services.document_service import DocumentService
 from app.api.services.research_service import ResearchService
 from app.core.db import LocalDocumentRepository, LocalSegmentRepository
+from app.core.errors import DocumentProcessingCancelledError
 from app.core.kg import LocalKnowledgeGraphStore
 from app.core.rag import LocalRetriever
 from app.core.storage import LocalFileStorage
 from app.main import app
 from app.pipeline.feature_pipeline.pipeline_service import DocumentPipelineService
+from src.claude_copilot.schemas.document import DocumentProcessingStatus
 
 
 def build_test_services(base_dir: Path) -> tuple[DocumentService, ResearchService]:
@@ -96,3 +98,26 @@ def test_document_upload_and_research_preview(tmp_path: Path) -> None:
     assert len(research_payload["hits"]) >= 1
 
     app.dependency_overrides.clear()
+
+
+def test_pipeline_cancellation_pauses_document_at_stage_boundary(tmp_path: Path) -> None:
+    document_service, _ = build_test_services(tmp_path)
+    pipeline = document_service._pipeline_service
+    created = pipeline.create_document(
+        filename="cancel.txt",
+        content_type="text/plain",
+        content=b"Revenue increased.",
+        company="Cancel Corp",
+        year=2025,
+        doc_type="annual_report",
+        source="test",
+    )
+
+    def cancel_at_boundary(_record) -> None:
+        raise DocumentProcessingCancelledError("cancel requested")
+
+    paused = pipeline.process_document(
+        created.doc_id,
+        progress_callback=cancel_at_boundary,
+    )
+    assert paused.status == DocumentProcessingStatus.PAUSED

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol
 
 from src.claude_copilot.schemas.document import DocumentRecord, DocumentSegment, ParsedDocument
 from src.claude_copilot.schemas.financial_data import CompanySummary, FinancialMetricObservation
+from src.claude_copilot.schemas.ingestion import IngestionJob
 
 
 class DocumentRepositoryProtocol(Protocol):
@@ -50,6 +52,43 @@ class ParsedDocumentRepositoryProtocol(Protocol):
         ...
 
     def get(self, doc_id: str) -> ParsedDocument:
+        ...
+
+
+class IngestionJobRepositoryProtocol(Protocol):
+    def list(self, *, limit: int = 100) -> list[IngestionJob]:
+        ...
+
+    def get(self, job_id: str) -> IngestionJob:
+        ...
+
+    def save(self, job: IngestionJob) -> IngestionJob:
+        ...
+
+    def claim(
+        self,
+        job_id: str,
+        *,
+        worker_id: str,
+        now: datetime,
+        lease_expires_at: datetime,
+    ) -> IngestionJob | None:
+        ...
+
+    def heartbeat(
+        self,
+        job_id: str,
+        *,
+        worker_id: str,
+        now: datetime,
+        lease_expires_at: datetime,
+    ) -> bool:
+        ...
+
+    def save_owned(self, job: IngestionJob, *, worker_id: str) -> IngestionJob | None:
+        ...
+
+    def request_cancel(self, job_id: str, *, now: datetime) -> IngestionJob | None:
         ...
 
 

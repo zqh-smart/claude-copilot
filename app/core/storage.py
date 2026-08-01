@@ -18,3 +18,6 @@ class LocalFileStorage:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
         return target
+
+    def read_bytes(self, path: str | Path) -> bytes:
+        return Path(path).read_bytes()

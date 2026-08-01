@@ -1,6 +1,7 @@
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
+from threading import RLock
 
 from app.core.errors import DocumentNotFoundError
 from src.claude_copilot.schemas.document import DocumentProcessingStatus, DocumentRecord
@@ -10,22 +11,26 @@ class LocalDocumentRepository:
     def __init__(self, base_dir: str) -> None:
         self._file_path = Path(base_dir) / "documents_state.json"
         self._file_path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = RLock()
 
     def list(self) -> list[DocumentRecord]:
-        payload = self._read_all()
+        with self._lock:
+            payload = self._read_all()
         return [DocumentRecord.model_validate(item) for item in payload.values()]
 
     def get(self, doc_id: str) -> DocumentRecord:
-        payload = self._read_all()
+        with self._lock:
+            payload = self._read_all()
         item = payload.get(doc_id)
         if item is None:
             raise DocumentNotFoundError(f"Document not found: {doc_id}")
         return DocumentRecord.model_validate(item)
 
     def save(self, record: DocumentRecord) -> DocumentRecord:
-        payload = self._read_all()
-        payload[record.doc_id] = record.model_dump(mode="json")
-        self._write_all(payload)
+        with self._lock:
+            payload = self._read_all()
+            payload[record.doc_id] = record.model_dump(mode="json")
+            self._write_all(payload)
         return record
 
     def update_status(
@@ -39,7 +44,7 @@ class LocalDocumentRepository:
     ) -> DocumentRecord:
         record = self.get(doc_id)
         record.status = status
-        record.updated_at = datetime.utcnow()
+        record.updated_at = datetime.now(UTC)
         if parsed_path is not None:
             record.parsed_path = parsed_path
         if segment_count is not None:
@@ -56,7 +61,9 @@ class LocalDocumentRepository:
         return json.loads(raw)
 
     def _write_all(self, payload: dict[str, dict]) -> None:
-        self._file_path.write_text(
+        temporary = self._file_path.with_suffix(".tmp")
+        temporary.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+        temporary.replace(self._file_path)

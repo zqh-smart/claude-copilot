@@ -1,5 +1,6 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Callable
 from uuid import uuid4
 
 from app.core.db import (
@@ -8,6 +9,7 @@ from app.core.db import (
     ParsedDocumentRepositoryProtocol,
     SegmentRepositoryProtocol,
 )
+from app.core.errors import DocumentProcessingCancelledError
 from app.core.kg import (
     KnowledgeGraphBuilder,
     KnowledgeGraphStoreProtocol,
@@ -84,6 +86,32 @@ class DocumentPipelineService:
         industry: str | None = None,
         company_aliases: list[str] | None = None,
     ) -> DocumentRecord:
+        record = self.create_document(
+            filename=filename,
+            content_type=content_type,
+            content=content,
+            company=company,
+            year=year,
+            doc_type=doc_type,
+            source=source,
+            industry=industry,
+            company_aliases=company_aliases,
+        )
+        return self.process_document(record.doc_id)
+
+    def create_document(
+        self,
+        *,
+        filename: str,
+        content_type: str | None,
+        content: bytes,
+        company: str | None,
+        year: int | None,
+        doc_type: str,
+        source: str,
+        industry: str | None = None,
+        company_aliases: list[str] | None = None,
+    ) -> DocumentRecord:
         doc_id = uuid4().hex
         suffix = Path(filename).suffix.lower()
         stored_filename = f"{doc_id}{suffix}"
@@ -102,7 +130,7 @@ class DocumentPipelineService:
             industry=industry,
             year=year,
         )
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         record = DocumentRecord(
             doc_id=doc_id,
             filename=filename,
@@ -113,9 +141,35 @@ class DocumentPipelineService:
             metadata=metadata,
         )
         self._document_repository.save(record)
+        return record
+
+    def process_document(
+        self,
+        doc_id: str,
+        *,
+        progress_callback: Callable[[DocumentRecord], None] | None = None,
+    ) -> DocumentRecord:
+        record = self._document_repository.get(doc_id)
+        if record.status == DocumentProcessingStatus.COMPLETED:
+            return record
+
+        if record.status == DocumentProcessingStatus.FAILED:
+            record = self._transition(record, DocumentProcessingStatus.WAITING)
+        elif record.status not in {
+            DocumentProcessingStatus.WAITING,
+            DocumentProcessingStatus.PAUSED,
+        }:
+            # A previous worker may have stopped between stages. Restarting from
+            # parsing is idempotent because parsed/index/graph writes replace by doc_id.
+            record = self._transition(record, DocumentProcessingStatus.PAUSED)
+
+        content = self._storage.read_bytes(record.storage_path)
+        metadata = record.metadata
+        filename = record.filename
 
         try:
             record = self._transition(record, DocumentProcessingStatus.PARSING)
+            self._notify(progress_callback, record)
             parsed_document = self._parser_router.parse(
                 doc_id=doc_id,
                 filename=filename,
@@ -124,6 +178,7 @@ class DocumentPipelineService:
             )
 
             record = self._transition(record, DocumentProcessingStatus.CLEANING)
+            self._notify(progress_callback, record)
             parsed_document = self._cleaning.clean(parsed_document)
             parsed_document = self._segmentation.segment(parsed_document)
             parsed_document = self._table_intelligence.enhance(parsed_document)
@@ -131,6 +186,7 @@ class DocumentPipelineService:
             parsed_document = self._schema_mapping.map(parsed_document)
 
             record = self._transition(record, DocumentProcessingStatus.CHUNKING)
+            self._notify(progress_callback, record)
             parsed_document.segments = self._chunking.chunk(parsed_document)
 
             # Artifact track: persist full parsed document.
@@ -145,6 +201,7 @@ class DocumentPipelineService:
                 DocumentProcessingStatus.INDEXING,
                 parsed_path=str(parsed_path),
             )
+            self._notify(progress_callback, record)
 
             segment_count = self._indexing.index(doc_id, serving_document.segments)
             self._graph_store.replace_document(self._graph_builder.build(serving_document))
@@ -154,12 +211,16 @@ class DocumentPipelineService:
                 parsed_path=str(parsed_path),
                 segment_count=segment_count,
             )
+            self._notify(progress_callback, record)
+        except DocumentProcessingCancelledError:
+            return self._transition(record, DocumentProcessingStatus.PAUSED)
         except Exception as exc:
             record = self._document_repository.update_status(
                 doc_id,
                 DocumentProcessingStatus.FAILED,
                 error_message=str(exc),
             )
+            self._notify(progress_callback, record)
         return record
 
     def list_documents(self) -> list[DocumentRecord]:
@@ -190,3 +251,11 @@ class DocumentPipelineService:
             parsed_path=parsed_path,
             segment_count=segment_count,
         )
+
+    @staticmethod
+    def _notify(
+        callback: Callable[[DocumentRecord], None] | None,
+        record: DocumentRecord,
+    ) -> None:
+        if callback is not None:
+            callback(record)

@@ -212,6 +212,7 @@ claude_copilot/
 
 ## 文档
 
+- [docs/ingestion_jobs.md](docs/ingestion_jobs.md)
 - [docs/Financial Document Intelligenc....md](docs/Financial%20Document%20Intelligenc....md)
 - [docs/claude_copilot_project_references_and_langgraph_strategy.md](docs/claude_copilot_project_references_and_langgraph_strategy.md)
 - [docs/project_architecture.md](docs/project_architecture.md)
