@@ -20,10 +20,24 @@ npm run dev
 # 打开 http://localhost:5173
 ```
 
-控制台能力：文档列表、研究问答（路由/指标/证据卡）、公司指标表、**L3 评测看板**（pass_rate + 逐题 PASS/FAIL）、上传 PDF。原始 JSON 折叠在「详情」。
+控制台能力：文档列表、研究问答、跨文档/多公司对比、报告中心、BI、
+**L3 评测看板**、任务队列与上传。原始 JSON 折叠在「详情」。
 
 > Agent 对话页不在本仓库：见工作区 sibling `agent-chat-ui-main`（`pnpm dev` → :3000）。  
 > L3 看板在本仓库 `web/`「评测看板」Tab，数据来自 `GET /api/v1/eval/serving` 与 `/serving/{doc_id}`。
+
+正式产品前端位于 sibling `agent-chat-ui-main`。浏览器门禁使用机器已安装的
+Chrome，LangGraph API 请求在测试内确定性 mock：
+
+```bash
+# Agent Chat：对话壳、中文输入框、发送态和浏览器错误
+cd ../agent-chat-ui-main
+pnpm test:e2e
+```
+
+正式前端还必须通过 `pnpm build`；E2E 或生产构建任一失败，不得宣称
+Application Layer 前端可用。当前仓库 `web/` 是内部评测/运维工作台，不作为
+Agent Chat 产品前端扩建。
 
 ---
 
@@ -77,7 +91,7 @@ Z:/BaiduNetdiskDownload/阶段12：LLM大型复杂项目实战/项目实战2：�
 - 生产复验：`EMBEDDING_BACKEND=silicon`、无 hash fallback、向量维 = `EMBEDDING_DIMENSIONS`、collection 与模型一致（当前 `document_segments_bge_m3` / 1024）
 - Silicon 不可用时默认失败；仅离线调试加 `--allow-hash-fallback`
 
-### L4（可选，非 L2/L3 硬门禁）
+### L4（独立硬门禁）
 
 Grounded research + critic 批量题集。依赖 L3 已入库文档 + 可用 LLM（`LLM_MODEL_*` / Silicon chat）。
 
@@ -94,9 +108,10 @@ Grounded research + critic 批量题集。依赖 L3 已入库文档 + 可用 LLM
 |-------------|------|------|
 | `--retrieval-only`（任意样本） | `pass_rate == 1.0` | L4 证据基线；宣称 L4-ready 前必须绿 |
 | Full · smoke（znz） | `pass_rate == 1.0` | **不回归**硬闸（LLM 可用时） |
-| Full · regression（聚灿/天华） | `pass_rate >= 0.8` | 软闸：扩样目标，未进 acceptance 硬门禁 |
+| Full · regression（聚灿/天华） | `pass_rate == 1.0` | **不回归**硬闸；任一题失败即 exit 2 |
 
-**尚未纳入 `run_acceptance_suite.py` 硬门禁**；LLM 502/不可用时跳过即可。
+已纳入 `run_acceptance_suite.py --profile l4`，且 `--profile all` 会执行该门禁。
+LLM 502/不可用时 exit 4，视为门禁失败，不得跳过后宣称全量验收通过。
 
 ### PDF Stress
 
@@ -117,6 +132,24 @@ Grounded research + critic 批量题集。依赖 L3 已入库文档 + 可用 LLM
 docker compose up -d postgres qdrant neo4j
 # .env：SILICON_KEY 有效；EMBEDDING_BACKEND=silicon
 ```
+
+Tracing exporter wire smoke（不依赖 SaaS 凭据，使用真实 Langfuse SDK/OTLP exporter）：
+
+```bash
+python scripts/run_tracing_exporter_smoke.py
+```
+
+通过标准：HTTP 路径为 `/api/public/otel/v1/traces`、protobuf payload 含
+`research.preview` span、认证头存在，且 SDK trace ID 与 payload trace ID 完全一致。
+
+外部文档质量门禁（JPMorgan 2024 Form 10-K 人工 golden）：
+
+```bash
+python scripts/run_external_doc_quality_eval.py
+python scripts/run_schema_benchmark.py --parsed-output data/reports/jpmc_schema_smoke_document.json
+```
+
+通过标准：`CER <= 0.02`、`TEDS >= 0.98`；真实 schema benchmark 必须走 `mineru_pdf/mineru`，生成 `audit_report`、`financial_statement`、`financial_note`，且 `failures=[]`。日常快速回归可只跑前一个命令，解析/分段规则发布前必须跑完整 benchmark。
 
 ### 3.1 Smoke（每次改 pipeline / serving / 检索必跑）
 
@@ -164,11 +197,36 @@ python scripts/run_acceptance_suite.py --profile conflict
 python scripts/run_acceptance_suite.py --profile soak
 ```
 
+Worker profile 会先启动一个处于 60 秒等待中的独立 Worker，再提交 PostgreSQL 任务，要求
+`LISTEN/NOTIFY` 在 10 秒内唤醒并完成；随后执行 3 轮 × 8 任务、每轮两个进程的并发 soak，
+要求全部 attempt=1、至少两个 Worker 实际 claim、租约全部释放、进程全部 exit 0。
+
 Conflict profile 顺序入库广州浪奇 2020/2021 两份真实年报，验证 `revenue::2020` 从旧文档值
 `1541.76` 切换为 2021 年报追溯重述值 `1573944822.05`，同时要求 PostgreSQL 仅保留一个
 grounded 胜者且新文档持久化明确 conflict warning。
 
-### 3.3 L4（可选，LLM 可用时）
+### 3.3 独立 Worker 生产部署
+
+默认配置已关闭 API 内联执行（`INGESTION_INLINE_EXECUTION_ENABLED=false`）。开发环境需分别启动：
+
+```bash
+uv run uvicorn app.main:app --reload
+uv run python scripts/run_ingestion_worker.py
+```
+
+生产 Compose 将 API 与 Worker 作为独立服务，并共享 PostgreSQL 队列与 `app_data` 原文卷：
+
+```bash
+docker compose up -d --build
+docker compose up -d --scale ingestion-worker=2
+docker compose ps
+```
+
+Compose 默认构建含 MinerU 的完整镜像。仅验证镜像结构、且不需要 MinerU 时可设置
+`INSTALL_MINERU=false`。Worker 使用 PostgreSQL `LISTEN/NOTIFY` 即时唤醒，30 秒轮询仅作为
+通知丢失或重试恢复兜底；租约和 heartbeat 仍是最终并发所有权机制。
+
+### 3.4 L4（正式发布硬门禁）
 
 前置：Smoke/Regression L3 已跑通（Serving 轨有 `doc_id`）；本地或 Silicon chat 可响应。
 
@@ -179,17 +237,19 @@ python scripts/run_l4_research_eval.py
 # 多样本（P7e）
 python scripts/run_l4_research_eval.py --profile all --retrieval-only   # 证据基线 1.0
 python scripts/run_l4_research_eval.py --profile smoke                  # znz full，阈值 1.0
-python scripts/run_l4_research_eval.py --profile regression             # 聚灿+天华 full，软闸 ≥0.8
+python scripts/run_l4_research_eval.py --profile regression             # 聚灿+天华 full，硬闸 1.0
+python scripts/run_acceptance_suite.py --profile l4                     # acceptance 入口
 
 # 指定 doc_id 或子集（仅单样本）
 python scripts/run_l4_research_eval.py --doc-id <uuid>
 python scripts/run_l4_research_eval.py --case-ids q_revenue_2021 q_mda_overview
 ```
 
-LLM 不可用时 exit `4`，并写入 `data/reports/l4_eval/llm_unavailable.json`；不阻断 L2/L3 验收。
+LLM 不可用时 exit `4`，并写入 `data/reports/l4_eval/llm_unavailable.json`；L2/L3
+可单独验收，但正式发布和 `--profile all` 不得通过。
 汇总：`data/reports/l4_eval/latest_l4_summary.json`。
 
-### 3.4 HTTP API smoke（Knowledge Layer 检索，可选）
+### 3.5 HTTP API smoke（Knowledge Layer 检索，可选）
 
 前置：同 §3.1（`docker compose up -d` + 已完成 **Serving 入库**，或本脚本 `--ingest`）。
 
@@ -231,7 +291,7 @@ python scripts/run_acceptance_suite.py --profile smoke --with-api
 
 未入库时脚本 exit `1` 并打印 prerequisite；断言失败 exit `2`。
 
-### 3.5 单元测试（改代码后）
+### 3.6 单元测试（改代码后）
 
 ```bash
 python -m pytest tests/test_serving_gate.py tests/test_serving_facts.py tests/test_stage_scorecard.py tests/core/rag tests/core/kg -q
@@ -252,6 +312,7 @@ python -m pytest tests/test_serving_gate.py tests/test_serving_facts.py tests/te
 | PDF Table Stress | `data/reports/eval/gongtong_2021_table_stress.json` |
 | 跨文档冲突 E2E | `data/reports/eval/guangzhou_langqi_conflict_e2e.json` |
 | Worker PostgreSQL soak | `data/reports/eval/ingestion_worker_soak.json` |
+| Worker event wakeup | `data/reports/eval/ingestion_worker_wakeup_smoke.json` |
 | 样本快照说明 | `docs/pipeline_eval_status.md` |
 
 （`data/reports/*` 默认 gitignore；以本地报告 + 本套件文档为准。）
@@ -299,6 +360,6 @@ L3 8/8、HTTP API 4/4。
 
 ## 7. 明确未覆盖（避免误判「已整体测试」）
 
-- L4 有独立脚本但未进 `run_acceptance_suite.py` 硬门禁（LLM 可用时可选跑）  
+- L4 已有三样本硬门禁；尚未覆盖更多行业、语言和跨年度复杂推理题
 - 跨文档冲突已覆盖真实 PDF→pipeline→PostgreSQL E2E；尚未覆盖三份以上来源及公告/研报混合来源
 - Stress 已覆盖真实扫描件 OCR 与复杂表结构；尚未覆盖低清、旋转、手写等更极端图像质量

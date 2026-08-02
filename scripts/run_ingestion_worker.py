@@ -12,12 +12,22 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.api.dependencies import get_ingestion_job_service  # noqa: E402
+from app.core.config import get_settings  # noqa: E402
+from app.core.db.postgres_queue_wakeup import (  # noqa: E402
+    PostgresIngestionQueueWakeup,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--poll-seconds", type=float, default=1.0)
+    parser.add_argument("--poll-seconds", type=float, default=30.0)
     parser.add_argument("--once", action="store_true")
+    parser.add_argument(
+        "--stop-after-dispatch",
+        type=int,
+        default=0,
+        help="Exit after dispatching N jobs; intended for deployment smoke checks.",
+    )
     return parser
 
 
@@ -27,16 +37,35 @@ def run_worker_iteration() -> int:
 
 def main() -> int:
     args = build_parser().parse_args()
+    settings = get_settings()
     service = get_ingestion_job_service()
+    wakeup = (
+        PostgresIngestionQueueWakeup(settings.postgres_dsn)
+        if settings.storage_backend == "postgres"
+        else None
+    )
+    print(
+        f"ingestion worker ready: backend={settings.storage_backend} "
+        f"wakeup={'postgres-notify' if wakeup is not None else 'poll'}",
+        flush=True,
+    )
+    dispatched = 0
     try:
         while True:
-            service.recover_incomplete()
-            if args.once:
+            dispatched += service.recover_incomplete()
+            if args.once or (
+                args.stop_after_dispatch > 0 and dispatched >= args.stop_after_dispatch
+            ):
                 break
-            time.sleep(max(0.05, args.poll_seconds))
+            if wakeup is not None:
+                wakeup.wait(args.poll_seconds)
+            else:
+                time.sleep(max(0.05, args.poll_seconds))
     except KeyboardInterrupt:
         pass
     finally:
+        if wakeup is not None:
+            wakeup.close()
         service.shutdown()
     return 0
 

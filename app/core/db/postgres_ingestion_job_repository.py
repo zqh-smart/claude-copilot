@@ -1,10 +1,11 @@
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.db.postgres_mappers import ingestion_job_from_orm, ingestion_job_to_orm
 from app.core.db.postgres_models import IngestionJobORM
+from app.core.db.postgres_queue_wakeup import INGESTION_QUEUE_CHANNEL
 from app.core.errors import IngestionJobNotFoundError
 from src.claude_copilot.schemas.ingestion import (
     IngestionJob,
@@ -36,8 +37,17 @@ class PostgresIngestionJobRepository:
     def save(self, job: IngestionJob) -> IngestionJob:
         with self._session_factory() as session:
             session.merge(ingestion_job_to_orm(job))
+            self._notify_if_ready(session, job)
             session.commit()
         return job
+
+    def _notify_if_ready(self, session: Session, job: IngestionJob) -> None:
+        if job.status != IngestionJobStatus.QUEUED:
+            return
+        session.execute(
+            text("SELECT pg_notify(:channel, :payload)"),
+            {"channel": INGESTION_QUEUE_CHANNEL, "payload": job.job_id},
+        )
 
     def claim(
         self,

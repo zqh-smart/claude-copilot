@@ -12,7 +12,10 @@ from app.core.db.serving_facts import (
 from app.core.errors import CompanyNotFoundError
 from src.claude_copilot.schemas.financial_data import (
     CompanySummary,
+    FinancialKnowledgeFusionResponse,
     FinancialMetricsResponse,
+    FusedMetricFact,
+    MetricFusionConflict,
     MetricGrowthPoint,
     MetricTrendResponse,
 )
@@ -160,6 +163,90 @@ class FinancialDataService:
             cagr=cagr,
             warnings=warnings,
             observations=observations,
+        )
+
+    def fuse_knowledge(
+        self,
+        company_id: str,
+        *,
+        document_ids: list[str] | None = None,
+    ) -> FinancialKnowledgeFusionResponse:
+        """Build an auditable cross-document FinancialSchema fact view."""
+        company = self._require_company(company_id)
+        requested = list(dict.fromkeys(document_ids or []))
+        observations = self._repository.query_metrics(company_id, limit=5000)
+        if requested:
+            observations = [item for item in observations if item.document_id in requested]
+
+        available_documents = sorted({item.document_id for item in observations})
+        warnings = [
+            f"document not found for company: {doc_id}"
+            for doc_id in requested
+            if doc_id not in available_documents
+        ]
+        grouped: dict[tuple[str, str], list] = defaultdict(list)
+        for observation in observations:
+            if observation.metric_key and observation.period:
+                grouped[(observation.metric_key, observation.period)].append(observation)
+
+        facts: list[FusedMetricFact] = []
+        conflicts: list[MetricFusionConflict] = []
+        metrics_index: dict[str, dict[str, int | float | str]] = defaultdict(dict)
+        for (metric_key, period), candidates in sorted(grouped.items()):
+            resolution = resolve_metric_conflict(
+                [candidate_from_observation(item) for item in candidates],
+                metric_key=metric_key,
+                period=period,
+            )
+            if resolution.winner is None:
+                continue
+            winner = next(
+                item
+                for item in candidates
+                if item.document_id == resolution.winner.document_id
+                and not metric_values_conflict(item.value, resolution.winner.value)
+            )
+            source_ids = sorted({item.document_id for item in candidates})
+            distinct_values = {normalize_metric_value(item.value) for item in candidates}
+            facts.append(
+                FusedMetricFact(
+                    metric_key=metric_key,
+                    period=period,
+                    value=winner.value,
+                    statement_type=winner.statement_type,
+                    unit=winner.unit,
+                    currency=winner.currency,
+                    winner_document_id=winner.document_id,
+                    source_document_ids=source_ids,
+                    suppressed_document_ids=resolution.suppressed_document_ids,
+                    source_table_id=winner.source_table_id,
+                    source_section=winner.source_section,
+                    page_range=winner.page_range,
+                    provenance=dict(winner.provenance),
+                )
+            )
+            metrics_index[metric_key][period] = winner.value
+            warnings.extend(resolution.warnings)
+            if len(distinct_values) > 1:
+                conflicts.append(
+                    MetricFusionConflict(
+                        metric_key=metric_key,
+                        period=period,
+                        winner_document_id=winner.document_id,
+                        suppressed_document_ids=resolution.suppressed_document_ids,
+                        candidate_values={item.document_id: item.value for item in candidates},
+                        resolution=(resolution.warnings[0] if resolution.warnings else "resolved"),
+                    )
+                )
+
+        return FinancialKnowledgeFusionResponse(
+            company=company,
+            document_ids=available_documents,
+            reporting_periods=sorted({period for _, period in grouped}),
+            facts=facts,
+            metrics_index={key: dict(value) for key, value in metrics_index.items()},
+            conflicts=conflicts,
+            warnings=warnings,
         )
 
     def _require_company(self, company_id: str) -> CompanySummary:

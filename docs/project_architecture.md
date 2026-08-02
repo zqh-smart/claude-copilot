@@ -211,7 +211,7 @@ LangGraph 工作流层。
 5. ~~接入向量索引~~
 6. ~~接入第一个 LangGraph workflow~~
 
-当前规划清单已完成：
+P7 / Phase F 已完成：
 
 1. LangSmith / Langfuse tracing 已接入统一 span 生命周期，默认脱敏并支持可选 exporter。
 2. P7f 已提供报告中心（公司/年度范围/投研或风控、Markdown/HTML/PDF）、
@@ -220,6 +220,16 @@ LangGraph 工作流层。
 已完成的工程化收尾：异步任务租约/心跳/独立 Worker/取消/告警、多进程 PostgreSQL soak，
 Acceptance API/负面/真实冲突 E2E，以及扫描 OCR/复杂表 Stress golden；P7f 组合 API 与
 报告文件导出均有契约测试和真实数据/渲染验收。
+
+当前 Phase G 后续工作：
+
+1. 两套前端浏览器 E2E。
+2. 正式多文档报告综合与 Full L4/critic 硬门禁。
+3. 真实 tracing exporter 冒烟（`scripts/run_tracing_exporter_smoke.py` 验证
+   Langfuse SDK OTLP payload、认证头与 trace ID；SaaS 环境仍需提供凭据后复验）。
+4. 多文档知识融合与 KG 生产化。
+5. 外部 golden、CER/TEDS、清洗噪声优化。
+6. 独立 Worker 默认部署、事件驱动唤醒与运维验收。
 
 这样可以保证：
 

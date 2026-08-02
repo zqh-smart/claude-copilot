@@ -18,6 +18,9 @@ from typing import Any, Iterable
 from pypdf import PdfReader
 
 from app.pipeline.feature_pipeline.parser.helpers import with_parse_metadata
+from app.pipeline.feature_pipeline.parser.table_normalization import (
+    normalize_currency_columns,
+)
 from src.claude_copilot.schemas.document import (
     DocumentMetadata,
     ParsedDocument,
@@ -89,11 +92,13 @@ class PdfDocumentParser:
         backend_priority: list[str] | None = None,
         mineru_start_page_id: int = 0,
         mineru_end_page_id: int | None = None,
+        force_mineru: bool = False,
     ) -> None:
         raw_priority = backend_priority or ["mineru_pdf", "table_pdf", "native_pdf", "ocr_pdf"]
         self._backend_priority = self._normalize_priority(raw_priority)
         self._mineru_start_page_id = mineru_start_page_id
         self._mineru_end_page_id = mineru_end_page_id
+        self._force_mineru = force_mineru
 
     def parse(self, *, doc_id: str, content: bytes, metadata: DocumentMetadata) -> ParsedDocument:
         page_profiles = self._build_page_profiles(content)
@@ -201,6 +206,8 @@ class PdfDocumentParser:
 
         for route in self._backend_priority:
             if route == "mineru_pdf" and self._can_use_mineru():
+                if self._force_mineru:
+                    return route
                 # Prefer MinerU for weak/scan-like PDFs. For text-rich A-share
                 # reports, fall through to table/native heuristics first.
                 if needs_ocr or not text_rich:
@@ -1012,14 +1019,14 @@ class PdfDocumentParser:
                         normalized.append(normalized_row)
             if normalized:
                 normalized = self._normalize_rows(normalized)
-                return normalized[0], normalized[1:]
+                return normalize_currency_columns(normalized[0], normalized[1:])
 
         html_text = self._extract_mineru_table_html(item)
         if html_text:
             html_rows = self._extract_table_rows_from_html(html_text)
             if html_rows:
                 normalized_rows = self._normalize_rows(html_rows)
-                return normalized_rows[0], normalized_rows[1:]
+                return normalize_currency_columns(normalized_rows[0], normalized_rows[1:])
 
         lines = [line for line in fallback_text.splitlines() if line.strip()]
         rows = [self._split_table_row(line) for line in lines]
@@ -1027,7 +1034,7 @@ class PdfDocumentParser:
         if not rows:
             return [], []
         normalized_rows = self._normalize_rows(rows)
-        return normalized_rows[0], normalized_rows[1:]
+        return normalize_currency_columns(normalized_rows[0], normalized_rows[1:])
 
     def _extract_mineru_table_html(self, item: dict[str, Any]) -> str:
         direct_html = item.get("html")

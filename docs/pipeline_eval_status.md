@@ -9,7 +9,7 @@ Baseline：`data/reports/eval/baseline_scorecard.json`
 门禁：`python scripts/run_acceptance_suite.py --profile all`  
 工作台：`cd web && npm run dev`（API：`uvicorn app.main:app --reload`）
 
-## 当前指标（P4–P6 后）
+## 当前指标（P7 / Phase F 后）
 
 | metric | value | 备注 |
 |--------|------:|------|
@@ -37,9 +37,10 @@ Baseline：`data/reports/eval/baseline_scorecard.json`
 ## 可后置
 
 - 重复块再降、旁支表章节噪声
-- L4 grounded + critic 纳入硬门禁（LLM 稳定后；现有 `run_l4_research_eval.py`）
-- 冲突策略 / API smoke 的 acceptance 脚本级硬断言（单测与 `--with-api` 已有）
-- 外部财报字段伪 golden / CER/TEDS 全量标注
+- 扩充更多外部财报页面的 CER/TEDS 人工标注（当前 JPMorgan 2024 Form 10-K 第 5 页已落地并通过）
+
+已完成：API smoke、负面 invariants、真实跨文档冲突 E2E、扫描 OCR Stress、复杂表 Stress、L4 grounded + critic 硬门禁、外部 JPM CER/TEDS 与真实 MinerU schema benchmark、
+多进程 Worker soak 均已纳入 `--profile all`。
 
 ## 混合检索（近期）
 

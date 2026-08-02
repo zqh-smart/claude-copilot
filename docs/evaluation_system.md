@@ -119,7 +119,7 @@ L4 依赖 L2+L3；解析再好，检索证据错也会在 L4 暴露。
 | L0/L1/L2 | `StageScorecardService` + `run_stage_eval.py` + `source_grounding`；3 个 ready 样本 | Stress/外部伪 golden |
 | L2 扩展 | `ParseEvaluationBenchmarkService` / `DocumentAIGoldenEvaluator` | 与 scorecard 统一入口 |
 | L3 | `RetrievalOrchestrator` + `run_serving_ingest_eval.py`；指南针/聚灿/天华全绿；真实跨文档冲突、扫描 OCR 与复杂表 Stress 已建 | 公告/研报混合来源冲突；极端低清/旋转图像 |
-| L4 | Grounded synthesis + critic；批量 `--profile` 与汇总报告 | full regression 仍为软闸；尚未进入 acceptance 硬门禁 |
+| L4 | Grounded synthesis + critic；批量 `--profile` 与汇总报告 | 三样本 full 题集 100%，已进入 acceptance 发布硬门禁 |
 
 当前指南针 2021：L2/L3 闸门已通；L4 full znz 曾达 8/8。聚灿/天华可用 `--profile regression` 扩评。
 

@@ -1,4 +1,66 @@
 services:
+  api:
+    build:
+      context: .
+      args:
+        INSTALL_MINERU: ${INSTALL_MINERU:-true}
+    image: claude-copilot:${APP_IMAGE_TAG:-local}
+    restart: unless-stopped
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment: &app-environment
+      APP_ENV: production
+      APP_DEBUG: "false"
+      STORAGE_BACKEND: postgres
+      POSTGRES_DSN: postgresql+psycopg://postgres:postgres@postgres:5432/claude_copilot
+      VECTOR_STORE_BACKEND: qdrant
+      QDRANT_URL: http://qdrant:6333
+      GRAPH_STORE_BACKEND: neo4j
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USERNAME: neo4j
+      NEO4J_PASSWORD: claude-copilot
+      INGESTION_INLINE_EXECUTION_ENABLED: "false"
+      INGESTION_RECOVER_ON_STARTUP: "false"
+      FEATURE_PIPELINE_ENABLED: "true"
+    ports:
+      - "8000:8000"
+    volumes:
+      - app_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      neo4j:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  ingestion-worker:
+    image: claude-copilot:${APP_IMAGE_TAG:-local}
+    restart: unless-stopped
+    command: ["python", "scripts/run_ingestion_worker.py", "--poll-seconds", "30"]
+    environment:
+      <<: *app-environment
+      INGESTION_WORKER_COUNT: "2"
+    volumes:
+      - app_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      neo4j:
+        condition: service_healthy
+
   postgres:
     image: postgres:16-alpine
     container_name: claude-copilot-postgres
@@ -60,6 +122,7 @@ services:
       retries: 10
 
 volumes:
+  app_data:
   postgres_data:
   qdrant_data:
   redis_data:

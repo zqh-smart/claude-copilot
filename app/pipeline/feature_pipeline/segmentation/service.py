@@ -211,7 +211,7 @@ class SemanticSegmentationService:
 
     def _is_semantic_anchor(self, block: ParsedPageBlock) -> bool:
         text = self._normalize_anchor_text(block.text.strip())
-        if not text or len(text) > 60:
+        if not text or len(text) > 120:
             return False
         if block.block_type not in {"heading", "paragraph"}:
             return False
@@ -234,6 +234,34 @@ class SemanticSegmentationService:
     def _looks_like_section_title(self, text: str, semantic_type: str) -> bool:
         normalized = self._normalize_anchor_text(text)
         compact = self._compact_text(normalized)
+        normalized_lower = normalized.lower()
+        english_title_patterns = {
+            "audit_report": (
+                r"^(opinions? on the financial statements|basis for opinions?|"
+                r"report of independent (registered )?public accounting firm|independent auditor)",
+            ),
+            "financial_note": (
+                r"^(notes? to (consolidated )?financial statements|note\s+\d+\b)",
+            ),
+            "financial_statement": (
+                r"^(?:[\w&.' -]+\s+)?consolidated\s+(?:balance sheets?|"
+                r"statements? of (?:comprehensive )?income|statements? of cash flows?|"
+                r"statements? of changes in stockholders)$",
+                r"^(?:balance sheets?|statements? of (?:comprehensive )?income|"
+                r"statements? of cash flows?|statements? of changes in stockholders|"
+                r"financial statements?)$",
+            ),
+            "management_discussion": (
+                r"^management(?:'s)? discussion(?: and analysis)?$",
+            ),
+            "risk_section": (r"^(risk factors?|risk management|risk overview)$",),
+            "company_overview": (r"^(company |business )?overview$", r"^about us$"),
+        }
+        if any(
+            re.match(pattern, normalized_lower, flags=re.IGNORECASE)
+            for pattern in english_title_patterns.get(semantic_type, ())
+        ):
+            return True
         if len(compact) > 48:
             return False
         if re.search(r"(详见|请见|参见|如下|下列|所述|之“|之\")", compact):

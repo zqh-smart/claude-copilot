@@ -6,6 +6,7 @@ from app.core.errors import CompanyNotFoundError
 from app.core.kg import KnowledgeGraphStoreProtocol
 from src.claude_copilot.schemas.financial_data import (
     CompanySummary,
+    FinancialKnowledgeFusionResponse,
     FinancialMetricsResponse,
     MetricTrendResponse,
 )
@@ -67,5 +68,20 @@ def get_metric_trend(
             start_year=start_year,
             end_year=end_year,
         )
+    except CompanyNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get(
+    "/{company_id}/knowledge-fusion",
+    response_model=FinancialKnowledgeFusionResponse,
+)
+def get_company_knowledge_fusion(
+    company_id: str,
+    doc_id: list[str] | None = Query(default=None),
+    service: FinancialDataService = Depends(get_financial_data_service),
+) -> FinancialKnowledgeFusionResponse:
+    try:
+        return service.fuse_knowledge(company_id, document_ids=doc_id)
     except CompanyNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

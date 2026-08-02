@@ -1,8 +1,8 @@
 import argparse
 import json
-from pathlib import Path
 import sys
 import time
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -12,8 +12,10 @@ from app.pipeline.feature_pipeline.evaluation.service import ParseEvaluationBenc
 from app.pipeline.feature_pipeline.parser.pdf_parser import PdfDocumentParser
 from app.pipeline.feature_pipeline.schema_mapping.service import FinancialSchemaMappingService
 from app.pipeline.feature_pipeline.segmentation.service import SemanticSegmentationService
+from app.pipeline.feature_pipeline.structure_reconstruction.service import (
+    StructureReconstructionService,
+)
 from app.pipeline.feature_pipeline.table_intelligence.service import TableIntelligenceService
-from app.pipeline.feature_pipeline.structure_reconstruction.service import StructureReconstructionService
 from src.claude_copilot.schemas.document import DocumentMetadata
 
 
@@ -69,6 +71,7 @@ def main() -> None:
         backend_priority=["mineru_pdf", "table_pdf", "native_pdf", "ocr_pdf"],
         mineru_start_page_id=args.start_page_id,
         mineru_end_page_id=args.end_page_id,
+        force_mineru=True,
     )
     segmentation = SemanticSegmentationService()
     table_intelligence = TableIntelligenceService()

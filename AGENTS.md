@@ -18,8 +18,8 @@ claude_copilot/                  # Backend + internal console (this repo)
 │   ├── api/                     # FastAPI routes + thin services
 │   ├── core/                    # config, db, rag, kg, llm, prompts, errors
 │   ├── pipeline/feature_pipeline/  # Document AI pipeline (primary focus)
-│   └── workflows/               # LangGraph graphs (research live; risk/reporting stubs)
-├── web/                         # Vite console: docs / research Q&A / metrics / L3 eval (not agent chat)
+│   └── workflows/               # Live LangGraph graphs: research/risk/quant/compare/report/orchestrator
+├── web/                         # Vite console: docs/research/compare/report/BI/eval/jobs/upload
 ├── src/claude_copilot/          # Installable domain package (schemas, entity resolution)
 ├── tests/                       # pytest
 ├── scripts/                     # backfill, smoke, benchmarks

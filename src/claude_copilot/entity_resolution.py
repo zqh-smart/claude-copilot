@@ -18,6 +18,14 @@ _LEGAL_SUFFIXES = {
     "ltd",
     "plc",
 }
+_CJK_LEGAL_SUFFIXES = (
+    "集团股份有限公司",
+    "股份有限公司",
+    "有限责任公司",
+    "集团有限公司",
+    "股份公司",
+    "有限公司",
+)
 
 
 @dataclass(frozen=True)
@@ -36,7 +44,14 @@ class EntityResolver:
     ) -> ResolvedEntity:
         names = self._deduplicate_names((name, *aliases))
         keys = [self.canonical_key(candidate) for candidate in names]
-        key = sorted(keys, key=lambda item: (-len(item), item))[0]
+        key = max(
+            enumerate(keys),
+            key=lambda item: (
+                not item[1].isdigit(),
+                len(item[1]),
+                item[0] == 0,
+            ),
+        )[1]
         digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:10]
         slug = re.sub(r"[^a-z0-9]+", "-", key).strip("-") or "company"
         return ResolvedEntity(
@@ -49,6 +64,12 @@ class EntityResolver:
     def canonical_key(self, name: str) -> str:
         normalized = unicodedata.normalize("NFKC", name).casefold()
         normalized = re.sub(r"\([^)]{1,100}\)", " ", normalized).replace("&", " and ")
+        compact = re.sub(r"\s+", "", normalized)
+        for suffix in _CJK_LEGAL_SUFFIXES:
+            if compact.endswith(suffix) and len(compact) > len(suffix):
+                compact = compact[: -len(suffix)]
+                normalized = compact
+                break
         tokens = re.findall(r"[a-z0-9]+|[\u3400-\u9fff]+", normalized)
         while tokens and tokens[-1] in _LEGAL_SUFFIXES:
             tokens.pop()

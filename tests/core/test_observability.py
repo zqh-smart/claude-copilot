@@ -13,6 +13,7 @@ class RecordingBackend:
 
     def __init__(self) -> None:
         self.events: list[tuple] = []
+        self.flush_count = 0
 
     @contextmanager
     def open_span(self, *, name, span, inputs, metadata):
@@ -24,6 +25,9 @@ class RecordingBackend:
             raise
         finally:
             self.events.append(("end", dict(span.output)))
+
+    def flush(self) -> None:
+        self.flush_count += 1
 
 
 def test_observability_closes_successful_span_with_output() -> None:
@@ -49,6 +53,15 @@ def test_observability_closes_error_span_and_reraises() -> None:
             raise RuntimeError("boom")
 
     assert backend.events[-2:] == [("error", "RuntimeError"), ("end", {})]
+
+
+def test_observability_flushes_configured_backends() -> None:
+    backend = RecordingBackend()
+    observability = Observability([backend])
+
+    observability.flush()
+
+    assert backend.flush_count == 1
 
 
 def test_observability_disables_exporters_without_credentials() -> None:

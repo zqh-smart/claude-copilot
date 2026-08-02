@@ -12,6 +12,7 @@ from app.core.config import Settings
 @dataclass
 class TraceSpan:
     output: dict[str, Any] = field(default_factory=dict)
+    backend_trace_ids: dict[str, str] = field(default_factory=dict)
 
     def set_output(self, output: dict[str, Any]) -> None:
         self.output = output
@@ -37,6 +38,13 @@ class Observability:
     @property
     def backend_names(self) -> list[str]:
         return [backend.name for backend in self._backends]
+
+    def flush(self) -> None:
+        """Synchronously export queued spans for short-lived workers and smoke tests."""
+        for backend in self._backends:
+            flush = getattr(backend, "flush", None)
+            if callable(flush):
+                flush()
 
     @contextmanager
     def trace(
@@ -88,6 +96,7 @@ class LangSmithTraceBackend:
             project_name=self._project,
             client=self._client,
         ) as run:
+            span.backend_trace_ids[self.name] = str(run.id)
             try:
                 yield
             except Exception as exc:
@@ -95,6 +104,9 @@ class LangSmithTraceBackend:
                 raise
             else:
                 run.end(outputs=span.output)
+
+    def flush(self) -> None:
+        self._client.flush()
 
 
 class LangfuseTraceBackend:
@@ -124,6 +136,9 @@ class LangfuseTraceBackend:
             input=inputs,
             metadata=metadata,
         ) as observation:
+            trace_id = self._client.get_current_trace_id()
+            if trace_id:
+                span.backend_trace_ids[self.name] = trace_id
             try:
                 yield
             except Exception as exc:
@@ -134,6 +149,9 @@ class LangfuseTraceBackend:
                 raise
             else:
                 observation.update(output=span.output)
+
+    def flush(self) -> None:
+        self._client.flush()
 
 
 def build_observability(settings: Settings) -> Observability:

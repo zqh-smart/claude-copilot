@@ -24,13 +24,13 @@
 | 端到端 | Provenance coverage | 事实是否带页码/表来源 |
 | 工程 | Latency / pages·s⁻¹ | 吞吐 |
 
-本仓库当前落地的是 **可自动计算的工程指标 + 少量 golden + 原文回查**；完整 CER/TEDS 需人工标注页，现阶段不做。
+本仓库当前落地的是 **可自动计算的工程指标 + 少量 golden + 原文回查**。外部 JPMorgan 2024 Form 10-K 第 5 页已加入人工转录与表格树 golden，可计算 CER/TEDS；全量页面标注仍属于后续扩充范围。
 
 推荐组合（无需全量标注）：
 
 1. **少量核心 golden**：营收/净利等精确值（`core_metric_exact_match`）
 2. **原文回查**：抽取事实的数值能否在 PDF 文本/源表中定位（`source_grounding_rate`）
-3. **可选外部财报字段**：巨潮/东方财富等同口径字段（尚未接入）
+3. **外部文档质量页**：JPMorgan 2024 Form 10-K 人工 golden（`CER <= 0.02`、`TEDS >= 0.98`）
 
 ## 本仓库分阶段 Scorecard
 

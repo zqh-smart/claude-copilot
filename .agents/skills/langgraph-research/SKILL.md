@@ -35,7 +35,8 @@ If LangGraph import fails, `build_research_graph` returns `_FallbackCompiledGrap
 2. Keep node functions pure-ish: accept state dict-like input, return partial state updates.
 3. Critic should check citation/grounding quality; revision must consume critic feedback.
 4. Do not remove the fallback graph path without an explicit decision.
-5. `risk/` and `reporting/` workflows are stubs — do not assume they exist when wiring research.
+5. `risk/`, `reporting/`, `comparison_workflow/`, and `report_workflow/` are live graphs;
+   preserve their tested state contracts when wiring research or orchestration.
 
 ## Change checklist
 
@@ -49,4 +50,4 @@ If LangGraph import fails, `build_research_graph` returns `_FallbackCompiledGrap
 
 - Putting retrieval or DB logic directly in FastAPI route handlers
 - Ignoring `warnings` from hybrid retrieval in the final answer
-- Expanding into multi-agent risk/reporting graphs without user request (stubs only)
+- Duplicating the existing risk/reporting/comparison graphs instead of extending their contracts

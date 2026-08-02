@@ -73,6 +73,71 @@ def test_critic_rejects_draft_without_citations_even_if_model_passes() -> None:
     assert review.issues[-1].severity == "high"
 
 
+def test_critic_hard_gate_rejects_low_score_even_if_model_passes() -> None:
+    engine = GroundedResearchEngine(
+        SequenceJsonClient(
+            [
+                {
+                    "passed": True,
+                    "score": 0.79,
+                    "issues": [],
+                    "summary": "Marginal confidence.",
+                }
+            ]
+        )
+    )
+    draft = GroundedSynthesis(
+        answer="Net income was 100 [S1].",
+        citations=[{"evidence_id": "S1", "claim": "Net income was 100."}],
+        confidence=0.8,
+    )
+
+    review = engine.critique(
+        question="What was net income?",
+        evidence=[{"evidence_id": "S1", "value": 100}],
+        synthesis=draft,
+    )
+
+    assert review.passed is False
+    assert review.score == 0.49
+    assert any("hard-gate threshold" in issue.message for issue in review.issues)
+
+
+def test_critic_hard_gate_rejects_medium_issue_even_if_model_passes() -> None:
+    engine = GroundedResearchEngine(
+        SequenceJsonClient(
+            [
+                {
+                    "passed": True,
+                    "score": 0.9,
+                    "issues": [
+                        {
+                            "category": "logic_error",
+                            "severity": "medium",
+                            "message": "Reasoning needs verification.",
+                        }
+                    ],
+                    "summary": "One unresolved issue.",
+                }
+            ]
+        )
+    )
+    draft = GroundedSynthesis(
+        answer="Net income was 100 [S1].",
+        citations=[{"evidence_id": "S1", "claim": "Net income was 100."}],
+        confidence=0.8,
+    )
+
+    review = engine.critique(
+        question="What was net income?",
+        evidence=[{"evidence_id": "S1", "value": 100}],
+        synthesis=draft,
+    )
+
+    assert review.passed is False
+    assert review.score == 0.49
+
+
 def test_research_graph_revises_failed_draft_and_rechecks() -> None:
     calls = {"critic": 0}
 

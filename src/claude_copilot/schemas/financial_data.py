@@ -56,3 +56,38 @@ class MetricTrendResponse(BaseModel):
     cagr: float | None = None
     warnings: list[str] = Field(default_factory=list)
     observations: list[FinancialMetricObservation] = Field(default_factory=list)
+
+
+class FusedMetricFact(BaseModel):
+    metric_key: str
+    period: str
+    value: int | float | str
+    statement_type: str | None = None
+    unit: str | None = None
+    currency: str | None = None
+    winner_document_id: str
+    source_document_ids: list[str] = Field(default_factory=list)
+    suppressed_document_ids: list[str] = Field(default_factory=list)
+    source_table_id: str | None = None
+    source_section: str | None = None
+    page_range: tuple[int, int] | None = None
+    provenance: dict[str, Any] = Field(default_factory=dict)
+
+
+class MetricFusionConflict(BaseModel):
+    metric_key: str
+    period: str
+    winner_document_id: str
+    suppressed_document_ids: list[str] = Field(default_factory=list)
+    candidate_values: dict[str, int | float | str] = Field(default_factory=dict)
+    resolution: str
+
+
+class FinancialKnowledgeFusionResponse(BaseModel):
+    company: CompanySummary
+    document_ids: list[str] = Field(default_factory=list)
+    reporting_periods: list[str] = Field(default_factory=list)
+    facts: list[FusedMetricFact] = Field(default_factory=list)
+    metrics_index: dict[str, dict[str, int | float | str]] = Field(default_factory=dict)
+    conflicts: list[MetricFusionConflict] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)

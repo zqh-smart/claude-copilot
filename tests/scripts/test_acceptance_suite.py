@@ -1,3 +1,4 @@
+from scripts import run_acceptance_suite
 from scripts.run_acceptance_suite import build_parser
 
 
@@ -31,3 +32,33 @@ def test_acceptance_exposes_real_pdf_conflict_profile() -> None:
 def test_acceptance_exposes_postgres_worker_soak_profile() -> None:
     args = build_parser().parse_args(["--profile", "soak"])
     assert args.profile == "soak"
+
+
+def test_worker_profile_runs_event_wakeup_before_concurrency_soak(monkeypatch) -> None:
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        run_acceptance_suite,
+        "_run",
+        lambda command: commands.append(command) or 0,
+    )
+
+    assert run_acceptance_suite._run_worker_soak() == 0
+    assert commands[0][-1].endswith("run_ingestion_worker_wakeup_smoke.py")
+    assert commands[1][-1].endswith("run_ingestion_worker_soak.py")
+
+
+def test_acceptance_exposes_l4_hard_gate_profile() -> None:
+    args = build_parser().parse_args(["--profile", "l4"])
+    assert args.profile == "l4"
+
+
+def test_l4_profile_runs_full_all_sample_gate(monkeypatch) -> None:
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        run_acceptance_suite,
+        "_run",
+        lambda command: commands.append(command) or 0,
+    )
+
+    assert run_acceptance_suite._run_l4() == 0
+    assert commands[0][-2:] == ["--profile", "all"]

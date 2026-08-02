@@ -1,4 +1,8 @@
-from app.core.kg import KnowledgeGraphBuilder, LocalKnowledgeGraphStore
+from app.core.kg import (
+    KnowledgeGraphBuilder,
+    LocalKnowledgeGraphStore,
+    evaluate_document_graph,
+)
 from src.claude_copilot.entity_resolution import EntityResolver
 from src.claude_copilot.schemas.document import (
     DocumentMetadata,
@@ -179,3 +183,51 @@ def test_company_identity_and_graph_merge_across_years(tmp_path) -> None:
         ).entity_id
         == first_graph.company_id
     )
+
+
+def test_chinese_legal_suffix_aliases_resolve_to_one_company() -> None:
+    resolver = EntityResolver()
+
+    assert resolver.resolve_company("北京指南针科技发展股份有限公司").entity_id == (
+        resolver.resolve_company("北京指南针科技发展有限公司").entity_id
+    )
+    assert resolver.canonical_key("苏州天华新能源科技有限责任公司") == (
+        "苏州天华新能源科技"
+    )
+    assert resolver.resolve_company(
+        "聚灿光电科技股份有限公司",
+        aliases=["指南针", "300803"],
+    ).canonical_key == "聚灿光电科技"
+
+
+def test_graph_quality_requires_complete_relationship_provenance() -> None:
+    document = ParsedDocument(
+        doc_id="quality-doc",
+        metadata=DocumentMetadata(
+            doc_type="annual_report",
+            source="test",
+            filename="quality.pdf",
+            company="Quality Co., Ltd.",
+            year=2025,
+            page_count=20,
+        ),
+        financial_schema=FinancialSchema(
+            company="Quality Co., Ltd.",
+            metric_facts=[
+                FinancialMetricFact(
+                    metric_key="revenue",
+                    period="2025",
+                    value=100,
+                    source_table_id="income",
+                    page_range=(8, 8),
+                )
+            ],
+        ),
+    )
+
+    report = evaluate_document_graph(KnowledgeGraphBuilder().build(document))
+
+    assert report.passed is True
+    assert report.missing_endpoint_count == 0
+    assert report.missing_evidence_count == 0
+    assert report.evidence_grounding_rate == 1.0

@@ -58,6 +58,7 @@ pdf_ocr = [
   "pytesseract>=0.3.10",
 ]
 dev = [
+  "apted>=1.0.3",
   "pytest>=8.3.0",
   "pytest-cov>=5.0.0",
   "ruff>=0.5.0",

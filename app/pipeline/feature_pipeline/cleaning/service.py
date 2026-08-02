@@ -39,10 +39,14 @@ class DocumentCleaningService:
             for key, count in counts.items()
             if key and count >= 3 and self._looks_like_marginal_noise(key)
         }
+        repeated_long_blocks = {
+            key for key, count in counts.items() if key and count >= 2 and len(key) >= 120
+        }
 
         cleaned_blocks: list[ParsedPageBlock] = []
         seen_in_page: dict[int | None, set[str]] = {}
         in_toc = False
+        seen_long_blocks: set[str] = set()
 
         for block in blocks:
             text = block.text.strip()
@@ -58,6 +62,10 @@ class DocumentCleaningService:
                 continue
             if normalized in repeated_noise:
                 continue
+            if normalized in repeated_long_blocks:
+                if normalized in seen_long_blocks:
+                    continue
+                seen_long_blocks.add(normalized)
             if self._FULLTEXT_HEADER_RE.search(text) and len(text) <= 60:
                 continue
             if self._TOC_TITLE_RE.fullmatch(text):
@@ -111,9 +119,13 @@ class DocumentCleaningService:
             for key, count in counts.items()
             if key and count >= 3 and self._looks_like_marginal_noise(key)
         }
+        repeated_long_lines = {
+            key for key, count in counts.items() if key and count >= 2 and len(key) >= 120
+        }
 
         kept: list[str] = []
         prev_norm = ""
+        seen_long_lines: set[str] = set()
         for line in lines:
             stripped = line.strip()
             if not stripped:
@@ -123,6 +135,10 @@ class DocumentCleaningService:
             normalized = self._normalize_for_dedupe(stripped)
             if normalized in repeated or self._PAGE_ONLY_RE.fullmatch(stripped):
                 continue
+            if normalized in repeated_long_lines:
+                if normalized in seen_long_lines:
+                    continue
+                seen_long_lines.add(normalized)
             if self._FULLTEXT_HEADER_RE.search(stripped) and len(stripped) <= 60:
                 continue
             if self._looks_like_toc_line(stripped) and len(stripped) <= 120:
@@ -143,6 +159,8 @@ class DocumentCleaningService:
         if len(normalized) <= 80 and (
             "年度报告全文" in normalized
             or "年年度报告" in normalized
+            or "annualreport" in normalized
+            or "form#-k" in normalized
             or self._PAGE_ONLY_RE.fullmatch(normalized)
         ):
             return True

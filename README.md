@@ -72,6 +72,7 @@ uv run pytest -q
 
 ```bash
 uv run uvicorn app.main:app --reload
+uv run python scripts/run_ingestion_worker.py
 ```
 
 启动后可访问：
@@ -90,7 +91,7 @@ uv run uvicorn app.main:app --reload
 ### 1. 启动基础容器
 
 ```bash
-docker compose up -d
+docker compose up -d postgres qdrant redis neo4j
 ```
 
 可检查容器状态：
@@ -98,6 +99,16 @@ docker compose up -d
 ```bash
 docker compose ps
 ```
+
+生产式启动（API 与文档 Worker 分离，默认包含 MinerU）：
+
+```bash
+docker compose up -d --build
+docker compose up -d --scale ingestion-worker=2
+```
+
+异步上传默认只写入 PostgreSQL 耐久队列，由独立 Worker 通过 `LISTEN/NOTIFY` 唤醒消费；
+API 进程不再内联执行文档 pipeline。
 
 ### 2. 准备本地环境变量
 

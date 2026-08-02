@@ -62,6 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
             "table-stress",
             "conflict",
             "soak",
+            "l4",
             "all",
         ),
         default="smoke",
@@ -262,7 +263,23 @@ def _run_conflict(sample: dict) -> int:
 
 
 def _run_worker_soak() -> int:
+    wakeup_code = _run(
+        [sys.executable, str(ROOT / "scripts" / "run_ingestion_worker_wakeup_smoke.py")]
+    )
+    if wakeup_code != 0:
+        return wakeup_code
     return _run([sys.executable, str(ROOT / "scripts" / "run_ingestion_worker_soak.py")])
+
+
+def _run_l4() -> int:
+    return _run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "run_l4_research_eval.py"),
+            "--profile",
+            "all",
+        ]
+    )
 
 
 def main() -> int:
@@ -295,6 +312,8 @@ def main() -> int:
         worst = max(worst, _run_conflict(CONFLICT))
     if args.profile in {"soak", "all"}:
         worst = max(worst, _run_worker_soak())
+    if args.profile in {"l4", "all"}:
+        worst = max(worst, _run_l4())
     return worst
 
 

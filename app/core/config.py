@@ -62,7 +62,7 @@ class Settings(BaseSettings):
     ingestion_max_attempts: int = 3
     ingestion_retry_delay_seconds: float = 2.0
     ingestion_recover_on_startup: bool = True
-    ingestion_inline_execution_enabled: bool = True
+    ingestion_inline_execution_enabled: bool = False
     ingestion_worker_id: str | None = None
     ingestion_lease_seconds: float = 120.0
     ingestion_heartbeat_seconds: float = 30.0

@@ -245,6 +245,54 @@ def test_metric_trend_prefers_grounded_conflict_winner_and_warns(tmp_path: Path)
     app.dependency_overrides.clear()
 
 
+def test_knowledge_fusion_exposes_winner_provenance_and_conflict(tmp_path: Path) -> None:
+    service = build_conflicting_financial_data_service(tmp_path)
+    app.dependency_overrides[get_financial_data_service] = lambda: service
+    client = TestClient(app)
+    company_id = build_company_id("ACME Holdings")
+
+    response = client.get(f"/api/v1/companies/{company_id}/knowledge-fusion")
+
+    assert response.status_code == 200
+    fusion = response.json()
+    assert fusion["document_ids"] == ["acme-2021", "acme-2024"]
+    assert fusion["reporting_periods"] == ["2021"]
+    assert fusion["metrics_index"] == {"revenue": {"2021": 100}}
+    assert len(fusion["facts"]) == 1
+    fact = fusion["facts"][0]
+    assert fact["winner_document_id"] == "acme-2021"
+    assert fact["source_document_ids"] == ["acme-2021", "acme-2024"]
+    assert fact["suppressed_document_ids"] == ["acme-2024"]
+    assert fact["provenance"]["source_grounded"] is True
+    assert fusion["conflicts"][0]["candidate_values"] == {
+        "acme-2021": 100,
+        "acme-2024": 200,
+    }
+    assert "kept grounded fact with provenance" in fusion["conflicts"][0]["resolution"]
+
+    app.dependency_overrides.clear()
+
+
+def test_knowledge_fusion_filters_documents_and_warns_for_unknown(tmp_path: Path) -> None:
+    service = build_conflicting_financial_data_service(tmp_path)
+    app.dependency_overrides[get_financial_data_service] = lambda: service
+    client = TestClient(app)
+    company_id = build_company_id("ACME Holdings")
+
+    response = client.get(
+        f"/api/v1/companies/{company_id}/knowledge-fusion",
+        params=[("doc_id", "acme-2021"), ("doc_id", "missing")],
+    )
+
+    assert response.status_code == 200
+    fusion = response.json()
+    assert fusion["document_ids"] == ["acme-2021"]
+    assert fusion["conflicts"] == []
+    assert fusion["warnings"] == ["document not found for company: missing"]
+
+    app.dependency_overrides.clear()
+
+
 def test_financial_data_api_returns_404_for_unknown_company(tmp_path: Path) -> None:
     service = build_financial_data_service(tmp_path)
     app.dependency_overrides[get_financial_data_service] = lambda: service

@@ -43,14 +43,14 @@ def test_resolve_l4_samples_custom_expectations() -> None:
 def test_gate_status_thresholds() -> None:
     assert L4_THRESHOLDS["smoke_full_pass_rate"] == 1.0
     assert L4_THRESHOLDS["retrieval_only_pass_rate"] == 1.0
-    assert L4_THRESHOLDS["regression_full_min_pass_rate"] == 0.8
+    assert L4_THRESHOLDS["regression_full_min_pass_rate"] == 1.0
 
     smoke = {"role": "smoke"}
     assert _gate_status(smoke, 1.0, retrieval_only=False)["met"] is True
     assert _gate_status(smoke, 0.875, retrieval_only=False)["met"] is False
 
     regression = {"role": "regression"}
-    soft = _gate_status(regression, 0.8, retrieval_only=False)
-    assert soft["kind"] == "regression_full_soft"
-    assert soft["met"] is True
-    assert _gate_status(regression, 0.79, retrieval_only=False)["met"] is False
+    hard = _gate_status(regression, 1.0, retrieval_only=False)
+    assert hard["kind"] == "regression_full_hard"
+    assert hard["met"] is True
+    assert _gate_status(regression, 0.99, retrieval_only=False)["met"] is False

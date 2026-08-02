@@ -1076,6 +1076,75 @@ def test_semantic_segmentation_builds_financial_sections_from_page_blocks() -> N
     assert "Revenue | 100" in semantic_sections[1].content
 
 
+def test_semantic_segmentation_recognizes_external_10k_headings() -> None:
+    service = SemanticSegmentationService()
+    document = ParsedDocument(
+        doc_id="doc-external-10k",
+        metadata=build_metadata("10k.pdf", ".pdf"),
+        page_blocks=[
+            ParsedPageBlock(
+                block_id="audit",
+                block_type="heading",
+                text="Opinions on the Financial Statements and Internal Control over Financial Reporting",
+                page=2,
+                order=1,
+            ),
+            ParsedPageBlock(
+                block_id="audit-body",
+                block_type="paragraph",
+                text="We have audited the accompanying consolidated financial statements.",
+                page=2,
+                order=2,
+            ),
+            ParsedPageBlock(
+                block_id="statement",
+                block_type="heading",
+                text="JPMorgan Chase & Co. Consolidated statements of income",
+                page=5,
+                order=1,
+            ),
+            ParsedPageBlock(
+                block_id="statement-body",
+                block_type="table",
+                text="Revenue | 100",
+                page=5,
+                order=2,
+            ),
+            ParsedPageBlock(
+                block_id="notes",
+                block_type="heading",
+                text="Notes to consolidated financial statements",
+                page=10,
+                order=1,
+            ),
+            ParsedPageBlock(
+                block_id="notes-body",
+                block_type="paragraph",
+                text="Note 1 - Basis of presentation",
+                page=10,
+                order=2,
+            ),
+            ParsedPageBlock(
+                block_id="narrative",
+                block_type="heading",
+                text="Use of estimates in the preparation of consolidated financial statements",
+                page=11,
+                order=1,
+            ),
+        ],
+    )
+
+    result = service.segment(document)
+    semantic = [section for section in result.sections if section.metadata.get("source") == "semantic_segmentation"]
+
+    assert {section.section_type for section in semantic} == {
+        "audit_report",
+        "financial_statement",
+        "financial_note",
+    }
+    assert not any(section.title.startswith("Use of estimates") for section in semantic)
+
+
 def test_chunking_service_emits_semantic_section_segments() -> None:
     document = ParsedDocument(
         doc_id="doc-semantic-2",
@@ -1815,6 +1884,22 @@ def test_pdf_parser_skips_mineru_for_text_rich_docs_with_tables(monkeypatch) -> 
     assert result.metadata.parse_route == "table_pdf"
     assert len(result.tables) == 1
     assert result.tables[0].rows[0][0] == "货币资金"
+
+
+def test_pdf_parser_can_force_mineru_for_external_quality_benchmark(monkeypatch) -> None:
+    parser = PdfDocumentParser(
+        backend_priority=["mineru_pdf", "table_pdf", "native_pdf"],
+        force_mineru=True,
+    )
+    monkeypatch.setattr(parser, "_can_use_mineru", lambda: True)
+    profile = PdfPageProfile(
+        page_number=1,
+        text="Revenue 2024 100 2023 90",
+        lines=["Revenue 2024 100 2023 90"],
+        table_groups=[["Revenue 2024 100 2023 90"]],
+    )
+
+    assert parser._select_route([profile]) == "mineru_pdf"
 
 
 def test_looks_like_heading_does_not_mark_every_chinese_line() -> None:

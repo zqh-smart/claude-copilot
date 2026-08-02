@@ -12,6 +12,8 @@ from src.claude_copilot.schemas.research import (
     GroundedSynthesis,
 )
 
+CRITIC_PASS_SCORE = 0.8
+
 
 class GroundedResearchEngine:
     def __init__(self, client: JsonChatClientProtocol) -> None:
@@ -358,12 +360,29 @@ class GroundedResearchEngine:
                     message="Draft contains no citations despite available evidence.",
                 )
             )
-        has_high_issue = any(issue.severity == "high" for issue in issues)
+        if review.score < CRITIC_PASS_SCORE:
+            issues.append(
+                CriticIssue(
+                    category="logic_error",
+                    severity="medium",
+                    message=(
+                        f"Critic score {review.score:.2f} is below the hard-gate "
+                        f"threshold {CRITIC_PASS_SCORE:.2f}."
+                    ),
+                )
+            )
+        has_blocking_issue = any(
+            issue.severity in {"medium", "high"} for issue in issues
+        )
         return review.model_copy(
             update={
-                "passed": bool(review.passed and not has_high_issue),
+                "passed": bool(
+                    review.passed
+                    and review.score >= CRITIC_PASS_SCORE
+                    and not has_blocking_issue
+                ),
                 "issues": issues,
-                "score": min(review.score, 0.49) if has_high_issue else review.score,
+                "score": min(review.score, 0.49) if has_blocking_issue else review.score,
             }
         )
 

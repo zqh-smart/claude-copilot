@@ -18,7 +18,6 @@ from app.core.db import (
     LocalSegmentRepository,
 )
 from app.core.kg import LocalKnowledgeGraphStore
-from app.core.rag.embeddings import HashEmbeddingService
 from app.core.rag.vector_store import NoOpVectorStore
 from app.core.storage import LocalFileStorage
 from app.pipeline.feature_pipeline.chunking import ChunkingService
@@ -243,8 +242,8 @@ def main() -> None:
     # Cleaning stage note: status exists in state machine but is not invoked by ingest today.
     cleaning_status = {
         "state_machine_has_cleaning": True,
-        "pipeline_invokes_cleaning": False,
-        "note": "CLEANING is defined in state_machine but DocumentPipelineService currently skips it (PARSING -> CHUNKING).",
+        "pipeline_invokes_cleaning": True,
+        "note": "DocumentPipelineService invokes DocumentCleaningService after parsing.",
     }
 
     report = {
@@ -270,14 +269,14 @@ def main() -> None:
             "knowledge_graph": graph_snapshot,
         },
         "optimization_assessment": {
-            "parse": "部分完成：文本层年报可走 table_pdf；复杂版式/扫描件仍需 MinerU；表格噪声偏多。",
-            "cleaning": "缺失：状态机有 CLEANING，但流水线未实现页眉页脚/目录/重复块清洗。",
-            "segmentation": "可用但偏碎：中文章节已识别，相邻同类型可再合并。",
-            "table_intelligence": "可用但需打磨：三大报表能识别，期间脏值与附注误判仍在。",
+            "parse": "可用：文本层/扫描件/复杂表生产路由均有真实 Stress；仍需扩外部样本。",
+            "cleaning": "已实现：页眉页脚、目录噪声与重复块清洗；继续量化重复块与旁支表噪声。",
+            "segmentation": "可用：语义章节与必需类型门禁已通过；继续扩外部标题样本。",
+            "table_intelligence": "可用：三大报表、期间和核心指标 golden 全绿；继续扩外部字段。",
             "structure_reconstruction": "弱：目前贡献有限，需结合清洗后的块再评估。",
-            "schema_mapping": "半完成：有 statements/metrics，但部分资产负债表 metrics 为空。",
-            "chunking": "基础可用：固定窗口切分，尚未做 parent-child / 章节感知切分。",
-            "indexing": "本次用 NoOpVectorStore 验证通路；生产需接 Qdrant + 真实 embedding。",
+            "schema_mapping": "可用：核心指标 exact match/grounding 为 1.0；继续扩外部 golden。",
+            "chunking": "可用：章节感知切分与 tiny segment 门禁已通过。",
+            "indexing": "可用：Qdrant + 真实 embedding 已进入 Acceptance all。",
             "knowledge_graph": "MVP：能建图，实体/关系抽取仍偏规则。",
         },
     }

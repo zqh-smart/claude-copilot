@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 
+from app.api.services.formal_report_composer import ReportSource, compose_formal_report
 from app.api.services.workflow_api_service import WorkflowApiService
 from src.claude_copilot.schemas.workflows import (
     ReportBundleExportRequest,
@@ -67,9 +68,8 @@ class ReportArtifactService:
                 if request.report_type == "investment"
                 else "生成风险识别、风险证据、影响与缓释建议的风险报告"
             )
-        blocks: list[str] = []
-        warnings: list[str] = []
-        for index, doc_id in enumerate(dict.fromkeys(request.doc_ids), start=1):
+        sources: list[ReportSource] = []
+        for doc_id in dict.fromkeys(request.doc_ids):
             outline = self._workflow_service.report_outline(
                 ReportOutlineRequest(
                     doc_id=doc_id,
@@ -78,20 +78,31 @@ class ReportArtifactService:
                     use_workflow=True,
                 )
             )
-            blocks.append(f"# 来源文档 {index}\n\n{outline.answer_markdown}")
-            warnings.extend(f"{doc_id}: {item}" for item in outline.warnings)
-        markdown = "\n\n".join(blocks)
+            sources.append(ReportSource(doc_id=doc_id, outline=outline))
+        report = compose_formal_report(
+            report_type=request.report_type,
+            question=question,
+            sources=sources,
+        )
         safe_stem = re.sub(r"[^\w\u4e00-\u9fff-]+", "-", request.title).strip("-")
         safe_stem = safe_stem or "financial-report"
         if request.format == "html":
-            content = self._render_html(title=request.title, markdown=markdown, warnings=warnings)
+            content = self._render_html(
+                title=request.title,
+                markdown=report.markdown,
+                warnings=report.warnings,
+            )
             return ReportArtifact(
                 content=content.encode("utf-8"),
                 media_type="text/html; charset=utf-8",
                 filename=f"{safe_stem}.html",
             )
         return ReportArtifact(
-            content=self._render_pdf(title=request.title, markdown=markdown, warnings=warnings),
+            content=self._render_pdf(
+                title=request.title,
+                markdown=report.markdown,
+                warnings=report.warnings,
+            ),
             media_type="application/pdf",
             filename=f"{safe_stem}.pdf",
         )

@@ -18,11 +18,11 @@ GOLDEN_DIR = ROOT / "data" / "golden"
 DEFAULT_GOLDEN = GOLDEN_DIR / "znz_2021_stage_expectations.json"
 OUT_DIR = ROOT / "data" / "reports" / "l4_eval"
 
-# Documented soft/hard gates (see docs/acceptance_suite.md § L4).
+# Documented hard gates (see docs/acceptance_suite.md § L4).
 L4_THRESHOLDS = {
     "smoke_full_pass_rate": 1.0,  # znz full L4 when LLM available — do not regress
     "retrieval_only_pass_rate": 1.0,  # all samples before claiming L4-ready evidence
-    "regression_full_min_pass_rate": 0.8,  # jucan/tianhua stretch; report, not hard CI
+    "regression_full_min_pass_rate": 1.0,  # every regression case must pass
 }
 
 L4_SAMPLE_CATALOG: list[dict[str, Any]] = [
@@ -251,7 +251,7 @@ def _gate_status(sample: dict[str, Any], pass_rate: float, *, retrieval_only: bo
         return {
             "threshold": threshold,
             "met": pass_rate >= threshold,
-            "kind": "regression_full_soft",
+            "kind": "regression_full_hard",
         }
     return {
         "threshold": L4_THRESHOLDS["smoke_full_pass_rate"],
@@ -529,34 +529,7 @@ def main() -> int:
     ]
     _write_summary(profile=args.profile, mode="full", sample_reports=reports)
 
-    # Exit: fail hard if smoke/custom below full threshold; regression soft gate only warns.
-    hard_fail = False
-    soft_warn = False
-    for item in reports:
-        block = item.get("l4") or {}
-        rate = float(block.get("pass_rate") or 0.0)
-        role = item.get("role")
-        if role == "regression":
-            if rate < L4_THRESHOLDS["regression_full_min_pass_rate"]:
-                soft_warn = True
-            if block.get("passed", 0) < block.get("total", 0):
-                soft_warn = True
-        else:
-            if block.get("passed", 0) < block.get("total", 0):
-                hard_fail = True
-    if soft_warn and not hard_fail:
-        print(
-            json.dumps(
-                {
-                    "warning": "regression L4 below soft threshold or incomplete",
-                    "threshold": L4_THRESHOLDS["regression_full_min_pass_rate"],
-                },
-                ensure_ascii=False,
-            )
-        )
-    if hard_fail:
-        return 2
-    if soft_warn:
+    if any(not bool((item.get("gate") or {}).get("met")) for item in reports):
         return 2
     return 0
 
