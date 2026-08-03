@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "document_key": "huaheng_2025_announcement",
+  "mode": "synthetic_segments",
+  "segments_fixture": "data/fixtures/joint_retrieval/huaheng_announcement_segments.json",
+  "retrieval_cases": [],
+  "benchmark_cases": [
+    {
+      "id": "ann_operating_data",
+      "question": "华衡科技2025年主要经营数据公告披露的营业收入大概是多少？",
+      "expect_route": "semantic",
+      "expect_keywords": ["营业收入", "1275"],
+      "expect_relevant_segment_fingerprints": ["syn-ann-rev-1275"],
+      "expect_hard_negative_segment_fingerprints": ["syn-ann-noise-research-1400"],
+      "difficulty": "medium",
+      "tags": ["announcement", "hard_negative"]
+    },
+    {
+      "id": "ann_unaudited_warning",
+      "question": "该经营数据公告有哪些风险提示？",
+      "expect_route": "semantic",
+      "expect_section_types": ["risk_section"],
+      "expect_keywords": ["未经审计", "年度报告"],
+      "expect_relevant_segment_fingerprints": ["syn-ann-risk-unaudited"],
+      "expect_hard_negative_segment_fingerprints": ["syn-ann-noise-research-1400"],
+      "difficulty": "easy",
+      "tags": ["announcement"]
+    },
+    {
+      "id": "ann_reject_research_forecast",
+      "question": "公告披露的营业收入口径是多少，而非市场点评预测？",
+      "expect_route": "semantic",
+      "expect_keywords": ["1275", "营业收入"],
+      "expect_relevant_segment_fingerprints": ["syn-ann-rev-1275"],
+      "expect_hard_negative_segment_fingerprints": ["syn-ann-noise-research-1400"],
+      "difficulty": "hard",
+      "tags": ["announcement", "hard_negative"],
+      "label_notes": "1400 is research noise; must not outrank announcement 1275."
+    },
+    {
+      "id": "ann_cross_company_abstain",
+      "question": "指南针2021年营业收入是多少？",
+      "expect_route": "semantic",
+      "expect_abstain": true,
+      "difficulty": "hard",
+      "tags": ["cross_company", "abstain"]
+    }
+  ],
+  "notes": {
+    "company": "华衡科技股份有限公司",
+    "year": 2025,
+    "document_type": "announcement",
+    "status": "synthetic_ready"
+  }
+}

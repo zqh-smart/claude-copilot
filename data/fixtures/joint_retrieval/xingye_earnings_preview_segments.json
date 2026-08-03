@@ -1,0 +1,34 @@
+{
+  "doc_id": "synthetic-xingye-earnings-preview",
+  "document_key": "xingye_2024_earnings_preview",
+  "document_type": "earnings_preview",
+  "segments": [
+    {
+      "segment_id": "xy-preview-ni",
+      "content": "兴业精密2024年度业绩预告：预计归属于上市公司股东的净利润为12,000万元至15,000万元，同比扭亏为盈。",
+      "metadata": {
+        "section_type": "company_overview",
+        "segment_fingerprint": "syn-xy-ni-preview",
+        "document_type": "earnings_preview"
+      }
+    },
+    {
+      "segment_id": "xy-disclaimer",
+      "content": "特别提示：本预告为初步测算结果，未经会计师事务所审计，最终数据以公司正式披露的经审计年度报告为准。",
+      "metadata": {
+        "section_type": "risk_section",
+        "segment_fingerprint": "syn-xy-disclaimer-unaudited",
+        "document_type": "earnings_preview"
+      }
+    },
+    {
+      "segment_id": "xy-noise-research",
+      "content": "卖方研报预测兴业精密2024年净利润可达2.0亿元，高于公司业绩预告区间上限，属外部观点。",
+      "metadata": {
+        "section_type": "company_overview",
+        "segment_fingerprint": "syn-xy-noise-research-2yi",
+        "document_type": "earnings_preview"
+      }
+    }
+  ]
+}

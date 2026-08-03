@@ -35,6 +35,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Allow hash embedding fallback when Silicon is unavailable (default: fail).",
     )
+    parser.add_argument(
+        "--allow-serving-gate-fail",
+        action="store_true",
+        help="Still exit 0 when ingest completes but serving_gate.allow_metric_serving is false "
+        "(OCR/table stress subsets may lack full statement coverage).",
+    )
     return parser.parse_args()
 
 
@@ -150,17 +156,32 @@ def main() -> int:
     financial = dependencies.get_financial_data_repository()
     parsed_repo = dependencies.get_parsed_document_repository()
 
+    notes = expectations.get("notes") or {}
+    company = notes.get("company") or "北京指南针科技发展股份有限公司"
+    year = notes.get("year") or 2021
+    industry = notes.get("industry") or "金融信息服务"
+    company_aliases = list(
+        notes.get("company_aliases")
+        or (
+            ["指南针", "300803"]
+            if "指南针" in str(company)
+            else []
+        )
+    )
+    doc_type = notes.get("doc_type") or notes.get("document_type") or "annual_report"
+    document_key = expectations.get("document_key")
+
     t0 = time.perf_counter()
     record = pipeline.ingest(
         filename=args.pdf_path.name,
         content_type="application/pdf",
         content=args.pdf_path.read_bytes(),
-        company=expectations.get("notes", {}).get("company") or "北京指南针科技发展股份有限公司",
-        year=expectations.get("notes", {}).get("year") or 2021,
-        doc_type="annual_report",
+        company=company,
+        year=year,
+        doc_type=doc_type,
         source="serving_ingest_eval",
-        industry="金融信息服务",
-        company_aliases=["指南针", "300803"],
+        industry=industry,
+        company_aliases=company_aliases,
     )
     ingest_seconds = round(time.perf_counter() - t0, 3)
     print(
@@ -192,6 +213,7 @@ def main() -> int:
     passed = sum(1 for item in case_results if item["passed"])
     report = {
         "doc_id": record.doc_id,
+        "document_key": document_key,
         "ingest_seconds": ingest_seconds,
         "segment_count": record.segment_count,
         "serving_gate": gate,
@@ -218,7 +240,7 @@ def main() -> int:
     out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps({"wrote": str(out_path), "l3_pass_rate": report["l3"]["pass_rate"]}, ensure_ascii=False, indent=2))
 
-    if not gate.get("allow_metric_serving", False):
+    if not gate.get("allow_metric_serving", False) and not args.allow_serving_gate_fail:
         return 3
     if case_results and passed < len(case_results):
         return 2

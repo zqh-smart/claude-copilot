@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "document_key": "huaheng_2025_research",
+  "mode": "synthetic_segments",
+  "segments_fixture": "data/fixtures/joint_retrieval/huaheng_research_segments.json",
+  "retrieval_cases": [],
+  "benchmark_cases": [
+    {
+      "id": "res_forecast_not_audit",
+      "question": "研报对华衡科技2025年营业收入的预测是多少？",
+      "expect_route": "semantic",
+      "expect_keywords": ["预计", "1275"],
+      "expect_relevant_segment_fingerprints": ["syn-res-opinion-1275"],
+      "expect_hard_negative_segment_fingerprints": ["syn-res-hardneg-filing"],
+      "difficulty": "medium",
+      "tags": ["research_report", "hard_negative"]
+    },
+    {
+      "id": "res_risk_factors",
+      "question": "研报提示了哪些风险？",
+      "expect_route": "semantic",
+      "expect_section_types": ["risk_section"],
+      "expect_keywords": ["风险", "原材料"],
+      "expect_relevant_segment_fingerprints": ["syn-res-risk"],
+      "difficulty": "easy",
+      "tags": ["research_report"]
+    },
+    {
+      "id": "res_not_filing_authority",
+      "question": "研报预测是否等于已审计年报权威营业收入？",
+      "expect_route": "semantic",
+      "expect_keywords": ["不等于", "年度报告"],
+      "expect_relevant_segment_fingerprints": ["syn-res-hardneg-filing", "syn-res-opinion-1275"],
+      "difficulty": "hard",
+      "tags": ["research_report", "hard_negative"]
+    },
+    {
+      "id": "res_future_year_abstain",
+      "question": "华衡科技2030年营业收入是多少？",
+      "expect_route": "semantic",
+      "expect_abstain": true,
+      "difficulty": "medium",
+      "tags": ["abstain", "cross_year"]
+    }
+  ],
+  "notes": {
+    "company": "华衡科技股份有限公司",
+    "year": 2025,
+    "document_type": "research_report",
+    "status": "synthetic_ready"
+  }
+}

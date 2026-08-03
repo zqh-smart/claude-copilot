@@ -58,6 +58,16 @@
         "经营",
         "收入",
         "业务"
+      ],
+      "expect_relevant_segment_fingerprints": [
+        "103143680ba0d03615f6fb6907d92dbcd1ba194107c4465349d283ada6260a6a",
+        "d60a9f9f6deb54529c2038f10f8df9e6e4c5ea4ba07c954858b4a2f1018bb453",
+        "6c1c8a5a1cf07d5032de68b6c6be97a5fa3dba04d3615ff113c660283b4e4344"
+      ],
+      "expect_hard_negative_segment_fingerprints": [
+        "306ee45575c0aef03dca7abf0548bc442faacd8819202c77325de001d795075d",
+        "7106edc67ca25ed347af2b3c78e449d924505800ea922ea7b9a8a5cf69cace24",
+        "b8a2affd12f1065d87b47318587a2417e5deb79aad9ae12a02cead53ddcb1902"
       ]
     },
     {
@@ -67,6 +77,139 @@
       "expect_graph_relation_types": [
         "HAS_RISK"
       ]
+    }
+  ],
+  "benchmark_cases": [
+    {
+      "id": "b_revenue_2025_abstain",
+      "question": "2025年营业收入是多少？",
+      "expect_route": "structured",
+      "expect_abstain": true,
+      "difficulty": "medium",
+      "tags": ["abstain", "cross_year"]
+    },
+    {
+      "id": "b_cross_company_jucan_revenue_abstain",
+      "question": "聚灿光电2021年营业收入是多少？",
+      "expect_route": "structured",
+      "expect_abstain": true,
+      "difficulty": "hard",
+      "tags": ["abstain", "cross_company"]
+    },
+    {
+      "id": "b_revenue_growth_hybrid",
+      "question": "2021年营业收入相对2020年为什么变化？",
+      "expect_route": "hybrid",
+      "expect_metric_key": "revenue",
+      "expect_period": "2021",
+      "expect_value": 469378042.95,
+      "expect_section_types": ["management_discussion"],
+      "expect_keywords": ["收入", "经营"],
+      "expect_relevant_segment_fingerprints": [
+        "fa1dd77095e4c2105b688ee16d4eebe0674d7159ff96570c1cbc5cabecae036e",
+        "09559e8211ba628eff40ad9958f8d142d1ab87b5a18e39f49a4ab9d69db565fa",
+        "b77ff555d8536b218089ddadd3b8cbc561ae0b228b419b26517cc74d96946653"
+      ],
+      "expect_hard_negative_segment_fingerprints": [
+        "379a4a9ca4e3fd59ab0f82f45199e3d1b052fce884075e8da03805014c940922",
+        "b9db00f0e7ae7cadf769895db0a3569a007b79eb7db43edb461adbe26a0188c9"
+      ],
+      "difficulty": "hard",
+      "tags": ["hard_negative", "cross_year"],
+      "label_notes": "Hard-neg=consolidated group revenue (3.39B) + geographic mix tables vs company-scope 469M."
+    },
+    {
+      "id": "b_ocf_2020_amount",
+      "question": "2020年经营活动产生的现金流量净额是多少？",
+      "expect_route": "structured",
+      "expect_metric_key": "net_cash_from_operating_activities",
+      "expect_period": "2020",
+      "expect_value": 349953492.93,
+      "difficulty": "medium",
+      "tags": ["cross_year"]
+    },
+    {
+      "id": "b_mda_materials_business",
+      "question": "管理层如何讨论新能源材料相关业务？",
+      "expect_route": "semantic",
+      "expect_section_types": ["management_discussion"],
+      "expect_keywords": ["经营", "业务"],
+      "expect_relevant_segment_fingerprints": [
+        "6c1c8a5a1cf07d5032de68b6c6be97a5fa3dba04d3615ff113c660283b4e4344",
+        "b9c45b708f281f38087180e362bb4a6d0974634c1a5e1822790f5d01f17d6ce8",
+        "cc70233e7507eedfde1c32484e2eb62eaf0b96da61b50547e64733ab14575473"
+      ],
+      "expect_hard_negative_segment_fingerprints": [
+        "103143680ba0d03615f6fb6907d92dbcd1ba194107c4465349d283ada6260a6a",
+        "ed42263a645d30663e26da4e6c79e9cdd9a5ffcfc0fd6b058fa2eb154495279a"
+      ],
+      "difficulty": "medium",
+      "tags": ["hard_negative"],
+      "label_notes": "Positives=lithium/material business; hard-neg=ultracapacitor/electronics overview chunks."
+    },
+    {
+      "id": "b_ocf_2021_amount",
+      "question": "2021年经营活动产生的现金流量净额是多少？",
+      "expect_route": "structured",
+      "expect_metric_key": "net_cash_from_operating_activities",
+      "expect_period": "2021",
+      "expect_value": 180482013.62,
+      "difficulty": "easy",
+      "tags": ["structured"]
+    },
+    {
+      "id": "b_net_income_2021",
+      "question": "2021年净利润是多少？",
+      "expect_route": "structured",
+      "expect_metric_key": "net_income",
+      "expect_period": "2021",
+      "expect_value": 197930904.41,
+      "difficulty": "easy",
+      "tags": ["structured"]
+    },
+    {
+      "id": "b_total_equity_2021",
+      "question": "2021年所有者权益合计是多少？",
+      "expect_route": "structured",
+      "expect_metric_key": "total_equity",
+      "expect_period": "2021",
+      "expect_value": 862815823.67,
+      "difficulty": "medium",
+      "tags": ["structured"]
+    },
+    {
+      "id": "b_cross_company_gongtong_abstain",
+      "question": "共同药业2021年货币资金是多少？",
+      "expect_route": "structured",
+      "expect_abstain": true,
+      "difficulty": "hard",
+      "tags": ["abstain", "cross_company"]
+    },
+    {
+      "id": "b_risk_graph",
+      "question": "公司面临哪些市场风险或风险暴露？",
+      "expect_route": "graph",
+      "expect_graph_relation_types": ["HAS_RISK"],
+      "difficulty": "medium",
+      "tags": ["graph"]
+    },
+    {
+      "id": "b_wrong_year_2018_abstain",
+      "question": "2018年营业收入是多少？",
+      "expect_route": "structured",
+      "expect_abstain": true,
+      "difficulty": "medium",
+      "tags": ["abstain", "cross_year"]
+    },
+    {
+      "id": "b_group_vs_company_scope",
+      "question": "母公司口径2021年营业收入是多少？",
+      "expect_route": "structured",
+      "expect_metric_key": "revenue",
+      "expect_period": "2021",
+      "expect_value": 469378042.95,
+      "difficulty": "hard",
+      "tags": ["hard_negative", "table_scope"]
     }
   ],
   "notes": {

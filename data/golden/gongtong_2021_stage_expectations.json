@@ -1,0 +1,164 @@
+{
+  "version": 1,
+  "document_key": "gongtong_2021_annual_report_ocr_subset",
+  "required_semantic_section_types": [
+    "risk_section",
+    "financial_statement"
+  ],
+  "core_metrics": {
+    "cash_and_cash_equivalents": {
+      "2021": 209914096.15,
+      "2020": 28963697.71
+    }
+  },
+  "serving_gate": {
+    "min_source_grounding_rate": 0.8,
+    "max_implausible_period_ratio": 0.0,
+    "min_statements_with_metrics_ratio": 0.0,
+    "note": "OCR+table subset (front matter + balance sheet). Full-statement serving gate is soft."
+  },
+  "retrieval_cases": [],
+  "benchmark_cases": [
+    {
+      "id": "b_ocr_company_cover",
+      "question": "这份年报的公司全称是什么？",
+      "expect_route": "semantic",
+      "expect_keywords": ["湖北共同药业股份有限公司"],
+      "expect_relevant_segment_fingerprints": [
+        "ce2757fab12524743bac837611ca2659f2723bf16605b4d1d170b7002dac0ee4"
+      ],
+      "difficulty": "easy",
+      "tags": ["ocr", "cover"]
+    },
+    {
+      "id": "b_ocr_environmental_risk",
+      "question": "共同药业披露了哪些环保治理相关风险？",
+      "expect_route": "semantic",
+      "expect_keywords": ["环保", "风险"],
+      "expect_relevant_segment_fingerprints": [
+        "c89b58813f90489ea048d288a0ad843c4ecd065e06e20d46b22e4f5ac255053f"
+      ],
+      "expect_hard_negative_segment_fingerprints": [
+        "fed35e3fa89a274af08ef5bfa00dd8fb33914d0b9eecf9e38963b79593a1fd28"
+      ],
+      "difficulty": "medium",
+      "tags": ["ocr", "risk", "hard_negative"]
+    },
+    {
+      "id": "b_ocr_capacity_risk",
+      "question": "募投项目新增产能消化相关的风险如何描述？",
+      "expect_route": "semantic",
+      "expect_keywords": ["产能", "风险"],
+      "expect_relevant_segment_fingerprints": [
+        "e25b19d520f29e80653cec33002cdbf8df074e7913e057dfd8b5757ef1bba991"
+      ],
+      "expect_hard_negative_segment_fingerprints": [
+        "fed35e3fa89a274af08ef5bfa00dd8fb33914d0b9eecf9e38963b79593a1fd28"
+      ],
+      "difficulty": "medium",
+      "tags": ["ocr", "risk", "hard_negative"]
+    },
+    {
+      "id": "b_table_cash_2021",
+      "question": "2021年12月31日货币资金是多少？",
+      "expect_route": "structured",
+      "expect_metric_key": "cash_and_cash_equivalents",
+      "expect_period": "2021",
+      "expect_value": 209914096.15,
+      "difficulty": "hard",
+      "tags": ["table", "balance_sheet"]
+    },
+    {
+      "id": "b_table_cash_2020",
+      "question": "2020年12月31日货币资金是多少？",
+      "expect_route": "structured",
+      "expect_metric_key": "cash_and_cash_equivalents",
+      "expect_period": "2020",
+      "expect_value": 28963697.71,
+      "difficulty": "hard",
+      "tags": ["table", "balance_sheet"]
+    },
+    {
+      "id": "b_table_notes_receivable_semantic",
+      "question": "合并资产负债表中应收票据对应的期末数字披露在哪？",
+      "expect_route": "semantic",
+      "expect_keywords": ["应收票据", "35,589,586.35"],
+      "expect_relevant_segment_fingerprints": [
+        "fed35e3fa89a274af08ef5bfa00dd8fb33914d0b9eecf9e38963b79593a1fd28"
+      ],
+      "difficulty": "hard",
+      "tags": ["table", "ocr"]
+    },
+    {
+      "id": "b_table_total_assets_2021",
+      "question": "2021年12月31日资产总计是多少？",
+      "expect_route": "structured",
+      "expect_metric_key": "total_assets",
+      "expect_period": "2021",
+      "expect_value": 1211243283.36,
+      "difficulty": "medium",
+      "tags": ["table", "balance_sheet"]
+    },
+    {
+      "id": "b_table_total_assets_2020",
+      "question": "2020年12月31日资产总计是多少？",
+      "expect_route": "structured",
+      "expect_metric_key": "total_assets",
+      "expect_period": "2020",
+      "expect_value": 804426535.29,
+      "difficulty": "medium",
+      "tags": ["table", "balance_sheet", "cross_year"]
+    },
+    {
+      "id": "b_table_inventory_2021",
+      "question": "2021年12月31日存货是多少？",
+      "expect_route": "structured",
+      "expect_metric_key": "inventory",
+      "expect_period": "2021",
+      "expect_value": 371243878.39,
+      "difficulty": "medium",
+      "tags": ["table", "balance_sheet"]
+    },
+    {
+      "id": "b_table_ar_2021",
+      "question": "2021年12月31日应收账款是多少？",
+      "expect_route": "structured",
+      "expect_metric_key": "accounts_receivable",
+      "expect_period": "2021",
+      "expect_value": 184261731.27,
+      "difficulty": "medium",
+      "tags": ["table", "balance_sheet"]
+    },
+    {
+      "id": "b_cross_company_znz_abstain",
+      "question": "指南针2021年营业收入是多少？",
+      "expect_route": "structured",
+      "expect_abstain": true,
+      "difficulty": "hard",
+      "tags": ["abstain", "cross_company"]
+    },
+    {
+      "id": "b_revenue_2025_abstain",
+      "question": "2025年营业收入是多少？",
+      "expect_route": "structured",
+      "expect_abstain": true,
+      "difficulty": "medium",
+      "tags": ["abstain", "cross_year"]
+    }
+  ],
+  "notes": {
+    "status": "ready",
+    "company": "湖北共同药业股份有限公司",
+    "company_short": "共同药业",
+    "ticker": "300966",
+    "year": 2021,
+    "industry": "医药制造",
+    "company_aliases": ["共同药业", "300966"],
+    "document_type": "annual_report",
+    "pdf_subset": "data/fixtures/joint_retrieval/gongtong_2021_ocr_table_subset.pdf",
+    "pdf_filename": "2022-04-22__湖北共同药业股份有限公司__300966__共同药业__2021年__年度报告.pdf",
+    "page_subset": [0, 1, 2, 85],
+    "serving_doc_id": "c42947bcc7ec41d8b358cfe17fa3706c",
+    "source": "OCR front matter (pages 1-3) + scanned balance sheet (page 86). Full 174-page PDF remains stress-eval only."
+  }
+}

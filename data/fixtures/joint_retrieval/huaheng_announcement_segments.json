@@ -1,0 +1,34 @@
+{
+  "doc_id": "synthetic-huaheng-announcement",
+  "document_key": "huaheng_2025_announcement",
+  "document_type": "announcement",
+  "segments": [
+    {
+      "segment_id": "ann-rev",
+      "content": "华衡科技股份有限公司2025年主要经营数据公告：初步核算营业收入约1,275百万元，同比变动待年报确认。",
+      "metadata": {
+        "section_type": "company_overview",
+        "segment_fingerprint": "syn-ann-rev-1275",
+        "document_type": "announcement"
+      }
+    },
+    {
+      "segment_id": "ann-risk",
+      "content": "提示：本公告数据未经审计，投资者不应仅依据经营数据公告作出投资决策，请关注随后披露的年度报告。",
+      "metadata": {
+        "section_type": "risk_section",
+        "segment_fingerprint": "syn-ann-risk-unaudited",
+        "document_type": "announcement"
+      }
+    },
+    {
+      "segment_id": "ann-noise-research",
+      "content": "市场点评认为公司景气上行，预计营业收入可达1,400百万元（研报观点，非公司公告）。",
+      "metadata": {
+        "section_type": "company_overview",
+        "segment_fingerprint": "syn-ann-noise-research-1400",
+        "document_type": "announcement"
+      }
+    }
+  ]
+}

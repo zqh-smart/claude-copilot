@@ -13,9 +13,21 @@ from app.core.db.serving_facts import (
 )
 from app.core.kg import KnowledgeGraphStoreProtocol
 from app.core.rag.retriever import LocalRetriever
+from src.claude_copilot.entity_resolution import EntityResolver
 from src.claude_copilot.schemas.financial_data import FinancialMetricObservation
 from src.claude_copilot.schemas.knowledge_graph import GraphPath
-from src.claude_copilot.schemas.research import MetricCalculation, QueryAnalysis, FusionSummary
+from src.claude_copilot.schemas.research import FusionSummary, MetricCalculation, QueryAnalysis
+
+# Alias groups for joint-benchmark cross-company abstain (fallback when repo catalog is thin).
+# Matching any alias in a group treats the whole group as that company identity.
+_WELL_KNOWN_COMPANY_GROUPS: tuple[tuple[str, ...], ...] = (
+    ("北京指南针科技发展股份有限公司", "指南针", "300803"),
+    ("聚灿光电科技股份有限公司", "聚灿光电", "300708"),
+    ("苏州天华新能源科技股份有限公司", "天华新能", "天华超净", "300390"),
+    ("湖北共同药业股份有限公司", "共同药业", "300966"),
+    ("广州市浪奇实业股份有限公司", "广州浪奇", "浪奇", "000523"),
+    ("华衡科技股份有限公司", "华衡科技"),
+)
 
 
 @dataclass
@@ -81,7 +93,6 @@ class QueryAnalyzer:
     )
     _STRUCTURED_CUES = (
         "how much",
-        "value",
         "amount",
         "ratio",
         "trend",
@@ -118,6 +129,15 @@ class QueryAnalyzer:
         "业务板块",
         "分部",
         "竞争对手",
+    )
+    _DISCLOSURE_SEGMENT_CUES = (
+        "reportable segment",
+        "geographic segment",
+        "segment information",
+        "segment reporting",
+        "可报告分部",
+        "地区分部",
+        "分部信息",
     )
     _SECTION_HINTS: dict[str, tuple[str, ...]] = {
         "management_discussion": (
@@ -164,7 +184,9 @@ class QueryAnalyzer:
         has_semantic_cue = any(cue in normalized for cue in self._SEMANTIC_CUES)
         has_structured_cue = any(cue in normalized for cue in self._STRUCTURED_CUES)
         needs_growth = any(cue in normalized for cue in self._GROWTH_CUES)
-        wants_graph = any(cue in normalized for cue in self._GRAPH_CUES)
+        wants_graph = any(cue in normalized for cue in self._GRAPH_CUES) and not any(
+            cue in normalized for cue in self._DISCLOSURE_SEGMENT_CUES
+        )
         section_hints = self._infer_section_hints(normalized)
 
         wants_structured = bool(metric_keys or years or has_structured_cue)
@@ -225,12 +247,31 @@ class RetrievalOrchestrator:
         doc_id: str,
         company_id: str | None,
         top_k: int,
+        routes_override: list[str] | None = None,
+        company_name: str | None = None,
+        company_aliases: list[str] | None = None,
     ) -> OrchestratedRetrievalResult:
         analysis = self._query_analyzer.analyze(question)
+        if routes_override is not None:
+            # Eval-only channel ablation: keep analyzer intent/metrics, force active routes.
+            analysis = analysis.model_copy(update={"routes": list(routes_override)})
         vector_hits = []
         metrics: list[FinancialMetricObservation] = []
         warnings: list[str] = []
         graph_paths: list[GraphPath] = []
+
+        foreign_company = self._detect_foreign_company_mention(
+            question,
+            company_name=company_name,
+            company_aliases=company_aliases or [],
+        )
+        if foreign_company:
+            warnings.append(
+                "Company scope mismatch: question mentions "
+                f"「{foreign_company}」but pinned document is "
+                f"「{company_name or company_id or doc_id}」. "
+                "SQL/graph abstained."
+            )
 
         if "vector" in analysis.routes:
             vector_hits = self._vector_retriever.retrieve(
@@ -238,10 +279,13 @@ class RetrievalOrchestrator:
                 doc_id=doc_id,
                 top_k=top_k,
                 section_hints=analysis.section_hints,
+                metric_keys=list(analysis.metric_keys or []),
             )
 
         if "sql" in analysis.routes:
-            if company_id is None:
+            if foreign_company:
+                warnings.append("SQL route skipped due to company scope mismatch")
+            elif company_id is None:
                 warnings.append("SQL route skipped because the document has no company metadata")
             else:
                 metrics = self._retrieve_metrics(
@@ -257,11 +301,14 @@ class RetrievalOrchestrator:
                     )
                 elif doc_id and not any(item.document_id == doc_id for item in metrics):
                     warnings.append(
-                        f"SQL metrics resolved from company scope; none tagged doc_id={doc_id[:12]}…"
+                        "SQL metrics resolved from company scope; "
+                        f"none tagged doc_id={doc_id[:12]}…"
                     )
 
         if "graph" in analysis.routes:
-            if self._graph_store is None:
+            if foreign_company:
+                warnings.append("Graph route skipped due to company scope mismatch")
+            elif self._graph_store is None:
                 warnings.append("Graph route skipped because no graph store is configured")
             else:
                 graph_paths = self._graph_store.search(
@@ -292,6 +339,105 @@ class RetrievalOrchestrator:
             warnings=warnings,
         )
 
+    def _aliases_compatible_with_company(self, company_name: str, alias: str) -> bool:
+        """Drop polluted aliases that do not belong to the pinned company identity."""
+        resolver = EntityResolver()
+        company_key = resolver.canonical_key(company_name)
+        alias_key = resolver.canonical_key(alias)
+        if not company_key or company_key == "company":
+            return False
+        if alias.casefold() == company_name.casefold() or alias_key == company_key:
+            return True
+        if len(alias_key) >= 2 and (
+            alias_key in company_key or company_key in alias_key
+        ):
+            return True
+        for group in _WELL_KNOWN_COMPANY_GROUPS:
+            group_fold = {member.casefold() for member in group}
+            group_keys = {resolver.canonical_key(member) for member in group}
+            company_in_group = (
+                company_name.casefold() in group_fold
+                or company_key in group_keys
+                or any(
+                    len(member_key) >= 2
+                    and (member_key in company_key or company_key in member_key)
+                    for member_key in group_keys
+                )
+            )
+            alias_in_group = alias.casefold() in group_fold or alias_key in group_keys
+            if company_in_group and alias_in_group:
+                return True
+        return False
+
+    def _detect_foreign_company_mention(
+        self,
+        question: str,
+        *,
+        company_name: str | None,
+        company_aliases: list[str],
+    ) -> str | None:
+        """If the question names another company than the pinned doc, return that mention."""
+        trusted_aliases = list(company_aliases)
+        if company_name and str(company_name).strip():
+            trusted_aliases = [
+                alias
+                for alias in company_aliases
+                if alias
+                and str(alias).strip()
+                and self._aliases_compatible_with_company(str(company_name), str(alias))
+            ]
+        pinned = [
+            name
+            for name in (company_name, *trusted_aliases)
+            if name and str(name).strip()
+        ]
+        if not pinned:
+            return None
+
+        resolver = EntityResolver()
+        pinned_keys = {resolver.canonical_key(name) for name in pinned if len(name) >= 2}
+        pinned_fold = {name.casefold() for name in pinned}
+
+        def _same_company(alias: str) -> bool:
+            alias_key = resolver.canonical_key(alias)
+            if not alias_key or alias_key == "company":
+                return False
+            if alias.casefold() in pinned_fold or alias_key in pinned_keys:
+                return True
+            return any(
+                pinned_key in alias_key or alias_key in pinned_key
+                for pinned_key in pinned_keys
+                if len(pinned_key) >= 2
+            )
+
+        groups: list[tuple[str, ...]] = [tuple(group) for group in _WELL_KNOWN_COMPANY_GROUPS]
+        try:
+            for company in self._financial_repository.list_companies():
+                name = getattr(company, "name", None)
+                if name and str(name).strip():
+                    groups.append((str(name).strip(),))
+        except Exception:  # noqa: BLE001
+            pass
+
+        # Prefer longer surface forms so legal names beat short tickers/fragments.
+        scored: list[tuple[int, str, tuple[str, ...]]] = []
+        for group in groups:
+            for alias in group:
+                cleaned = alias.strip()
+                if len(cleaned) < 2:
+                    continue
+                scored.append((len(cleaned), cleaned, group))
+        scored.sort(key=lambda item: item[0], reverse=True)
+
+        question_fold = question.casefold()
+        for _, alias, group in scored:
+            if alias not in question and alias.casefold() not in question_fold:
+                continue
+            if _same_company(alias) or any(_same_company(member) for member in group):
+                continue
+            return alias
+        return None
+
     def _build_fusion_summary(
         self,
         *,
@@ -315,17 +461,13 @@ class RetrievalOrchestrator:
             if key in seen_metric_keys:
                 continue
             seen_metric_keys.add(key)
-            highlights.append(
-                f"[结构化] {item.metric_key} · {item.period} = {item.value}"
-            )
+            highlights.append(f"[结构化] {item.metric_key} · {item.period} = {item.value}")
 
         for calc in calculations[:3]:
             if calc.yoy_growth:
                 latest_year = max(calc.yoy_growth)
                 rate = calc.yoy_growth[latest_year]
-                highlights.append(
-                    f"[计算] {calc.metric_key} YoY({latest_year}) = {rate:.2%}"
-                )
+                highlights.append(f"[计算] {calc.metric_key} YoY({latest_year}) = {rate:.2%}")
             elif calc.cagr is not None:
                 highlights.append(f"[计算] {calc.metric_key} CAGR = {calc.cagr:.2%}")
 
@@ -340,7 +482,10 @@ class RetrievalOrchestrator:
         active = [route_labels.get(route, route) for route in analysis.routes]
         summary_parts = [
             f"意图={analysis.intent}，启用通道：{' + '.join(active) or '无'}。",
-            f"召回：语义 {len(vector_hits)} 条、指标 {len(metrics)} 条、图谱 {len(graph_paths)} 条。",
+            (
+                f"召回：语义 {len(vector_hits)} 条、指标 {len(metrics)} 条、"
+                f"图谱 {len(graph_paths)} 条。"
+            ),
         ]
         if highlights:
             summary_parts.append(f"要点：{'；'.join(highlights[:4])}。")

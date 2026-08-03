@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "document_key": "greenpower_2023_esg_excerpt",
+  "mode": "synthetic_segments",
+  "segments_fixture": "data/fixtures/joint_retrieval/greenpower_esg_segments.json",
+  "retrieval_cases": [],
+  "benchmark_cases": [
+    {
+      "id": "gp_carbon_intensity",
+      "question": "绿能电力2023年温室气体排放强度变化如何？",
+      "expect_route": "semantic",
+      "expect_keywords": ["下降", "8.5"],
+      "expect_relevant_segment_fingerprints": ["syn-gp-carbon-85"],
+      "expect_hard_negative_segment_fingerprints": ["syn-gp-noise-revenue"],
+      "difficulty": "medium",
+      "tags": ["esg", "hard_negative"]
+    },
+    {
+      "id": "gp_safety_record",
+      "question": "报告期内安全生产情况如何？",
+      "expect_route": "semantic",
+      "expect_keywords": ["安全生产", "事故"],
+      "expect_relevant_segment_fingerprints": ["syn-gp-safety"],
+      "difficulty": "easy",
+      "tags": ["esg"]
+    },
+    {
+      "id": "gp_reject_revenue_rumor",
+      "question": "ESG报告是否确认营收突破百亿？",
+      "expect_route": "semantic",
+      "expect_keywords": ["不属于", "ESG"],
+      "expect_relevant_segment_fingerprints": ["syn-gp-noise-revenue"],
+      "difficulty": "hard",
+      "tags": ["esg", "hard_negative"]
+    },
+    {
+      "id": "gp_cross_company_abstain",
+      "question": "天华新能2021年营业收入是多少？",
+      "expect_route": "semantic",
+      "expect_abstain": true,
+      "difficulty": "medium",
+      "tags": ["abstain", "cross_company"]
+    },
+    {
+      "id": "gp_financial_metric_abstain",
+      "question": "绿能电力2023年经审计营业收入是多少？",
+      "expect_route": "semantic",
+      "expect_abstain": true,
+      "difficulty": "hard",
+      "tags": ["abstain", "esg"]
+    }
+  ],
+  "notes": {
+    "company": "绿能电力股份有限公司",
+    "company_aliases": ["绿能电力"],
+    "year": 2023,
+    "document_type": "esg_report",
+    "status": "synthetic_ready"
+  }
+}

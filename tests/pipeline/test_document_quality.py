@@ -45,8 +45,14 @@ def test_currency_column_normalization_compacts_shifted_period_values() -> None:
 
 
 def test_cer_and_teds_reward_exact_table_and_penalize_structure_error() -> None:
-    reference = "<table><tr><th>Metric</th><th>2024</th></tr><tr><td>Revenue</td><td>100</td></tr></table>"
-    wrong = "<table><tr><th>Metric</th><th></th><th>2024</th></tr><tr><td>Revenue</td><td>$</td><td>90</td></tr></table>"
+    reference = (
+        "<table><tr><th>Metric</th><th>2024</th></tr>"
+        "<tr><td>Revenue</td><td>100</td></tr></table>"
+    )
+    wrong = (
+        "<table><tr><th>Metric</th><th></th><th>2024</th></tr>"
+        "<tr><td>Revenue</td><td>$</td><td>90</td></tr></table>"
+    )
 
     assert character_error_rate("Revenue 100", "Revenue 100") == 0.0
     assert table_teds(reference, reference) == 1.0
@@ -70,6 +76,67 @@ def test_cleaning_removes_repeated_english_margins_and_duplicate_long_block() ->
             ],
             ParsedPageBlock(block_id="body-1", block_type="paragraph", text=narrative, page=1),
             ParsedPageBlock(block_id="body-2", block_type="paragraph", text=narrative, page=2),
+        ],
+    )
+
+    cleaned = DocumentCleaningService().clean(document)
+
+    assert [block.text for block in cleaned.page_blocks] == [narrative]
+
+
+def test_cleaning_keeps_first_unit_banner_and_drops_repeats() -> None:
+    document = ParsedDocument(
+        doc_id="unit-banners",
+        metadata=DocumentMetadata(doc_type="annual_report", source="test"),
+        page_blocks=[
+            ParsedPageBlock(block_id="u1", block_type="paragraph", text="单位：元", page=1),
+            ParsedPageBlock(
+                block_id="body",
+                block_type="paragraph",
+                text="营业收入 931944638",
+                page=1,
+            ),
+            ParsedPageBlock(block_id="u2", block_type="paragraph", text="单位：元", page=2),
+            ParsedPageBlock(block_id="u3", block_type="paragraph", text="单位：元", page=3),
+            ParsedPageBlock(
+                block_id="code",
+                block_type="paragraph",
+                text="股票代码：300803",
+                page=1,
+            ),
+            ParsedPageBlock(
+                block_id="code2",
+                block_type="paragraph",
+                text="股票代码：300803",
+                page=2,
+            ),
+        ],
+    )
+
+    cleaned = DocumentCleaningService().clean(document)
+    texts = [block.text for block in cleaned.page_blocks]
+
+    assert texts.count("单位：元") == 1
+    assert texts.count("股票代码：300803") == 1
+    assert "营业收入 931944638" in texts
+
+
+def test_cleaning_removes_multiline_toc_block_without_dropping_narrative() -> None:
+    toc = "\n".join(
+        [
+            "目录",
+            "第一节 重要提示........................................ 2",
+            "第二节 公司简介和主要财务指标........................ 7",
+            "第三节 管理层讨论与分析............................... 11",
+        ]
+    )
+    narrative = "管理层讨论了产品目录调整，但这是一段经营分析正文。"
+    document = ParsedDocument(
+        doc_id="multiline-toc",
+        metadata=DocumentMetadata(doc_type="annual_report", source="test"),
+        page_blocks=[
+            ParsedPageBlock(block_id="toc", block_type="paragraph", text=toc, page=2),
+            ParsedPageBlock(block_id="body", block_type="paragraph", text=narrative, page=3),
         ],
     )
 

@@ -42,6 +42,16 @@ Baseline：`data/reports/eval/baseline_scorecard.json`
 已完成：API smoke、负面 invariants、真实跨文档冲突 E2E、扫描 OCR Stress、复杂表 Stress、L4 grounded + critic 硬门禁、外部 JPM CER/TEDS 与真实 MinerU schema benchmark、
 多进程 Worker soak 均已纳入 `--profile all`。
 
+## 联合检索基准（已固化 · 2026-08-03）
+
+- 脚本：`scripts/run_joint_retrieval_benchmark.py`
+- 基线：`data/reports/joint_retrieval_benchmark/baseline_joint_retrieval_benchmark.json`
+- 对比：`python scripts/run_joint_retrieval_benchmark.py --no-ablation --compare-baseline`
+- 固化规模：**10 docs / 95 Q**（gate **18/18**，joint **95/95**）
+- 软指标快照：Recall@5≈0.91 · MRR@10≈0.90 · nDCG@10≈0.90 · hard-neg@5≈0.50 · abstain=1.0
+- **停手约定（当前文档）**：不再加题、不调 fusion weights；仅当冲击软阈值全绿或线上明显捡错段时，再做 query-aware / section ownership
+- Query-aware 惩罚已在线；`duplicate_block_ratio`（znz）≈0.056（目标 ≤0.03 后置）
+
 ## 混合检索（近期）
 
 - **BM25-lite 词法通道**：`app/core/db/lexical.py`（中英分词 + 长度归一），Local/Postgres segment repo 共用

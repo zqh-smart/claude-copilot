@@ -110,11 +110,14 @@ class ResearchService:
 
     def _run_retrieval(self, state: dict) -> dict:
         if self._orchestrator is not None:
+            record = self._document_pipeline_service.get_document(state["doc_id"])
             result = self._orchestrator.retrieve(
                 state["question"],
                 doc_id=state["doc_id"],
                 company_id=state.get("company_id"),
                 top_k=state["top_k"],
+                company_name=record.metadata.company,
+                company_aliases=list(record.metadata.company_aliases or []),
             )
             return {
                 "hits": [

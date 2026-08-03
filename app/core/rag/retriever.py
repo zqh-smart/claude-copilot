@@ -1,3 +1,5 @@
+import re
+
 from app.core.db import SegmentRepositoryProtocol
 from app.core.rag.query_expansion import QueryExpansionService
 from app.core.rag.reranking import (
@@ -8,6 +10,21 @@ from app.core.rag.vector_store import VectorStoreProtocol
 from src.claude_copilot.schemas.document import DocumentSegment
 
 _SECTION_BOOST = 0.15
+_SECTION_MISMATCH_PENALTY = 0.12
+_METRIC_MISMATCH_PENALTY = 0.16
+_HR_NOISE_PENALTY = 0.14
+_NOTE_TABLE_PENALTY = 0.12
+
+_REVENUE_CUES = ("营业收入", "营收", "revenue", "主营业务收入")
+_OCF_CUES = (
+    "经营活动产生的现金流量净额",
+    "经营活动现金流量净额",
+    "经营现金流",
+    "operating cash flow",
+    "cash from operating",
+)
+_HR_CUES = ("员工培训", "人才梯队", "薪酬", "人力资源", "招聘", "岗位学习")
+_NOTE_TABLE_CUES = ("金融资产", "金融负债", "合同负债", "公允价值", "fair value", "level 3")
 
 
 class LocalRetriever:
@@ -36,6 +53,7 @@ class LocalRetriever:
         doc_id: str,
         top_k: int = 3,
         section_hints: list[str] | None = None,
+        metric_keys: list[str] | None = None,
     ) -> list[tuple[DocumentSegment, float]]:
         merged: dict[str, dict[str, object]] = {}
         candidate_k = max(top_k, top_k * self._candidate_multiplier)
@@ -65,7 +83,14 @@ class LocalRetriever:
             fallback_segments = self._segment_repository.list_for_document(doc_id)[:top_k]
             return [(segment, 0.01) for segment in fallback_segments]
 
-        candidates = self._build_candidates(merged, section_hints=section_hints)
+        candidates = self._build_candidates(
+            merged,
+            question=question,
+            section_hints=section_hints,
+            metric_keys=metric_keys,
+        )
+        candidates = self._filter_evidence_free_references(candidates)
+        candidates = self._deduplicate_candidates(candidates)
         reranked = self._reranker.rerank(question, candidates, keep_top_k=top_k)
         if reranked:
             return reranked
@@ -95,9 +120,13 @@ class LocalRetriever:
         self,
         merged: dict[str, dict[str, object]],
         *,
+        question: str,
         section_hints: list[str] | None = None,
+        metric_keys: list[str] | None = None,
     ) -> list[tuple[DocumentSegment, float]]:
         hints = set(section_hints or [])
+        metrics = set(metric_keys or [])
+        question_fold = question.casefold()
         candidates: list[tuple[DocumentSegment, float]] = []
         for item in merged.values():
             segment = item["segment"]
@@ -107,10 +136,12 @@ class LocalRetriever:
                 vector_score * self._vector_weight
                 + lexical_score * self._lexical_weight
             )
-            if hints:
-                section_type = (segment.metadata or {}).get("section_type")
-                if section_type in hints:
-                    combined_score += _SECTION_BOOST
+            combined_score += self._query_aware_adjustment(
+                segment,
+                question_fold=question_fold,
+                section_hints=hints,
+                metric_keys=metrics,
+            )
             candidates.append((segment, combined_score))
 
         candidates.sort(
@@ -118,3 +149,112 @@ class LocalRetriever:
             reverse=True,
         )
         return candidates
+
+    @staticmethod
+    def _query_aware_adjustment(
+        segment: DocumentSegment,
+        *,
+        question_fold: str,
+        section_hints: set[str],
+        metric_keys: set[str],
+    ) -> float:
+        """Boost owned sections; penalize common hard-negative families before rerank."""
+        metadata = segment.metadata or {}
+        section_type = str(metadata.get("section_type") or "")
+        content = segment.content.casefold()
+        delta = 0.0
+
+        if section_hints:
+            if section_type in section_hints:
+                delta += _SECTION_BOOST
+            elif section_type:
+                # Risk/MD&A ownership: demote statement/note/audit when they are not hinted.
+                if "risk_section" in section_hints and section_type in {
+                    "financial_statement",
+                    "financial_note",
+                }:
+                    delta -= _SECTION_MISMATCH_PENALTY
+                if "management_discussion" in section_hints and section_type in {
+                    "audit_report",
+                    "financial_note",
+                    "company_overview",
+                }:
+                    delta -= _SECTION_MISMATCH_PENALTY * 0.75
+
+        wants_ocf = (
+            "net_cash_from_operating_activities" in metric_keys
+            or any(cue in question_fold for cue in _OCF_CUES)
+        )
+        wants_revenue = "revenue" in metric_keys or any(
+            cue in question_fold for cue in ("营业收入", "营收", "revenue")
+        )
+        if wants_ocf and not wants_revenue:
+            has_ocf = any(cue in content for cue in _OCF_CUES)
+            has_revenue = any(cue in content for cue in _REVENUE_CUES)
+            if has_revenue and not has_ocf:
+                delta -= _METRIC_MISMATCH_PENALTY
+        if wants_revenue and not wants_ocf:
+            has_ocf = any(cue in content for cue in _OCF_CUES)
+            has_revenue = any(cue in content for cue in _REVENUE_CUES)
+            if has_ocf and not has_revenue:
+                delta -= _METRIC_MISMATCH_PENALTY
+
+        business_driver_q = any(
+            cue in question_fold for cue in ("驱动", "增长", "经营情况", "主营业务", "driver")
+        )
+        if business_driver_q and any(cue in content for cue in _HR_CUES):
+            if not any(cue in content for cue in ("营业收入", "营收", "revenue", "毛利")):
+                delta -= _HR_NOISE_PENALTY
+
+        risk_q = "risk_section" in section_hints or "风险" in question_fold or "risk" in question_fold
+        if risk_q and any(cue in content for cue in _NOTE_TABLE_CUES):
+            if section_type in {"financial_statement", "financial_note", ""}:
+                delta -= _NOTE_TABLE_PENALTY
+
+        return delta
+
+    @staticmethod
+    def _filter_evidence_free_references(
+        candidates: list[tuple[DocumentSegment, float]],
+    ) -> list[tuple[DocumentSegment, float]]:
+        """Drop short cross-references that point elsewhere but contain no evidence."""
+        kept: list[tuple[DocumentSegment, float]] = []
+        for segment, score in candidates:
+            compact = re.sub(r"\s+", "", segment.content)
+            reference_only = (
+                len(compact) <= 80
+                and any(
+                    marker in compact
+                    for marker in ("参见", "详见", "请见", "见本报告", "本报告")
+                )
+                and any(marker in compact for marker in ("第", "章节", "部分", "中", "之"))
+                and re.search(r"\d+(?:\.\d+)?%", compact) is None
+            )
+            if reference_only:
+                continue
+            kept.append((segment, score))
+        return kept
+
+    @staticmethod
+    def _deduplicate_candidates(
+        candidates: list[tuple[DocumentSegment, float]],
+    ) -> list[tuple[DocumentSegment, float]]:
+        """Keep the highest-scored copy of text duplicated by parse/chunk boundaries."""
+        unique: list[tuple[DocumentSegment, float]] = []
+        seen_content: set[str] = set()
+        seen_long_content: list[str] = []
+        for segment, score in candidates:
+            normalized = re.sub(r"\s+", "", segment.content).casefold()
+            if normalized and normalized in seen_content:
+                continue
+            if len(normalized) >= 120 and any(
+                normalized in existing or existing in normalized
+                for existing in seen_long_content
+            ):
+                continue
+            if normalized:
+                seen_content.add(normalized)
+            if len(normalized) >= 120:
+                seen_long_content.append(normalized)
+            unique.append((segment, score))
+        return unique

@@ -142,6 +142,24 @@ def test_query_analyzer_routes_entity_relationship_questions_to_graph() -> None:
     assert analysis.routes == ["graph"]
 
 
+def test_query_analyzer_routes_reportable_segment_disclosure_to_vector() -> None:
+    analysis = QueryAnalyzer().analyze(
+        "Which geographic reportable segments are used for net sales reporting?"
+    )
+
+    assert analysis.intent == "semantic"
+    assert analysis.routes == ["vector"]
+
+
+def test_query_analyzer_routes_qualitative_fair_value_question_to_vector() -> None:
+    analysis = QueryAnalyzer().analyze(
+        "Which unobservable inputs were used to value level 3 financial instruments?"
+    )
+
+    assert analysis.intent == "semantic"
+    assert analysis.routes == ["vector"]
+
+
 def test_orchestrator_routes_structured_query_to_sql(tmp_path: Path) -> None:
     result = build_orchestrator(tmp_path).retrieve(
         "营收增长趋势是多少？",
@@ -205,3 +223,50 @@ def test_orchestrator_builds_fusion_summary_for_hybrid_query(tmp_path: Path) -> 
     assert result.fusion_summary.metric_count >= 1
     assert result.fusion_summary.summary
     assert any("[结构化]" in item or "[语义" in item for item in result.fusion_summary.highlights)
+
+
+def test_orchestrator_abstains_sql_on_cross_company_mention(tmp_path: Path) -> None:
+    result = build_orchestrator(tmp_path).retrieve(
+        "聚灿光电2021年营业收入是多少？",
+        doc_id="doc-1",
+        company_id="acme",
+        top_k=3,
+        company_name="北京指南针科技发展股份有限公司",
+        company_aliases=["指南针"],
+    )
+
+    assert result.metrics == []
+    assert result.graph_paths == []
+    assert any("Company scope mismatch" in warning for warning in result.warnings)
+    assert any("SQL route skipped due to company scope mismatch" in w for w in result.warnings)
+
+
+def test_orchestrator_keeps_sql_when_question_names_pinned_company(
+    tmp_path: Path,
+) -> None:
+    result = build_orchestrator(tmp_path).retrieve(
+        "指南针2024年营业收入是多少？",
+        doc_id="doc-1",
+        company_id="acme",
+        top_k=3,
+        company_name="北京指南针科技发展股份有限公司",
+        company_aliases=["指南针", "300803"],
+    )
+
+    assert len(result.metrics) >= 1
+    assert not any("Company scope mismatch" in warning for warning in result.warnings)
+
+
+def test_orchestrator_ignores_polluted_aliases_for_scope_gate(tmp_path: Path) -> None:
+    """Serving docs sometimes inherit another company's aliases; do not trust them."""
+    result = build_orchestrator(tmp_path).retrieve(
+        "指南针2024年营业收入是多少？",
+        doc_id="doc-1",
+        company_id="acme",
+        top_k=3,
+        company_name="聚灿光电科技股份有限公司",
+        company_aliases=["指南针", "300803"],
+    )
+
+    assert result.metrics == []
+    assert any("Company scope mismatch" in warning for warning in result.warnings)

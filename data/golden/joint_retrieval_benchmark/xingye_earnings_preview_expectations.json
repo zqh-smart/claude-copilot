@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "document_key": "xingye_2024_earnings_preview",
+  "mode": "synthetic_segments",
+  "segments_fixture": "data/fixtures/joint_retrieval/xingye_earnings_preview_segments.json",
+  "retrieval_cases": [],
+  "benchmark_cases": [
+    {
+      "id": "xy_ni_range",
+      "question": "兴业精密2024年业绩预告的净利润区间是多少？",
+      "expect_route": "semantic",
+      "expect_keywords": ["12,000", "15,000"],
+      "expect_relevant_segment_fingerprints": ["syn-xy-ni-preview"],
+      "expect_hard_negative_segment_fingerprints": ["syn-xy-noise-research-2yi"],
+      "difficulty": "medium",
+      "tags": ["earnings_preview", "hard_negative"]
+    },
+    {
+      "id": "xy_unaudited_disclaimer",
+      "question": "该业绩预告是否已经过审计？",
+      "expect_route": "semantic",
+      "expect_keywords": ["未经", "审计"],
+      "expect_relevant_segment_fingerprints": ["syn-xy-disclaimer-unaudited"],
+      "difficulty": "easy",
+      "tags": ["earnings_preview"]
+    },
+    {
+      "id": "xy_reject_research_ceiling",
+      "question": "公司预告净利润上限是否等于卖方研报的2.0亿元？",
+      "expect_route": "semantic",
+      "expect_keywords": ["15,000", "外部观点"],
+      "expect_relevant_segment_fingerprints": ["syn-xy-ni-preview", "syn-xy-noise-research-2yi"],
+      "expect_hard_negative_segment_fingerprints": ["syn-xy-noise-research-2yi"],
+      "difficulty": "hard",
+      "tags": ["earnings_preview", "hard_negative"],
+      "label_notes": "Research 2.0亿元 is hard-neg noise relative to company preview range."
+    },
+    {
+      "id": "xy_cross_company_abstain",
+      "question": "聚灿光电2021年营业收入是多少？",
+      "expect_route": "semantic",
+      "expect_abstain": true,
+      "difficulty": "medium",
+      "tags": ["abstain", "cross_company"]
+    },
+    {
+      "id": "xy_future_year_abstain",
+      "question": "兴业精密2027年净利润是多少？",
+      "expect_route": "semantic",
+      "expect_abstain": true,
+      "difficulty": "medium",
+      "tags": ["abstain", "cross_year"]
+    }
+  ],
+  "notes": {
+    "company": "兴业精密股份有限公司",
+    "company_aliases": ["兴业精密"],
+    "year": 2024,
+    "document_type": "earnings_preview",
+    "status": "synthetic_ready"
+  }
+}

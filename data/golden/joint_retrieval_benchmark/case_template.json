@@ -1,0 +1,21 @@
+{
+  "id": "q_example_id",
+  "question": "自然语言问题",
+  "expect_route": "semantic|structured|hybrid|graph|abstain",
+  "difficulty": "easy|medium|hard",
+  "tags": ["hard_negative", "cross_year", "cross_company", "abstain", "table_scope"],
+  "expect_abstain": false,
+  "expect_metric_key": null,
+  "expect_period": null,
+  "expect_value": null,
+  "expect_section_types": ["management_discussion"],
+  "expect_keywords": ["示例"],
+  "expect_graph_relation_types": [],
+  "expect_relevant_segment_fingerprints": [
+    "<sha256 from hit_references after serving ingest>"
+  ],
+  "expect_hard_negative_segment_fingerprints": [
+    "<fingerprint that must NOT rank in top-k>"
+  ],
+  "label_notes": "标注时写清为何正例/负例（错年、现金流冒充营收、附注冒充主表等）"
+}

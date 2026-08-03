@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "document_key": "beida_2024_prospectus_excerpt",
+  "mode": "synthetic_segments",
+  "segments_fixture": "data/fixtures/joint_retrieval/beida_prospectus_segments.json",
+  "retrieval_cases": [],
+  "benchmark_cases": [
+    {
+      "id": "bd_use_of_proceeds",
+      "question": "北达新材本次募集资金拟投向什么项目，投资总额大约多少？",
+      "expect_route": "semantic",
+      "expect_keywords": ["特种树脂", "8.6"],
+      "expect_relevant_segment_fingerprints": ["syn-bd-proceeds-860"],
+      "expect_hard_negative_segment_fingerprints": ["syn-bd-noise-15yi"],
+      "difficulty": "medium",
+      "tags": ["prospectus", "hard_negative"]
+    },
+    {
+      "id": "bd_capacity_risk",
+      "question": "招股书提示了哪些募投产能相关风险？",
+      "expect_route": "semantic",
+      "expect_section_types": ["risk_section"],
+      "expect_keywords": ["产能", "风险"],
+      "expect_relevant_segment_fingerprints": ["syn-bd-risk-capacity"],
+      "difficulty": "easy",
+      "tags": ["prospectus", "risk"]
+    },
+    {
+      "id": "bd_reject_rumor_revenue",
+      "question": "招股书是否披露已实现年度营业收入15亿元？",
+      "expect_route": "semantic",
+      "expect_keywords": ["并非", "招股书"],
+      "expect_relevant_segment_fingerprints": ["syn-bd-noise-15yi"],
+      "difficulty": "hard",
+      "tags": ["prospectus", "hard_negative"]
+    },
+    {
+      "id": "bd_cross_company_abstain",
+      "question": "共同药业2021年货币资金是多少？",
+      "expect_route": "semantic",
+      "expect_abstain": true,
+      "difficulty": "medium",
+      "tags": ["abstain", "cross_company"]
+    },
+    {
+      "id": "bd_audited_revenue_abstain",
+      "question": "北达新材已经审计确认的2023年营业收入是多少？",
+      "expect_route": "semantic",
+      "expect_abstain": true,
+      "difficulty": "hard",
+      "tags": ["abstain", "prospectus"]
+    }
+  ],
+  "notes": {
+    "company": "北达新材股份有限公司",
+    "company_aliases": ["北达新材"],
+    "year": 2024,
+    "document_type": "prospectus",
+    "status": "synthetic_ready"
+  }
+}

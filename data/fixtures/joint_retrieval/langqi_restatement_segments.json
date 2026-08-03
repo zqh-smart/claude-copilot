@@ -1,0 +1,43 @@
+{
+  "doc_id": "synthetic-langqi-restatement-2021",
+  "document_key": "langqi_2021_restatement_note",
+  "document_type": "annual_report",
+  "segments": [
+    {
+      "segment_id": "lq-winner-2020",
+      "content": "广州市浪奇实业股份有限公司2021年年度报告会计差错更正说明：经追溯调整后，2020年度营业收入为1,573,944,822.05元。",
+      "metadata": {
+        "section_type": "financial_note",
+        "segment_fingerprint": "syn-lq-rev-2020-restated",
+        "document_type": "annual_report"
+      }
+    },
+    {
+      "segment_id": "lq-loser-2020",
+      "content": "历史披露口径（未更正）曾列示2020年营业收入约1,541.76百万元，该数字已被后续年报追溯更正，不得作为权威金额。",
+      "metadata": {
+        "section_type": "financial_note",
+        "segment_fingerprint": "syn-lq-rev-2020-stale",
+        "document_type": "annual_report"
+      }
+    },
+    {
+      "segment_id": "lq-risk",
+      "content": "风险提示：会计差错更正可能导致可比期间财务数据与历史公告不一致，请以经追溯调整后的最新年度报告为准。",
+      "metadata": {
+        "section_type": "risk_section",
+        "segment_fingerprint": "syn-lq-risk-restatement",
+        "document_type": "annual_report"
+      }
+    },
+    {
+      "segment_id": "lq-noise-peer",
+      "content": "同行业点评提及某竞品公司2020年营业收入约20亿元，与浪奇追溯调整无关。",
+      "metadata": {
+        "section_type": "company_overview",
+        "segment_fingerprint": "syn-lq-noise-peer",
+        "document_type": "annual_report"
+      }
+    }
+  ]
+}

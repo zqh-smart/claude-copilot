@@ -51,7 +51,16 @@
       "question": "管理层如何讨论与分析公司经营情况？",
       "expect_route": "semantic",
       "expect_section_types": ["management_discussion"],
-      "expect_keywords": ["经营", "收入", "业务"]
+      "expect_keywords": ["经营", "收入", "业务"],
+      "expect_relevant_segment_fingerprints": [
+        "c2f4ff08be9b8b2c9671502c22d10b6d3a0df8230fdcc547a4d9dc2266d64b84",
+        "8a52705b23808c21b32e5180f07bd742bf5e5d3bffd26e75ce392f8f5d266afa",
+        "f6d5e87d359f6408419c8c533931ff987e2c9ea8cfa81aea7b7cea21f9290c0a",
+        "2146e0bbb47f311d3e2a406bd79e501ddb4ae78db6d50c7d8b4c6a39298f54f5"
+      ],
+      "expect_hard_negative_segment_fingerprints": [
+        "a3e541c5cb410bd8ecd22b495507cedd328a128861d5884345b7f4531ed94028"
+      ]
     },
     {
       "id": "q_revenue_growth_hybrid",
@@ -60,7 +69,15 @@
       "expect_metric_key": "revenue",
       "expect_period": "2021",
       "expect_value": 931944638,
-      "expect_section_types": ["management_discussion"]
+      "expect_section_types": ["management_discussion"],
+      "expect_relevant_segment_fingerprints": [
+        "e89f4641b909793eee168893805675daeb36917e70d213283440401d4cbaa546",
+        "7145e99679aaf8494070b0709654da9651d53dea517d647d8793eb522eba22a2",
+        "1a0f58e14002ca72add82795d9ae16cb294bbe8e2acea1ae3f87abf70e2b0d24"
+      ],
+      "expect_hard_negative_segment_fingerprints": [
+        "51411fc9c97762dd00b00eb31cb338e26c77ff5352cde766d3253e040e5e5bed"
+      ]
     },
     {
       "id": "q_market_risk_graph",
@@ -79,6 +96,155 @@
       "question": "公司报告了哪些财务指标关联？",
       "expect_route": "graph",
       "expect_graph_relation_types": ["REPORTS_METRIC"]
+    }
+  ],
+  "benchmark_cases": [
+    {
+      "id": "b_revenue_2025_abstain",
+      "question": "2025年营业收入是多少？",
+      "expect_route": "structured",
+      "expect_abstain": true,
+      "difficulty": "medium",
+      "tags": ["abstain", "cross_year"]
+    },
+    {
+      "id": "b_cross_company_jucan_revenue_abstain",
+      "question": "聚灿光电2021年营业收入是多少？",
+      "expect_route": "structured",
+      "expect_abstain": true,
+      "difficulty": "hard",
+      "tags": ["abstain", "cross_company"]
+    },
+    {
+      "id": "b_ocf_growth_not_revenue",
+      "question": "2021年经营活动现金流量净额相对2020年为什么增长？",
+      "expect_route": "hybrid",
+      "expect_metric_key": "net_cash_from_operating_activities",
+      "expect_period": "2021",
+      "expect_value": 373048933,
+      "expect_section_types": ["management_discussion"],
+      "expect_keywords": ["经营", "现金流"],
+      "expect_relevant_segment_fingerprints": [
+        "661d806c0a00020e7fa012bcaae7be42beaceb5ee5747e1559ba125299d19eb6",
+        "de6a28a3e87bd8ce4594c89f32307b166dbf38f2a9809083f101ab567f973c00",
+        "64b8e669e849df15a5126963a66df03b7f4a23cbeafb50defd731d4864af3dd7"
+      ],
+      "expect_hard_negative_segment_fingerprints": [
+        "7145e99679aaf8494070b0709654da9651d53dea517d647d8793eb522eba22a2",
+        "56c0c38cf90e483ac28d008d367ff77679337041f5499d1ec9b64d085075f7f1"
+      ],
+      "difficulty": "hard",
+      "tags": ["hard_negative", "cross_year"],
+      "label_notes": "Positives=OCF YoY explanation/table; hard-neg=revenue brand narrative + investing CF."
+    },
+    {
+      "id": "b_revenue_2020_amount_trap",
+      "question": "2020年营业收入是多少？请勿回答2021年数值。",
+      "expect_route": "structured",
+      "expect_metric_key": "revenue",
+      "expect_period": "2020",
+      "expect_value": 691620925,
+      "difficulty": "medium",
+      "tags": ["hard_negative", "cross_year"]
+    },
+    {
+      "id": "b_risk_vs_notes_confusion",
+      "question": "公司面临哪些市场风险？不要引用财务附注数字。",
+      "expect_route": "graph",
+      "expect_graph_relation_types": ["HAS_RISK"],
+      "expect_relevant_segment_fingerprints": [
+        "abc46894aebf34137cae537961deee37f6132a6f08365d4a86b08499c8366642",
+        "a970099aececec52ed072885de6f3893bf80fd95729e227103efc9dcdc01d422"
+      ],
+      "expect_hard_negative_segment_fingerprints": [
+        "7b8611b00d03002aaeba1e916fe2d0afe52942d3f599cced42bf778361de794a",
+        "67fecd5c883ea851933e3744b429118993e88e02fe1cc236f674db4d1bc9d916"
+      ],
+      "difficulty": "hard",
+      "tags": ["hard_negative"],
+      "label_notes": "Positives=MD&A market/product risk; hard-neg=financial instrument note tables."
+    },
+    {
+      "id": "b_mda_business_drivers",
+      "question": "管理层如何解释主营业务增长的驱动因素？",
+      "expect_route": "hybrid",
+      "expect_section_types": ["management_discussion"],
+      "expect_keywords": ["业务", "增长"],
+      "expect_relevant_segment_fingerprints": [
+        "e23eeb7ff2932d280282299ec9941a4c938aaa1c1e20ff39d746768d4dd16bdb",
+        "7e8a12569188a57a4a7e6820a5e199d15ec9d86cd16403f7b84fea6bda712d99",
+        "220cb3e057363f2e2bec2359bfca0c503dab7cdd64b644a4cdd75d20694913fe"
+      ],
+      "expect_hard_negative_segment_fingerprints": [
+        "c2f4ff08be9b8b2c9671502c22d10b6d3a0df8230fdcc547a4d9dc2266d64b84",
+        "f6d5e87d359f6408419c8c533931ff987e2c9ea8cfa81aea7b7cea21f9290c0a"
+      ],
+      "difficulty": "medium",
+      "tags": ["hard_negative"],
+      "label_notes": "Route is hybrid due to 增长 cue. Hard-neg=HR training + risk disclosure chunks."
+    },
+    {
+      "id": "b_net_income_2021",
+      "question": "2021年净利润是多少？",
+      "expect_route": "structured",
+      "expect_metric_key": "net_income",
+      "expect_period": "2021",
+      "difficulty": "easy",
+      "tags": ["structured"]
+    },
+    {
+      "id": "b_total_assets_2021",
+      "question": "2021年总资产是多少？",
+      "expect_route": "structured",
+      "expect_metric_key": "total_assets",
+      "expect_period": "2021",
+      "difficulty": "easy",
+      "tags": ["structured"]
+    },
+    {
+      "id": "b_operating_income_2021",
+      "question": "2021年营业利润是多少？",
+      "expect_route": "structured",
+      "expect_metric_key": "operating_income",
+      "expect_period": "2021",
+      "expect_value": 142943370,
+      "difficulty": "easy",
+      "tags": ["structured"]
+    },
+    {
+      "id": "b_cost_of_sales_2021",
+      "question": "2021年营业成本是多少？",
+      "expect_route": "structured",
+      "expect_metric_key": "cost_of_sales",
+      "expect_period": "2021",
+      "expect_value": 96457795,
+      "difficulty": "easy",
+      "tags": ["structured"]
+    },
+    {
+      "id": "b_cross_company_gongtong_abstain",
+      "question": "共同药业2021年货币资金是多少？",
+      "expect_route": "structured",
+      "expect_abstain": true,
+      "difficulty": "hard",
+      "tags": ["abstain", "cross_company"]
+    },
+    {
+      "id": "b_company_overview_semantic",
+      "question": "公司的基本情况或主营业务是什么？",
+      "expect_route": "semantic",
+      "expect_section_types": ["company_overview", "management_discussion"],
+      "expect_keywords": ["业务", "公司"],
+      "difficulty": "medium",
+      "tags": ["hard_negative"]
+    },
+    {
+      "id": "b_wrong_year_2022_abstain",
+      "question": "2022年营业收入是多少？",
+      "expect_route": "structured",
+      "expect_abstain": true,
+      "difficulty": "medium",
+      "tags": ["abstain", "cross_year"]
     }
   ],
   "notes": {

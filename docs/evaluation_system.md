@@ -80,12 +80,15 @@ Golden 策略（少而精）：
 | 「管理层如何评价主营业务」 | `semantic` | Top-K 含 MD&A 相关段 |
 | 「营收为何增长」 | `hybrid` | 有数 + 有叙述证据，且数一致 |
 
-建议指标（待脚本化）：
+联合评测指标（`scripts/run_joint_retrieval_benchmark.py` + `retrieval_eval_common`）：
 
-- `structured_hit@1`：结构化题是否答对数值  
-- `semantic_recall@k`：应含章节/关键词是否出现在 Top-K  
-- `citation_grounding`：返回证据能否指回 page/table/segment_id  
-- `conflict_warning_rate`：同指标多值冲突时是否告警（见 trend API）
+- `structured_hit@1` / metric exact：结构化题数值  
+- `recall_at_5` / `mrr_at_10` / `ndcg_at_10`：显式 fingerprint 标注子集  
+- `hard_negative_rate_at_5/10`：难负样本是否进入 Top-K  
+- 真通道消融：`vector|sql|graph` 六组 `routes_override`  
+- `abstention.accuracy`：`expect_abstain` 题  
+- latency p50/p95  
+- L3 硬门禁仍只看 `retrieval_cases`（18/18）；扩展题在 `benchmark_cases`
 
 ### L4 — 研究闭环（产品层）
 

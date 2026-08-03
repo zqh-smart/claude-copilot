@@ -33,11 +33,24 @@ class DocumentCleaningService:
         return cleaned
 
     def _clean_page_blocks(self, blocks: list[ParsedPageBlock]) -> list[ParsedPageBlock]:
-        counts = Counter(self._normalize_for_dedupe(block.text) for block in blocks if block.text.strip())
+        counts = Counter(
+            self._normalize_for_dedupe(block.text) for block in blocks if block.text.strip()
+        )
         repeated_noise = {
             key
             for key, count in counts.items()
             if key and count >= 3 and self._looks_like_marginal_noise(key)
+        }
+        # Short banners / low-digit headers often repeat every page.
+        # Keep the first occurrence, drop the rest — preserve amount-heavy table stubs.
+        repeated_banners = {
+            key
+            for key, count in counts.items()
+            if key
+            and (
+                (count >= 2 and self._looks_like_repeated_banner(key))
+                or (count >= 3 and self._looks_like_short_structure_repeat(key))
+            )
         }
         repeated_long_blocks = {
             key for key, count in counts.items() if key and count >= 2 and len(key) >= 120
@@ -47,6 +60,7 @@ class DocumentCleaningService:
         seen_in_page: dict[int | None, set[str]] = {}
         in_toc = False
         seen_long_blocks: set[str] = set()
+        seen_banners: set[str] = set()
 
         for block in blocks:
             text = block.text.strip()
@@ -62,11 +76,17 @@ class DocumentCleaningService:
                 continue
             if normalized in repeated_noise:
                 continue
+            if normalized in repeated_banners:
+                if normalized in seen_banners:
+                    continue
+                seen_banners.add(normalized)
             if normalized in repeated_long_blocks:
                 if normalized in seen_long_blocks:
                     continue
                 seen_long_blocks.add(normalized)
             if self._FULLTEXT_HEADER_RE.search(text) and len(text) <= 60:
+                continue
+            if self._looks_like_multiline_toc(text):
                 continue
             if self._TOC_TITLE_RE.fullmatch(text):
                 in_toc = True
@@ -74,7 +94,11 @@ class DocumentCleaningService:
             if in_toc:
                 if self._looks_like_toc_line(text) or block.block_type in {"list_item", "heading"}:
                     # Leave TOC when a substantial narrative paragraph appears.
-                    if block.block_type == "paragraph" and len(text) >= 40 and not self._looks_like_toc_line(text):
+                    if (
+                        block.block_type == "paragraph"
+                        and len(text) >= 40
+                        and not self._looks_like_toc_line(text)
+                    ):
                         in_toc = False
                     else:
                         continue
@@ -119,6 +143,15 @@ class DocumentCleaningService:
             for key, count in counts.items()
             if key and count >= 3 and self._looks_like_marginal_noise(key)
         }
+        repeated_banners = {
+            key
+            for key, count in counts.items()
+            if key
+            and (
+                (count >= 2 and self._looks_like_repeated_banner(key))
+                or (count >= 3 and self._looks_like_short_structure_repeat(key))
+            )
+        }
         repeated_long_lines = {
             key for key, count in counts.items() if key and count >= 2 and len(key) >= 120
         }
@@ -126,6 +159,7 @@ class DocumentCleaningService:
         kept: list[str] = []
         prev_norm = ""
         seen_long_lines: set[str] = set()
+        seen_banners: set[str] = set()
         for line in lines:
             stripped = line.strip()
             if not stripped:
@@ -135,6 +169,10 @@ class DocumentCleaningService:
             normalized = self._normalize_for_dedupe(stripped)
             if normalized in repeated or self._PAGE_ONLY_RE.fullmatch(stripped):
                 continue
+            if normalized in repeated_banners:
+                if normalized in seen_banners:
+                    continue
+                seen_banners.add(normalized)
             if normalized in repeated_long_lines:
                 if normalized in seen_long_lines:
                     continue
@@ -155,7 +193,15 @@ class DocumentCleaningService:
         # "第一节 xxx........ 2"
         return bool(re.search(r"第[一二三四五六七八九十百千零〇\d]+[章节].{0,40}\d+\s*$", text))
 
+    def _looks_like_multiline_toc(self, text: str) -> bool:
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        if len(lines) < 3 or not self._TOC_TITLE_RE.fullmatch(lines[0]):
+            return False
+        return sum(self._looks_like_toc_line(line) for line in lines[1:]) >= 2
+
     def _looks_like_marginal_noise(self, normalized: str) -> bool:
+        # Pure noise dropped at count>=3. Unit/stock banners use keep-first via
+        # _looks_like_repeated_banner instead so one copy remains for table context.
         if len(normalized) <= 80 and (
             "年度报告全文" in normalized
             or "年年度报告" in normalized
@@ -165,6 +211,48 @@ class DocumentCleaningService:
         ):
             return True
         return len(normalized) <= 40 and normalized.isdigit()
+
+    def _looks_like_repeated_banner(self, normalized: str) -> bool:
+        """Short cross-page banners that inflate duplicate_block_ratio without adding facts."""
+        if not normalized or len(normalized) > 64:
+            return False
+        banners = (
+            "单位元",
+            "单位：元",
+            "单位人民币元",
+            "单位人民币",
+            "人民币元",
+            "unit:rmb",
+            "unit:cny",
+            "unitrmb",
+            "unitcny",
+            "股票代码",
+            "证券代码",
+            "stockcode",
+            "年度报告全文",
+            "年年度报告",
+            "annualreport",
+            "不适用",
+            "详见附注",
+        )
+        if any(token in normalized for token in banners):
+            return True
+        # "ACME 2024 Annual Report | #" style footers after digit normalization.
+        if "annualreport" in normalized and len(normalized) <= 48:
+            return True
+        if re.fullmatch(r"[a-z#|/\-]{0,40}annualreport[a-z#|/\-]{0,20}", normalized):
+            return True
+        return False
+
+    def _looks_like_short_structure_repeat(self, normalized: str) -> bool:
+        """Generic short headers (low digit density) repeated across pages."""
+        if not normalized or len(normalized) > 40:
+            return False
+        digit_ratio = normalized.count("#") / max(len(normalized), 1)
+        if digit_ratio >= 0.3:
+            return False
+        # Avoid collapsing unique one-off labels that appear twice in a table.
+        return True
 
     def _normalize_for_dedupe(self, text: str) -> str:
         normalized = re.sub(r"\s+", "", text.strip().lower())

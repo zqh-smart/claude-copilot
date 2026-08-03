@@ -90,6 +90,11 @@ Z:/BaiduNetdiskDownload/阶段12：LLM大型复杂项目实战/项目实战2：�
 - `run_serving_ingest_eval.py`：`l3.pass_rate == 1.0`（全部 `retrieval_cases` 通过）
 - 生产复验：`EMBEDDING_BACKEND=silicon`、无 hash fallback、向量维 = `EMBEDDING_DIMENSIONS`、collection 与模型一致（当前 `document_segments_bge_m3` / 1024）
 - Silicon 不可用时默认失败；仅离线调试加 `--allow-hash-fallback`
+- **联合扩展评测（软，已固化基线）**：`python scripts/run_joint_retrieval_benchmark.py --no-ablation`  
+  含 `benchmark_cases` + Recall@5/MRR@10/nDCG@10；**不替代** 18/18 硬门禁  
+  基线：`data/reports/joint_retrieval_benchmark/baseline_joint_retrieval_benchmark.json`  
+  对比：`--compare-baseline`；冻结：`--save-baseline`  
+  当前文档停手：不加题、不调 fusion；仅软阈值/线上捡错段时再做 query-aware / section ownership
 
 ### L4（独立硬门禁）
 
@@ -359,6 +364,10 @@ L3 8/8、HTTP API 4/4。
 ---
 
 ## 7. 明确未覆盖（避免误判「已整体测试」）
+
+这些未覆盖项已进入 Phase H；样本规模、指标公式、硬阈值、目标命令和报告路径见
+[`phase_h_acceptance.md`](./phase_h_acceptance.md)。在对应 runner 与 golden 落地并真实通过前，
+不得根据现有小样本结果宣称 Phase H 子项完成。
 
 - L4 已有三样本硬门禁；尚未覆盖更多行业、语言和跨年度复杂推理题
 - 跨文档冲突已覆盖真实 PDF→pipeline→PostgreSQL E2E；尚未覆盖三份以上来源及公告/研报混合来源
