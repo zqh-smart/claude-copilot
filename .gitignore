@@ -226,6 +226,8 @@ sandbox_test_*/
 # Runtime document and index artifacts
 data/debug/
 data/graph/
+# Chat memory sidecar (MemoryCore) — conversation L0–L3, not document KG
+data/chat_memory/
 data/documents/*
 !data/documents/.gitkeep
 data/raw/*
@@ -247,4 +249,35 @@ langgraph.env
 # Frontend
 web/node_modules/
 web/dist/
+
+# Cursor local
+.cursor/
+
+# ---------------------------------------------------------------------------
+# Local eval / golden / phase-H — keep on disk, do not commit
+# ---------------------------------------------------------------------------
+data/fixtures/phase_h/
+data/golden/*
+!data/golden/.gitkeep
+docs/phase_h_acceptance.md
+
+# Ad-hoc eval / dump runners (product runners like run_memory_core / run_agent_langgraph stay)
+scripts/batch_ingest_for_kg.py
+scripts/generate_extreme_doc_fixtures.py
+scripts/prepare_l4_phase_h.py
+scripts/print_research_analysis.py
+scripts/print_traces.py
+scripts/run_agent_quality_eval.py
+scripts/run_cloud_observability_eval.py
+scripts/run_enterprise_kg_eval.py
+scripts/run_extreme_doc_quality_eval.py
+scripts/run_multi_source_fusion_eval.py
+
+# Matching local eval tests (chat_memory unit tests are NOT ignored)
+tests/test_phase_h_acceptance_contract.py
+tests/scripts/test_cloud_observability_eval.py
+tests/scripts/test_extreme_doc_quality_eval.py
+tests/scripts/test_multi_source_fusion_eval.py
+tests/core/kg/test_llm_extractor.py
+tests/core/test_config.py
 
