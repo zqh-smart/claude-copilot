@@ -1234,11 +1234,36 @@ class PdfDocumentParser:
                 pixmap = page.get_pixmap()
                 mode = "RGBA" if pixmap.alpha else "RGB"
                 image = Image.frombytes(mode, [pixmap.width, pixmap.height], pixmap.samples)
-                texts.append(pytesseract.image_to_string(image).strip())
+                texts.append(self._ocr_best_orientation(image, pytesseract).strip())
         finally:
             document.close()
 
         return texts
+
+    def _ocr_best_orientation(self, image: Any, pytesseract_module: Any) -> str:
+        """Choose the highest-confidence right-angle orientation before OCR."""
+        best_text = ""
+        best_score = float("-inf")
+        for angle in (0, 90, 180, 270):
+            candidate = image if angle == 0 else image.rotate(angle, expand=True)
+            data = pytesseract_module.image_to_data(
+                candidate,
+                config="--psm 6",
+                output_type=pytesseract_module.Output.DICT,
+            )
+            words = [str(value).strip() for value in data.get("text", [])]
+            confidences = [
+                float(value)
+                for value in data.get("conf", [])
+                if str(value).strip() not in {"", "-1"}
+            ]
+            visible_words = [word for word in words if word]
+            mean_confidence = sum(confidences) / max(len(confidences), 1)
+            score = mean_confidence + min(len(visible_words), 100) * 0.1
+            if score > best_score:
+                best_score = score
+                best_text = pytesseract_module.image_to_string(candidate, config="--psm 6")
+        return best_text
 
     def _build_sections(
         self,

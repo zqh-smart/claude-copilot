@@ -176,12 +176,12 @@ class SemanticSegmentationService:
 
         return sections
 
-    def _build_candidates_from_page_blocks(self, page_blocks: list[ParsedPageBlock]) -> list[SemanticSegmentCandidate]:
+    def _build_candidates_from_page_blocks(
+        self, page_blocks: list[ParsedPageBlock]
+    ) -> list[SemanticSegmentCandidate]:
         ordered_blocks = sorted(page_blocks, key=lambda block: (block.page or 0, block.order or 0))
         heading_indices = [
-            index
-            for index, block in enumerate(ordered_blocks)
-            if self._is_semantic_anchor(block)
+            index for index, block in enumerate(ordered_blocks) if self._is_semantic_anchor(block)
         ]
         if not heading_indices:
             return []
@@ -189,7 +189,11 @@ class SemanticSegmentationService:
         candidates: list[SemanticSegmentCandidate] = []
         for position, heading_index in enumerate(heading_indices):
             heading_block = ordered_blocks[heading_index]
-            end_index = heading_indices[position + 1] if position + 1 < len(heading_indices) else len(ordered_blocks)
+            end_index = (
+                heading_indices[position + 1]
+                if position + 1 < len(heading_indices)
+                else len(ordered_blocks)
+            )
             candidate_blocks = [
                 block
                 for block in ordered_blocks[heading_index:end_index]
@@ -232,17 +236,21 @@ class SemanticSegmentationService:
         return re.sub(r"\s+", "", text)
 
     def _looks_like_section_title(self, text: str, semantic_type: str) -> bool:
-        normalized = self._normalize_anchor_text(text)
+        normalized = self._normalize_text(text)
         compact = self._compact_text(normalized)
         normalized_lower = normalized.lower()
+        english_heading = re.sub(
+            r"^item\s+\d+[a-z]?\s*[.\-:]?\s*",
+            "",
+            normalized_lower,
+            flags=re.IGNORECASE,
+        )
         english_title_patterns = {
             "audit_report": (
                 r"^(opinions? on the financial statements|basis for opinions?|"
                 r"report of independent (registered )?public accounting firm|independent auditor)",
             ),
-            "financial_note": (
-                r"^(notes? to (consolidated )?financial statements|note\s+\d+\b)",
-            ),
+            "financial_note": (r"^(notes? to (consolidated )?financial statements|note\s+\d+\b)",),
             "financial_statement": (
                 r"^(?:[\w&.' -]+\s+)?consolidated\s+(?:balance sheets?|"
                 r"statements? of (?:comprehensive )?income|statements? of cash flows?|"
@@ -252,13 +260,16 @@ class SemanticSegmentationService:
                 r"financial statements?)$",
             ),
             "management_discussion": (
-                r"^management(?:'s)? discussion(?: and analysis)?$",
+                r"^management(?:'s)? discussion(?: and analysis)?(?: of .+)?$",
             ),
-            "risk_section": (r"^(risk factors?|risk management|risk overview)$",),
+            "risk_section": (
+                r"^(risk factors?|risk management|risk overview|"
+                r"quantitative and qualitative disclosures about market risk)$",
+            ),
             "company_overview": (r"^(company |business )?overview$", r"^about us$"),
         }
         if any(
-            re.match(pattern, normalized_lower, flags=re.IGNORECASE)
+            re.match(pattern, english_heading, flags=re.IGNORECASE)
             for pattern in english_title_patterns.get(semantic_type, ())
         ):
             return True
@@ -289,7 +300,13 @@ class SemanticSegmentationService:
         }:
             return True
         # Exact-ish title forms for Chinese/English statement headings.
-        if semantic_type in {"financial_statement", "management_discussion", "audit_report", "company_overview", "risk_section"}:
+        if semantic_type in {
+            "financial_statement",
+            "management_discussion",
+            "audit_report",
+            "company_overview",
+            "risk_section",
+        }:
             return bool(
                 re.match(
                     r"^(第[一二三四五六七八九十百千零〇\d]+[章节篇部])?"
@@ -308,7 +325,9 @@ class SemanticSegmentationService:
             )
         return numbered
 
-    def _build_candidates_from_sections(self, sections: list[ParsedSection]) -> list[SemanticSegmentCandidate]:
+    def _build_candidates_from_sections(
+        self, sections: list[ParsedSection]
+    ) -> list[SemanticSegmentCandidate]:
         candidates: list[SemanticSegmentCandidate] = []
         for section in sections:
             title = (section.title or "").strip()
@@ -356,10 +375,14 @@ class SemanticSegmentationService:
                 page_gap = min(candidate_pages) - max(previous_pages)
 
             # Merge same title, or same type across nearby continuation pages.
-            if (same_title and same_type) or (same_type and page_gap <= 1 and not self._is_major_section_title(candidate.title)):
+            if (same_title and same_type) or (
+                same_type and page_gap <= 1 and not self._is_major_section_title(candidate.title)
+            ):
                 previous.blocks.extend(candidate.blocks)
                 previous.confidence = max(previous.confidence, candidate.confidence)
-                if len(candidate.title) < len(previous.title) and self._is_major_section_title(candidate.title):
+                if len(candidate.title) < len(previous.title) and self._is_major_section_title(
+                    candidate.title
+                ):
                     previous.title = candidate.title
                 continue
             merged.append(candidate)
@@ -412,7 +435,13 @@ class SemanticSegmentationService:
 
     def _normalize_text(self, text: str) -> str:
         normalized = self._normalize_anchor_text(text).lower()
-        normalized = normalized.replace("’", "'").replace("“", '"').replace("”", '"')
+        normalized = (
+            normalized.replace("’", "'")
+            .replace("¡¯", "'")
+            .replace("â€™", "'")
+            .replace("“", '"')
+            .replace("”", '"')
+        )
         normalized = normalized.replace("&", " and ")
         # Keep Chinese section titles searchable after lowercasing Latin parts.
         normalized = re.sub(r"\s+", " ", normalized)

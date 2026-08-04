@@ -4,6 +4,8 @@ import json
 import re
 from typing import Any
 
+from pydantic import ValidationError
+
 from app.core.llm.client import JsonChatClientProtocol
 from src.claude_copilot.schemas.research import (
     CriticIssue,
@@ -13,6 +15,23 @@ from src.claude_copilot.schemas.research import (
 )
 
 CRITIC_PASS_SCORE = 0.8
+_CRITIC_CATEGORY_ALIASES = {
+    "factual_error": "unsupported_claim",
+    "calculation_error": "numeric_mismatch",
+    "evidence_error": "citation_error",
+}
+
+
+def _normalize_critic_categories(payload: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(payload)
+    normalized_issues = []
+    for issue in payload.get("issues") or []:
+        normalized_issue = dict(issue)
+        category = str(normalized_issue.get("category") or "")
+        normalized_issue["category"] = _CRITIC_CATEGORY_ALIASES.get(category, category)
+        normalized_issues.append(normalized_issue)
+    normalized["issues"] = normalized_issues
+    return normalized
 
 
 class GroundedResearchEngine:
@@ -143,7 +162,20 @@ class GroundedResearchEngine:
                 "Return only the required JSON object."
             ),
         )
-        review = CriticReview.model_validate(payload)
+        try:
+            review = CriticReview.model_validate(payload)
+        except ValidationError as exc:
+            payload = self._client.complete_json(
+                system_prompt=self._critic_system_prompt(),
+                user_prompt=(
+                    "Repair the following invalid critic JSON to the exact required schema. "
+                    "Preserve the judgement; do not re-audit or add claims. If passed=true and "
+                    "there is no material defect, issues must be [].\n\n"
+                    f"Invalid JSON:\n{json.dumps(payload, ensure_ascii=False)}\n\n"
+                    f"Validation errors:\n{exc}"
+                ),
+            )
+            review = CriticReview.model_validate(_normalize_critic_categories(payload))
         return self._apply_deterministic_checks(review, synthesis, evidence)
 
     def _sanitize_synthesis_citations(
@@ -165,18 +197,18 @@ class GroundedResearchEngine:
         )
         invalid_marker_ids = (invalid_citation_ids | inline_ids) - valid_ids
         valid_citations = [
-            citation
-            for citation in synthesis.citations
-            if citation.evidence_id in valid_ids
+            citation for citation in synthesis.citations if citation.evidence_id in valid_ids
         ]
         if not invalid_marker_ids and len(valid_citations) == len(synthesis.citations):
             return synthesis
 
-        marker_pattern = re.compile(
-            r"\[(?:"
-            + "|".join(re.escape(item) for item in sorted(invalid_marker_ids))
-            + r")\]"
-        ) if invalid_marker_ids else None
+        marker_pattern = (
+            re.compile(
+                r"\[(?:" + "|".join(re.escape(item) for item in sorted(invalid_marker_ids)) + r")\]"
+            )
+            if invalid_marker_ids
+            else None
+        )
         answer = synthesis.answer
         key_findings = list(synthesis.key_findings)
         if marker_pattern is not None:
@@ -229,18 +261,14 @@ class GroundedResearchEngine:
                 formatted = self._format_growth_pct(authoritative)
                 new_answer = pct_pattern.sub(formatted, synthesis.answer, count=1)
                 citations = list(synthesis.citations)
-                if not any(
-                    citation.evidence_id == calc["evidence_id"] for citation in citations
-                ):
+                if not any(citation.evidence_id == calc["evidence_id"] for citation in citations):
                     citations.append(
                         GroundedCitation(
                             evidence_id=calc["evidence_id"],
                             claim=f"YoY growth for {year}: {formatted}",
                         )
                     )
-                return synthesis.model_copy(
-                    update={"answer": new_answer, "citations": citations}
-                )
+                return synthesis.model_copy(update={"answer": new_answer, "citations": citations})
         return synthesis
 
     @staticmethod
@@ -305,12 +333,22 @@ class GroundedResearchEngine:
                 claim=f"Authoritative YoY growth {formatted}",
             )
         ]
+        key_findings = [
+            f"{year} revenue year-over-year growth was {formatted} [{calc['evidence_id']}]."
+        ]
         if vector is not None:
             answer += f"[{vector['evidence_id']}]。"
+            key_findings.append(
+                "The cited disclosure does not establish causal drivers of revenue growth "
+                f"[{vector['evidence_id']}]."
+            )
             citations.append(
                 GroundedCitation(
                     evidence_id=vector["evidence_id"],
-                    claim="Qualitative factors linked in disclosure; causation for revenue not established",
+                    claim=(
+                        "Qualitative factors linked in disclosure; "
+                        "causation for revenue not established"
+                    ),
                 )
             )
         else:
@@ -322,6 +360,7 @@ class GroundedResearchEngine:
         return synthesis.model_copy(
             update={
                 "answer": answer,
+                "key_findings": key_findings,
                 "citations": citations,
                 "limitations": limitations,
                 "confidence": min(float(synthesis.confidence), 0.7),
@@ -371,15 +410,11 @@ class GroundedResearchEngine:
                     ),
                 )
             )
-        has_blocking_issue = any(
-            issue.severity in {"medium", "high"} for issue in issues
-        )
+        has_blocking_issue = any(issue.severity in {"medium", "high"} for issue in issues)
         return review.model_copy(
             update={
                 "passed": bool(
-                    review.passed
-                    and review.score >= CRITIC_PASS_SCORE
-                    and not has_blocking_issue
+                    review.passed and review.score >= CRITIC_PASS_SCORE and not has_blocking_issue
                 ),
                 "issues": issues,
                 "score": min(review.score, 0.49) if has_blocking_issue else review.score,
@@ -438,19 +473,19 @@ usually pass when the draft (a) cites C*/S* for the growth magnitude and
 (b) explicitly refuses to assert unsupported revenue drivers from MD&A that
 only link factors to profit or contemporaneous movements.
 Set passed=false for any high-severity issue. Do not rewrite the answer.
+When the draft is fully supported and has no material defect, return passed=true,
+score between 0.9 and 1.0, and issues=[]. Do not create a placeholder issue merely
+to fill the schema. Scores below 0.8 mean the answer has a specific material defect
+that must be described in issues and summary.
+Use exactly these issue keys when issues are present: category, severity, message,
+evidence_ids. Never use issue_type, description, details, or explanation as keys.
+If passed=true, issues must be an empty array.
 
 Return exactly this JSON shape:
 {
   "passed": true,
-  "score": 0.0,
-  "issues": [
-    {
-      "category": "unsupported_claim|numeric_mismatch|citation_error|logic_error|missing_evidence",
-      "severity": "low|medium|high",
-      "message": "specific problem",
-      "evidence_ids": ["S1"]
-    }
-  ],
-  "summary": "short audit summary"
+  "score": 1.0,
+  "issues": [],
+  "summary": "All claims are supported by the cited evidence."
 }
 """.strip()

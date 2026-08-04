@@ -1,16 +1,9 @@
-# Claude Copilot Web Console
+# DEPRECATED — Claude Copilot Vite console
 
-Internal workspace UI for documents, research Q&A, metrics, and L3 eval reports.
+This `web/` Vite app is **deprecated**.
 
-## Run
+All frontend pages now live in the sibling workspace folder:
 
-```bash
-# from repo root — API
-uvicorn app.main:app --reload --port 8000
+**`../agent-chat-ui-main`** (`pnpm dev` → http://localhost:3000)
 
-# from web/
-npm install
-npm run dev
-```
-
-Open http://localhost:5173 (Vite proxies `/api` and `/health` to port 8000).
+Do not add features here. Keep only for historical reference until removal.

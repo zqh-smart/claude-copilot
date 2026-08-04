@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from src.claude_copilot.schemas.document import (
@@ -588,7 +589,11 @@ class FinancialSchemaMappingService:
 
         for table in candidates:
             metrics = table.normalized_metrics.get(metric_key)
-            if isinstance(metrics, dict) and period in metrics and self._values_equal(metrics[period], value):
+            if (
+                isinstance(metrics, dict)
+                and period in metrics
+                and self._source_values_equal(metrics[period], value)
+            ):
                 return table
 
         for table in candidates:
@@ -626,6 +631,13 @@ class FinancialSchemaMappingService:
         try:
             return abs(float(left) - float(right)) <= max(1.0, abs(float(right)) * 0.001)
         except (TypeError, ValueError):
+            return str(left).strip() == str(right).strip()
+
+    def _source_values_equal(self, left: Any, right: Any) -> bool:
+        """Match provenance values without the tolerance used by evaluation logic."""
+        try:
+            return Decimal(str(left)) == Decimal(str(right))
+        except (InvalidOperation, ValueError):
             return str(left).strip() == str(right).strip()
 
     def _collect_reporting_periods(

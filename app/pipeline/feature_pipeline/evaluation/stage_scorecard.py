@@ -31,18 +31,46 @@ STAGE_METRIC_SPECS: dict[str, list[MetricSpec]] = {
         MetricSpec("header_footer_remaining", "lower_better", "Remaining header/footer blocks"),
         MetricSpec("toc_like_remaining", "lower_better", "Remaining TOC-like lines"),
         MetricSpec("duplicate_block_ratio", "lower_better", "Near-duplicate blocks after cleaning"),
+        MetricSpec(
+            "duplicate_short_structure_ratio",
+            "context",
+            "Repeated blocks shorter than 80 normalized characters",
+        ),
+        MetricSpec(
+            "duplicate_long_narrative_ratio",
+            "lower_better",
+            "Repeated blocks at least 80 normalized characters",
+        ),
     ],
     "segmentation": [
         MetricSpec("semantic_section_count", "context", "Detected semantic sections"),
-        MetricSpec("required_section_types_hit", "higher_better", "Fraction of required section types found"),
+        MetricSpec(
+            "required_section_types_hit",
+            "higher_better",
+            "Fraction of required section types found",
+        ),
         MetricSpec("false_anchor_rate_proxy", "lower_better", "Non-title-like semantic anchors"),
     ],
     "schema": [
-        MetricSpec("statements_with_periods_ratio", "higher_better", "Statements that have period headers"),
-        MetricSpec("statements_with_metrics_ratio", "higher_better", "Statements that have metrics"),
-        MetricSpec("core_metric_exact_match", "higher_better", "Exact match rate on golden core metrics"),
-        MetricSpec("source_grounding_rate", "higher_better", "Facts whose values appear in source text/tables"),
-        MetricSpec("source_table_grounding_rate", "higher_better", "Facts whose values appear in bound source table"),
+        MetricSpec(
+            "statements_with_periods_ratio", "higher_better", "Statements that have period headers"
+        ),
+        MetricSpec(
+            "statements_with_metrics_ratio", "higher_better", "Statements that have metrics"
+        ),
+        MetricSpec(
+            "core_metric_exact_match", "higher_better", "Exact match rate on golden core metrics"
+        ),
+        MetricSpec(
+            "source_grounding_rate",
+            "higher_better",
+            "Facts whose values appear in source text/tables",
+        ),
+        MetricSpec(
+            "source_table_grounding_rate",
+            "higher_better",
+            "Facts whose values appear in bound source table",
+        ),
         MetricSpec("implausible_period_ratio", "lower_better", "Dirty/implausible period tokens"),
         MetricSpec("provenance_metric_ratio", "higher_better", "Metric facts with source table id"),
     ],
@@ -174,16 +202,32 @@ class StageScorecardService:
         before_n = len(before.page_blocks)
         after_n = len(after.page_blocks)
         removed_ratio = round((before_n - after_n) / max(before_n, 1), 4)
-        header_footer = sum(1 for block in after.page_blocks if block.block_type in {"header", "footer"})
-        toc_like = sum(1 for block in after.page_blocks if self._TOC_LIKE_RE.search(block.text or ""))
+        header_footer = sum(
+            1 for block in after.page_blocks if block.block_type in {"header", "footer"}
+        )
+        toc_like = sum(
+            1 for block in after.page_blocks if self._TOC_LIKE_RE.search(block.text or "")
+        )
         norms = [re.sub(r"\s+", "", (block.text or "").lower()) for block in after.page_blocks]
         counts = Counter(norm for norm in norms if norm)
         dupes = sum(count - 1 for count in counts.values() if count > 1)
+        short_structure_dupes = sum(
+            count - 1 for norm, count in counts.items() if count > 1 and len(norm) < 80
+        )
+        long_narrative_dupes = sum(
+            count - 1 for norm, count in counts.items() if count > 1 and len(norm) >= 80
+        )
         return {
             "blocks_removed_ratio": removed_ratio,
             "header_footer_remaining": header_footer,
             "toc_like_remaining": toc_like,
             "duplicate_block_ratio": round(dupes / max(after_n, 1), 4),
+            "duplicate_short_structure_ratio": round(
+                short_structure_dupes / max(after_n, 1), 4
+            ),
+            "duplicate_long_narrative_ratio": round(
+                long_narrative_dupes / max(after_n, 1), 4
+            ),
             "blocks_before": before_n,
             "blocks_after": after_n,
         }
@@ -204,7 +248,11 @@ class StageScorecardService:
         false_anchors = 0
         for section in semantic:
             title = section.title or ""
-            if len(title) > 48 or re.search(r"(详见|请见|参见)", title) or title.endswith(("。", "，")):
+            if (
+                len(title) > 48
+                or re.search(r"(详见|请见|参见)", title)
+                or title.endswith(("。", "，"))
+            ):
                 false_anchors += 1
         return {
             "semantic_section_count": len(semantic),
@@ -267,10 +315,11 @@ class StageScorecardService:
         report_year = document.metadata.year
         for period in all_periods:
             normalized = str(period).strip()
-            if not re.fullmatch(r"(19|20)\d{2}", normalized):
+            years = {int(match) for match in re.findall(r"(?<!\d)(?:19|20)\d{2}(?!\d)", normalized)}
+            if len(years) != 1:
                 implausible.append(normalized)
                 continue
-            year = int(normalized)
+            year = years.pop()
             if not (2000 <= year <= 2035):
                 implausible.append(normalized)
             elif report_year and (year < report_year - 5 or year > report_year + 1):
@@ -287,6 +336,7 @@ class StageScorecardService:
             "source_table_grounding_rate": grounding["source_table_grounding_rate"],
             "ungrounded_fact_count": grounding["ungrounded_fact_count"],
             "ungrounded_samples": grounding["ungrounded_samples"],
+            "table_ungrounded_samples": grounding["table_ungrounded_samples"],
             "implausible_period_ratio": round(len(set(implausible)) / max(len(all_periods), 1), 4),
             "provenance_metric_ratio": round(provenance / max(len(metric_facts), 1), 4),
             "metric_fact_count": len(metric_facts),

@@ -8,9 +8,39 @@ from typing import Any, Callable, Literal, TypedDict
 AgentKind = Literal["research", "risk", "quant", "structured", "compare", "report"]
 
 _RISK_ROUTE_CUES = ("风险", "暴露", "risk", "不确定性", "合规风险", "信用风险")
-_GROWTH_CUES = ("growth", "trend", "cagr", "yoy", "增长", "同比", "趋势", "复合增长")
-_COMPARE_CUES = ("对比", "比较", "相较", "versus", " vs ", "vs.", "两家", "两公司", "跨公司")
-_REPORT_CUES = ("生成报告", "提纲报告", "写一份报告", "outline report", "投研提纲", "生成提纲", "写报告")
+_GROWTH_CUES = (
+    "growth",
+    "grow",
+    "grew",
+    "trend",
+    "cagr",
+    "yoy",
+    "增长",
+    "同比",
+    "趋势",
+    "复合增长",
+)
+_COMPARE_CUES = (
+    "compare",
+    "对比",
+    "比较",
+    "相较",
+    "versus",
+    " vs ",
+    "vs.",
+    "两家",
+    "两公司",
+    "跨公司",
+)
+_REPORT_CUES = (
+    "生成报告",
+    "提纲报告",
+    "写一份报告",
+    "outline report",
+    "投研提纲",
+    "生成提纲",
+    "写报告",
+)
 _METRIC_TERMS = (
     "revenue",
     "net income",
@@ -68,6 +98,12 @@ class OrchestratorState(TypedDict, total=False):
     secondary_intent: AgentKind | None
     answer: str
     warnings: list[str]
+
+
+class TaskPlanStep(TypedDict):
+    task_id: str
+    agent: AgentKind
+    depends_on: list[str]
 
 
 def _route_to_risk_agent(question: str) -> bool:
@@ -156,6 +192,34 @@ def decompose_question(question: str) -> list[AgentKind]:
     if not combined:
         combined.add("research")
     return [agent for agent in _AGENT_PRIORITY if agent in combined]
+
+
+def build_task_plan(question: str) -> list[TaskPlanStep]:
+    """Create a deterministic, acyclic dependency plan for detected intents."""
+    intents = decompose_question(question)
+    execution_order: tuple[AgentKind, ...] = (
+        "structured",
+        "quant",
+        "risk",
+        "compare",
+        "research",
+        "report",
+    )
+    ordered_intents = [agent for agent in execution_order if agent in intents]
+    steps: list[TaskPlanStep] = []
+    completed_ids: list[str] = []
+    for index, agent in enumerate(ordered_intents, start=1):
+        dependencies: list[str] = []
+        if agent in {"quant", "compare", "research"}:
+            dependencies = [
+                step["task_id"] for step in steps if step["agent"] in {"structured", "quant"}
+            ]
+        elif agent == "report":
+            dependencies = list(completed_ids)
+        task_id = f"task-{index}-{agent}"
+        steps.append({"task_id": task_id, "agent": agent, "depends_on": dependencies})
+        completed_ids.append(task_id)
+    return steps
 
 
 def _resolve_primary_agent(sub_intents: list[AgentKind], question: str) -> AgentKind:

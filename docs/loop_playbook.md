@@ -1,27 +1,28 @@
-# Loop Playbook — 生产化 Backlog（Living Design 对照）
+# Loop Playbook — 持续深化 Backlog（Living Design 对照）
 
 > 自主迭代代理的操作手册。复制 **§一 启动命令** 到 Cursor `/loop` 即可；细则在 **§二**。  
 > 权威设计：`docs/Financial Document Intelligenc....md`  
 > 进度/指标：`docs/pipeline_eval_status.md` · 验收：`docs/acceptance_suite.md` · 评估分层：`docs/evaluation_system.md`  
+> Phase H 完成契约：`docs/phase_h_acceptance.md`
 > Agent Chat 桥接：`docs/agent_chat_ui.md`
 
-**当前阶段**：P7a–P7f 与 Phase F 工程化收尾已完成。Loop 主线切换为生产化 Backlog：
-状态文档统一 → 前端 E2E → 正式多文档报告 → L4 硬门禁 → tracing 实连 → 文档融合 / KG / 评测 / Worker 运维。
+**当前阶段（2026-08-02）**：P7a–P7f、Phase F、Phase G 与 Phase H H23–H27 已完成并通过对应门禁。
+H27 已使用百炼 `qwen3.7-max`（plus/flash 自动备用）完成正式验收；H28 runner 与 Cloud tracing 已接通，真实告警渠道按产品决策暂缓。
 
 ---
 
 ## §一 启动命令
 
-### 标准（推荐，60 分钟 · 生产化 Backlog · 静默连续）
+### 标准（推荐，60 分钟 · Phase H 深化 Backlog · 静默连续）
 
 ```text
-/loop 60m 你是 Claude Copilot 生产化迭代代理。目标：按 docs/loop_playbook.md §13 的未完成顺序推进，每 tick 只做一个可验证子项；完成前必须定义并通过对应单测、集成、E2E 或量化门禁。禁止每轮终端命令后汇报；仅服务无法恢复、回归失败或里程碑时同步。编排使用 LangGraph（非 Dify）；不改密钥、不 commit/push，除非用户明确要求。
+/loop 60m 你是 Claude Copilot 持续深化迭代代理。目标：按 docs/loop_playbook.md §13 Phase H 的未完成顺序推进，每 tick 只做一个可验证子项；完成前必须定义并通过对应单测、集成、E2E 或量化门禁。禁止每轮终端命令后汇报；仅服务无法恢复、回归失败或里程碑时同步。编排使用 LangGraph（非 Dify）；不改密钥、不 commit/push，除非用户明确要求。
 ```
 
 ### 精简版（上下文紧张时）
 
 ```text
-/loop 60m 生产化 Backlog。Read docs/loop_playbook.md §二/§13。每轮一个子项并先定义验收；静默连续；仅宕机、回归失败或里程碑同步用户。
+/loop 60m Phase H 深化 Backlog。Read docs/loop_playbook.md §二/§13。每轮一个子项并先定义验收；静默连续；仅宕机、回归失败或里程碑同步用户。
 ```
 
 ### 其它时长
@@ -86,37 +87,40 @@ Docker: postgres:5432 · qdrant:6333 · neo4j:7687/7474
 
 | 层 | Living § | 进度 | Loop 允许 | Loop 禁止 |
 |----|----------|------|-----------|-----------|
-| 一 Data Ingestion | §一 | ~85% | Worker 默认部署与事件唤醒 | 整栈换 Docling/LlamaParse/Tika |
-| 二 Document AI | §二 | ~85% | serving_gate；外部 golden/CER/TEDS | 无基线的大范围 parser 重写 |
-| 三 Knowledge Layer | §三 | **~85%** | 混合检索、GraphRAG MVP、fusion、2-hop | hash/real 混同一 Qdrant collection |
-| 四 Reasoning | §四 | **~65%** | L4/critic 多样本硬门禁 | 无真实 eval 宣称 production-complete |
-| 五 Workflow | §五 | **~70%** | 正式多文档报告与知识融合 | 引入 Dify 或复制现有图 |
-| 六 Application | §六 | ~70% | 两套前端 E2E、可用性与错误态 | 在 `web/` 复制 Agent Chat |
+| 一 Data Ingestion | §一 | ✅ 生产基线 | 独立 Worker、PostgreSQL 通知、租约/告警；深化部署渠道 | 整栈换 Docling/LlamaParse/Tika |
+| 二 Document AI | §二 | ✅ 门禁基线 | 外部 CER/TEDS 已落地；扩充极端图像与标注页 | 无基线的大范围 parser 重写 |
+| 三 Knowledge Layer | §三 | ✅ 门禁基线 | 混合检索、fusion、KG 质量门禁；深化企业实体与自动多跳 | hash/real 混同一 Qdrant collection |
+| 四 Reasoning | §四 | ✅ 三样本硬门禁 | Full L4/critic 18/18；扩展行业、语言、跨年度题 | 用小样本宣称全场景 production-complete |
+| 五 Workflow | §五 | ✅ 正式报告基线 | 多文档正式报告/融合已完成；扩展三份以上混合来源 | 引入 Dify 或复制现有图 |
+| 六 Application | §六 | ✅ E2E 基线 | 正式前端与内部工作台边界明确；继续做部署与场景覆盖 | 在 `web/` 复制 Agent Chat |
 
 ### 2.2 系统六大目标（§🧭）
 
 | 目标 | 状态 | Loop 动作 |
 |------|------|-----------|
-| 多源文档解析 | ✅ | 三样本 L2 + 扫描 OCR/复杂表 Stress；多文档知识融合仍单列后续 |
+| 多源文档解析 | ✅ | 三样本 L2 + 扫描 OCR/复杂表 Stress + JPM 外部 CER/TEDS；继续扩极端图像 |
 | 结构化金融知识构建 | ✅ | 不回归 core_metric / grounding |
-| 深度投研分析 | 🟡 | 多 Agent 已接线；Full L4/critic 多样本尚未成为硬门禁 |
-| 主动风险识别 | 🟡 | Risk 图与雷达/热力图可用；KG 关系质量仍需生产化 |
-| 自动报告生成 | 🟡 | 公司/年度/类型 + HTML/PDF 可用；正文仍是提纲组合，待正式综合 |
-| 多公司对比分析 | ✅ MVP | 跨文档矩阵、财务排名、风险雷达、业务重叠已上线；待浏览器 E2E |
+| 深度投研分析 | ✅ 基线 | Full L4/critic 三样本 18/18；继续扩行业、语言与跨年度复杂推理 |
+| 主动风险识别 | ✅ 基线 | Risk 图、雷达/热力图与 KG 97 文档质量门禁通过；继续深化企业图谱 |
+| 自动报告生成 | ✅ 基线 | 正式综合正文、跨来源去重、HTML/PDF 与 provenance 已验收 |
+| 多公司对比分析 | ✅ 基线 | 跨文档矩阵、排名、风险雷达、业务重叠与浏览器 E2E 已通过 |
 
-### 2.3 已验证快照（2026-08-01）
+### 2.3 已验证快照（2026-08-02）
 
 | 项 | 值 |
 |----|-----|
 | §三 Knowledge 门禁 | ✅ 三样本 L3 全绿 |
 | Phase A–B + P6h lite | ✅ 完成 |
-| **Loop 主线** | 生产化 Backlog：状态统一 → E2E → 正式报告 → L4/tracing → fusion/KG/eval/Worker |
+| **Loop 主线** | Phase H：H23–H27 已过；H28 Cloud tracing 已接通，真实告警渠道按产品决策暂缓 |
 | LangGraph 已注册 | `agent` · `orchestrator` · `quant` · `risk` · `comparator` · `reporting` · `comparison_workflow` · `report_workflow` |
-| L4 完整 eval | ✅ **1.0**（8/8 znz）；`--profile` 扩聚灿/天华；阈值已文档化 |
+| L4 完整 eval | ✅ Phase H **42/42**：7 文档、5 行业、2 语言、2 跨年组；grounded/critic/citation/numeric/slices 全部 1.0，核心 **18/18** |
 | P7 | P7a–P7f ✅ |
 | Agent Chat 路由 | risk / compare / quant / structured / report / research |
-| 本地代码基线 | ✅ `pytest -q` 215 passed / 1 skipped；Acceptance all exit 0；`web` build 通过 |
-| 已知阻塞 | Docker Desktop 偶发未开；系统代理曾致 LLM 502（已 `trust_env=False`） |
+| 本地代码基线 | ✅ `pytest -q` **265 passed / 1 skipped**；百炼三模型 JSON 调用与自动切换、Silicon embedding/rerank 实际探针通过 |
+| Document AI 外部门禁 | ✅ JPM CER 0.0、TEDS 1.0；真实 MinerU schema benchmark `failures=[]` |
+| KG 质量 | ✅ 97/97 文档、8,839 relationships、grounding 1.0、backend roundtrip 100% |
+| Worker | ✅ 通知唤醒 2.138s；3×8 任务、6 Worker、24/24 exactly-once |
+| Tracing | ✅ Langfuse SDK/OTLP wire smoke；云端 UI 仍需部署凭据复验 |
 
 **建议 pin**：`langgraph.env` → `AGENT_CHAT_DOC_ID=<最新 serving_eval doc_id>`；对比调试另备 `AGENT_CHAT_DOC_ID_B` 或 configurable。
 
@@ -124,11 +128,11 @@ Docker: postgres:5432 · qdrant:6333 · neo4j:7687/7474
 
 | 维度 | 完成度 | 说明 |
 |------|--------|------|
-| 六层架构整体 | **~75%** | 主链与 MVP 产品面可用；生产化 Backlog 见 §13 |
+| 六层架构整体 | **生产化基线已成** | Phase G 9/9 已完成；不能据此宣称所有行业/文档质量全覆盖 |
 | Phase 1 主链 | **~90%** ✅ | Acceptance all 全绿；维持 core metric/grounding 不回归 |
-| §四 Reasoning 门禁 | **可用 · 待硬化** | 多 Agent + critic 可跑；Full L4 多样本仍是软门禁 |
-| §五 Workflow 门禁 | **可用 · 待深化** | 8 个图已注册；正式多文档报告/融合未完成 |
-| §六 Application | ~70% | Agent Chat + 工作台 7 页可用；浏览器 E2E 未建立 |
+| §四 Reasoning 门禁 | **硬门禁已成** | Full L4 三样本 18/18；Phase H 扩展分布覆盖 |
+| §五 Workflow 门禁 | **正式报告基线已成** | 8 个图 + 正式报告 + 多文档融合；Phase H 扩混合来源 |
+| §六 Application | **E2E 基线已成** | Agent Chat 正式前端 + 内部工作台边界明确；浏览器门禁通过 |
 
 ---
 
@@ -185,8 +189,8 @@ pnpm dev
 | `quant` | `app/workflows/quant/graph.py` | ✅ MVP | YoY/CAGR · 已注册 langgraph.json |
 | `risk` | `app/workflows/risk/graph.py` | ✅ MVP | retrieve_risk→summarize_risk · HAS_RISK · 已注册 langgraph.json |
 | `research` | `app/workflows/research/graph.py` | ✅ | retrieve→synthesize→critique→revise（**未**注册 langgraph.json；agent 内联 ResearchService） |
-| `reporting` | `app/workflows/reporting/graph.py` | ✅ lite | 提纲报告 · 已注册；无导出/报告中心 |
-| `comparator` | `app/workflows/comparator/graph.py` | ✅ lite | 双 doc 指标矩阵 · 已注册；无对比平台 UI |
+| `reporting` | `app/workflows/reporting/graph.py` + `FormalReportComposer` | ✅ | 图已注册；正式综合正文、跨来源去重、HTML/PDF 导出已验收 |
+| `comparator` | `app/workflows/comparator/graph.py` + 对比服务/UI | ✅ 基线 | 双 doc 指标矩阵；对比平台、排名、风险雷达与 E2E 已验收 |
 
 ### 4.2 Living Design §四 Agent — 诚实地图
 
@@ -197,10 +201,11 @@ pnpm dev
 | Research Agent | research graph + GroundedResearchEngine | 🟡 |
 | Risk Agent | `workflows/risk/` LangGraph MVP | 🟡 MVP |
 | Quant Agent | `workflows/quant/` LangGraph MVP | 🟡 MVP |
-| Comparator Agent | `workflows/comparator/` LangGraph lite | 🟡 lite（无 UI） |
-| Critic Agent | research graph critique 节点 | 🟡 |
+| Comparator Agent | `workflows/comparator/` + 对比服务/UI | 🟡 lite 图 + ✅ 产品基线 |
+| Critic Agent | research graph critique 节点 | ✅ 三样本硬门禁 |
 
-**禁止**：宣称 reporting/Comparator/BI **产品面**已完成；lite 图 ≠ §6.2–6.4。
+**边界**：reporting/Comparator/BI 产品基线已完成，但 lite Agent 仍不等于自动规划型企业 Agent；
+Phase H 深化时必须分别评估 Agent 推理质量和产品界面，不能互相替代。
 
 ### 4.3 检索通道（§三）
 
@@ -257,7 +262,7 @@ pnpm dev
 - **SQL 公司级回退**（doc 无指标时按 company 查，warning 标注）
 - L3 指南针单样本 8/8 实库复验
 
-#### 当前主线（**每轮只选一个**）
+#### 已完成主线（历史验收）
 
 | 优先级 | 子项 | 目标 | 命令/文件 | 状态 |
 |--------|------|------|-----------|------|
@@ -307,22 +312,22 @@ docker compose up -d postgres qdrant neo4j
 # 完整 L4 smoke（需本地 LLM 非 502；评 grounded + critic + citations）：
 .\.venv\Scripts\python.exe scripts/run_l4_research_eval.py --profile smoke
 
-# 多样本证据基线 / 聚灿+天华 full（软闸 ≥0.8）：
+# 多样本证据基线 / 聚灿+天华 full（正式发布硬闸 1.0）：
 .\.venv\Scripts\python.exe scripts/run_l4_research_eval.py --profile all --retrieval-only
 .\.venv\Scripts\python.exe scripts/run_l4_research_eval.py --profile regression
 ```
 
-- LLM 不可用 → 跑 `--retrieval-only`；不阻塞 L2/L3
-- L4 阈值：smoke full=1.0；retrieval-only=1.0；regression full≥0.8（见 acceptance_suite）
+- LLM 不可用 → 可跑 `--retrieval-only` 诊断，不阻塞 L2/L3，但正式发布 L4 视为失败
+- L4 阈值：smoke full=1.0；retrieval-only=1.0；regression full=1.0（见 acceptance_suite）
 
 ### P6 — 多智能体搭建（**已完成 · 勿回头大改**）
 
 | 子项 | 状态 |
 |------|------|
 | P6a–P6g | ✅ L4 8/8 · Risk/Quant/Router/Agent 路由 |
-| P6h lite | ✅ `comparator` · `reporting` 已注册（无 §6 UI） |
+| P6h lite | ✅ `comparator` · `reporting` 已注册；§6 产品基线另于 P7f/Phase G 完成 |
 
-### P7 — 未完成加深（**P7a–P7f 已完成**）
+### P7 — 历史加深（**P7a–P7f 已完成**）
 
 每 tick **只选一个**子项。优先可验证、小 diff；默认**不做** §6.2–6.4 完整产品面。
 
@@ -375,17 +380,17 @@ docker compose up -d postgres qdrant neo4j
 
 ### 7.1 行动前（Think）
 
-1. **阶段定位**：P7/Phase F 已完；本轮对应 §13 Phase G 哪一个子项？
+1. **阶段定位**：Phase G 已完；本轮对应 §13 Phase H 哪一个子项？
 2. **选型**：是否只选择一个可独立验收的小交付？
 3. **依赖检查**：需要 Docker、浏览器、真实 LLM 或 tracing 凭据吗？缺失时能否先做离线契约？
 4. **边界**：是否保持 Agent Chat 与内部工作台职责分离？
 
 ### 7.2 行动后（Reflect）
 
-1. **Living 映射**：推进 Phase G 哪一项？Honest map / §2.3 是否需更新？
+1. **Living 映射**：推进 Phase H 哪一项？Honest map / §2.3 是否需更新？
 2. **指标风险**：L2/L3 会否回归？若改了 rag/kg/pipeline → smoke。
 3. **完整性**：有无「假完成」（仅改 docstring）？有无测试/契约？
-4. **下一 tick**：单一 Phase G 子项；若 blocked，备选路径是什么？
+4. **下一 tick**：单一 Phase H 子项；若 blocked，备选路径是什么？
 
 **偏离纠正**：空 stub 冒充 / 每命令汇报用户 / 重做已绿 P6/P7 / 同轮扩多个主题 → 立即停止，回 §13 当前子项或 P0。
 
@@ -404,7 +409,7 @@ docker compose up -d postgres qdrant neo4j
 
 ---
 
-## 8. 【F. 动作规则 — 决策树（Phase G 生产化版）】
+## 8. 【F. 动作规则 — 决策树（Phase H 深化版）】
 
 ```text
 :2025 不健康?
@@ -419,11 +424,11 @@ Docker 需要但不可用?（L4 / serving 实库）
   YES → pytest tests/core/rag tests/core/kg → --profile smoke
   NO  → 继续
 
-选本轮 Phase G 子项（§7 Think）:
-  状态描述冲突 → 先统一 docs / AGENTS / skills
-  UI E2E → 分别验证 :5173 工作台与 :3000 Agent Chat，不混边界
-  正式报告 / L4 / tracing → 先确认真实外部依赖，再定义降级路径
-  fusion / KG / eval / Worker → 保持现有协议可交换和 Acceptance 不回归
+选本轮 Phase H 子项（§7 Think）:
+  L4 覆盖 → 每次只扩一个明确行业/语言/跨年度切片，并固化 golden
+  混合来源 / OCR → 先定义 provenance、CER/TEDS 或结构准确率门禁
+  企业 KG / Agent → 先建人工评测集，禁止以节点数或 UI 完成替代准确率
+  云端运维 → 先确认真实凭据/部署平台，再验证可观测结果与告警送达
 
 tick 结束:
   默认 → 静默，立即下一 tick
@@ -481,9 +486,9 @@ tick | P7x | 主题 | verify | next | blocked?
 | §一 Ingestion | 3 样本 L2 acceptance 全过 |
 | §二 Document AI | `core_metric_exact_match=1.0` + serving_gate allow |
 | §三 Knowledge | 全 ready 样本 L3 `pass_rate=1.0` |
-| §四 Reasoning | L4 retrieval 1.0；宣称 production 前需 Full L4/critic 多样本硬门禁 |
-| §五 Workflow | 8 个 LangGraph 图已注册；正式报告需跨文档综合而非提纲拼接 |
-| §六 Application | Agent Chat + 工作台生产构建通过；完成需两套前端浏览器 E2E |
+| §四 Reasoning | ✅ L4 retrieval 1.0 + Full L4/critic 三样本 18/18；继续扩展分布覆盖 |
+| §五 Workflow | ✅ 8 个 LangGraph 图 + 正式跨文档综合报告；继续扩三份以上混合来源 |
+| §六 Application | ✅ Agent Chat + 工作台生产构建和正式前端浏览器 E2E；继续扩部署场景 |
 
 ---
 
@@ -528,7 +533,7 @@ tick | P7x | 主题 | verify | next | blocked?
 **Phase A — §三 Knowledge** ✅
 **Phase B — P6 多智能体** ✅（含 P6h lite 图注册）
 
-**Phase D — 未完成加深（Loop 默认 = P7）**
+**Phase D — 历史加深（P7）** ✅
 1. ~~P7a Agent/Orchestrator 接线~~ ✅
 2. ~~P7b §5.4/5.5 工作流 lite~~ ✅
 3. ~~P7c 薄 Compare/Report API~~ ✅
@@ -541,22 +546,31 @@ tick | P7x | 主题 | verify | next | blocked?
 **Phase F — 工程化收尾** ✅
 7. ~~P7/异步入库当前工作区恢复可重复测试基线~~ ✅ `172 passed` + web build
 8. ~~异步任务领取/租约/心跳/fencing/独立 Worker/协作取消/指标/多进程 soak~~ ✅ `3×8` 任务、6 Worker、24/24 exactly-once
-9. Acceptance 默认 API smoke + 冲突/负面 invariants ✅；真实跨文档冲突 E2E ✅；L4 保持独立可选门禁
+9. Acceptance 默认 API smoke + 冲突/负面 invariants ✅；真实跨文档冲突 E2E ✅；L4 已升级为正式发布硬门禁
 10. ~~增加扫描件与复杂表 Stress golden~~ ✅ OCR 3 页（1362 字、6/6 phrase）+ 第 86 页 47 行表（页码/provenance/关键行全绿）
 11. ~~队列监控告警契约~~ ✅ health + 4 类阈值 alerts + 工作台展示
 12. ~~LangSmith / Langfuse tracing 集成（不只环境变量占位）~~ ✅ 统一 span + 默认脱敏 + exporter adapters
 13. ~~对齐并维护项目进度文档~~ ✅
 
-**Phase G — 当前生产化 Backlog**
-14. 统一 docs / AGENTS / skills 状态真相源
-15. `web/` 与 `agent-chat-ui-main/` 浏览器 E2E 门禁
-16. 正式多文档投研/风控报告（综合正文，不是提纲拼接）
-17. Full L4/critic 多样本硬门禁
-18. LangSmith/Langfuse 真实 exporter 冒烟
-19. 多文档 FinancialSchema / 知识融合
-20. KG 实体消歧与关系质量生产化
-21. 外部 golden、CER/TEDS 与重复块/旁支表噪声优化
-22. 独立 Worker 默认部署、事件驱动唤醒与运维验收
+**Phase G — 生产化 Backlog** ✅
+14. ~~统一 docs / AGENTS / skills 状态真相源~~ ✅
+15. ~~正式前端与内部工作台边界对齐 + 浏览器 E2E 门禁~~ ✅ Playwright 1/1 + format/build
+16. ~~正式多文档投研/风控报告（综合正文，不是提纲拼接）~~ ✅ composer + HTML/PDF + provenance
+17. ~~Full L4/critic 多样本硬门禁~~ ✅ 8/8 + 5/5 + 5/5 = 18/18
+18. ~~LangSmith/Langfuse 真实 exporter 冒烟~~ ✅ Langfuse SDK/OTLP wire；Cloud UI 归 Phase H
+19. ~~多文档 FinancialSchema / 知识融合~~ ✅ winner/conflict/provenance + 真实四公司复验
+20. ~~KG 实体消歧与关系质量生产化~~ ✅ 97/97 文档、8,839 relationships、grounding 1.0
+21. ~~外部 golden、CER/TEDS 与重复块/旁支表噪声优化~~ ✅ JPM CER 0.0、TEDS 1.0、MinerU failures=[]
+22. ~~独立 Worker 默认部署、事件驱动唤醒与运维验收~~ ✅ 2.138s wakeup + 24/24 soak + Docker/Compose
+
+**Phase H — 当前 Backlog（按序）**
+完成判定统一遵循 `docs/phase_h_acceptance.md`；目标命令或冻结样本未落地时状态只能是 `not_ready`。
+23. ~~扩展 L4 评测分布：更多行业、语言、跨年度复杂推理；维持 full grounded/critic `pass_rate=1.0`。~~ ✅ 7 文档 / 5 行业 / 2 语言 / 2 跨年组，42/42；数值 28/28，所有切片 1.0，核心 18/18
+24. ~~扩展多文档融合：三份以上来源及年报、公告、研报混合输入；评 winner/conflict/provenance 与来源优先级。~~ ✅ 3 源 / 20 事实 / 5 冲突；7 项硬门禁全绿，顺序不变 20/20
+25. ~~扩展 Document AI 压力集：低清、旋转、手写等极端图像；增加更多外部 CER/TEDS 人工标注页并继续降低重复块/旁支表噪声。~~ ✅ 三类各 2 页；CER 0/0/0.0049、TEDS 1.0、route/provenance/core L2 全绿
+26. ~~深化企业知识图谱：Schema 约束 LLM 抽取、人工评测集、图算法与自动多跳查询规划。~~ ✅ 50 段抽取 P/R/F1 1.0、20/20 多跳、Local/Neo4j 61/61、原 97/97
+27. 深化 lite Agent：冻结五类各 20 case、独立指标和三轮 LLM Router 已全绿；⛔ 正式命令当前因本地 LLM 离线与 Silicon 402 返回 `exit 4`，仍需同批次核心 L4 18/18 才能完成。
+28. 完成云端与平台运维闭环：冻结 sentinel、四告警、Cloud API 反查/webhook/恢复/wire runner 已落地；⛔ 缺 LangSmith/Langfuse Cloud 凭据与真实 webhook，目标命令 `exit 4`。
 ```
 
 ---
@@ -566,7 +580,7 @@ tick | P7x | 主题 | verify | next | blocked?
 ### 如何启动一次 Loop
 
 1. 确保 Docker 与 LangGraph 可用（或交给代理 P0 重启）。
-2. 复制 **§一 启动命令** 到 Cursor（主线是 **Phase G 生产化 Backlog**）。
+2. 复制 **§一 启动命令** 到 Cursor（主线是 **Phase H 深化 Backlog**）。
 3. 一轮只选 §13 的一个子项，并在修改前写明验收指标。
 4. 上下文有限时附 **§二** 或告知「读取 `docs/loop_playbook.md` §二」。
 
@@ -587,6 +601,13 @@ tick | P7x | 主题 | verify | next | blocked?
 
 | 日期 | 变更 |
 |------|------|
+| 2026-08-02 | **Phase H H27 完成**：百炼 `qwen3.7-max` 主模型与 `qwen3.7-plus`/`qwen3.7-flash` 自动备用接通；三模型真实 JSON 调用通过，故障切换命中 plus；Agent 指标全绿、Router v4 三轮 20/20、unsupported 0、L4 18/18，正式报告 `status=passed`；pytest 265 passed / 1 skipped。 |
+| 2026-08-02 | **H27/H28 阻塞审计**：H27 五类独立指标与 Router v4 三轮 20/20；修复 Silicon thinking 参数、critic schema/key findings、stale L4 report 与 429 退避；但本地 LLM 离线且 Silicon 402。H28 严格 runner 已落地并列出 5 项外部前置；pytest 259 passed / 1 skipped。 |
+| 2026-08-02 | **Phase H H26 完成**：50 段 schema 约束 LLM 抽取实体/关系 P/R/F1 1.0、unsupported 0；20/20 2/3-hop；Local/Neo4j 61/61；原 KG 97/97；pytest 253 passed / 1 skipped；主线推进 H27 |
+| 2026-08-02 | **Phase H H25 完成**：低清/旋转/手写各 2 页；CER 0/0/0.0049，两表 TEDS 1.0，route 6/6、fallback 0、provenance 16/16、duplicate 0；核心 L2 3/3 与 JPM 回归通过；pytest 250 passed / 1 skipped；主线推进 H26 |
+| 2026-08-02 | **Phase H H24 完成**：年报/公告/研报 3 源、20 事实（5 冲突）冻结集；winner/conflict/provenance/single-winner/order/unknown-source 全绿；全量 pytest 248 passed / 1 skipped，acceptance smoke 通过；主线推进 H25 |
+| 2026-08-02 | **Phase H H23 完成**：冻结 7 文档/42 题分布集；Full L4 42/42，grounded/critic/citation/numeric/slices 全绿，blocking=0，核心 18/18；全量 pytest 244 passed / 1 skipped；主线推进 H24 |
+| 2026-08-02 | **Phase G 9/9 完成，主线切 Phase H**：正式前端 E2E、正式报告、L4 18/18、tracing wire、fusion、KG 97/97、JPM CER/TEDS、Worker 通知/soak/Docker 均通过；后续聚焦覆盖面与企业能力深化 |
 | 2026-08-01 | **P7f 完成**：多年度/类型报告包 HTML/PDF、跨文档与多公司对比、风险雷达/业务重叠、BI 趋势/行业/热力图/排名；tracing 与工程化收尾同步完成 |
 | 2026-07-31 | **P7a–P7e 完成**：多意图生产化 + L4 `--profile`/阈值文档；余 P7f（§6 UI）点名 |
 | 2026-07-31 | **Loop 主线切 P7 未完成加深**：启动命令/决策树/Backlog 对准接线·工作流 lite·薄 API；§6 UI 仍点名 |

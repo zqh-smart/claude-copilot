@@ -21,11 +21,31 @@ class AgentChatState(TypedDict, total=False):
     messages: Annotated[list[AnyMessage], add_messages]
     doc_id: str | None
     doc_id_b: str | None
+    chat_memory_prepend: str | None
+    chat_memory_warnings: list[str]
+    chat_memory_session_id: str | None
 
 
 def _latest_human_text(messages: list[AnyMessage]) -> str:
     for message in reversed(messages):
         if isinstance(message, HumanMessage):
+            content = message.content
+            if isinstance(content, str):
+                return content.strip()
+            if isinstance(content, list):
+                parts: list[str] = []
+                for item in content:
+                    if isinstance(item, str):
+                        parts.append(item)
+                    elif isinstance(item, dict) and item.get("type") == "text":
+                        parts.append(str(item.get("text") or ""))
+                return "\n".join(part for part in parts if part).strip()
+    return ""
+
+
+def _latest_ai_text(messages: list[AnyMessage]) -> str:
+    for message in reversed(messages):
+        if isinstance(message, AIMessage):
             content = message.content
             if isinstance(content, str):
                 return content.strip()
@@ -159,8 +179,13 @@ def _invoke_chat_specialist(
     doc_id: str,
     doc_id_b: str | None,
     company_id: str | None,
+    chat_memory_context: str | None = None,
 ) -> str:
-    """Run one specialist for agent chat; shared by primary and secondary intents."""
+    """Run one specialist for agent chat; shared by primary and secondary intents.
+
+    ``question`` must stay clean for retrieval/intent. ``chat_memory_context`` is
+    only forwarded into research synthesis (not Qdrant/SQL/graph queries).
+    """
     from app.api.dependencies import get_research_service
 
     if agent_used == "risk":
@@ -225,7 +250,12 @@ def _invoke_chat_specialist(
         )
         return str(report_result.get("answer") or "").strip() or "【报告提纲】未生成提纲。"
 
-    preview = get_research_service().preview(doc_id=doc_id, question=question, top_k=5)
+    preview = get_research_service().preview(
+        doc_id=doc_id,
+        question=question,
+        top_k=5,
+        chat_memory_context=chat_memory_context,
+    )
     content = _format_answer(preview)
     if agent_used == "structured":
         content = f"【结构化 · Structured Agent】\n{content}"
@@ -324,6 +354,27 @@ def _format_answer(preview: Any) -> str:
     return "\n".join(parts).strip()
 
 
+def recall_chat_memory(state: AgentChatState, config: RunnableConfig) -> dict[str, Any]:
+    """Prefetch Chat memory from MemoryCore; never blocks the main turn."""
+    from app.api.dependencies import get_chat_memory_client
+    from app.core.chat_memory.ids import resolve_session_id
+
+    question = _latest_human_text(list(state.get("messages") or []))
+    session_id = resolve_session_id(config)
+    if not question:
+        return {
+            "chat_memory_prepend": None,
+            "chat_memory_warnings": [],
+            "chat_memory_session_id": session_id,
+        }
+    bundle = get_chat_memory_client().recall(query=question, session_id=session_id)
+    return {
+        "chat_memory_prepend": bundle.context_text or None,
+        "chat_memory_warnings": list(bundle.warnings),
+        "chat_memory_session_id": session_id,
+    }
+
+
 def research_turn(state: AgentChatState, config: RunnableConfig) -> dict[str, Any]:
     question = _latest_human_text(list(state.get("messages") or []))
     if not question:
@@ -363,6 +414,7 @@ def research_turn(state: AgentChatState, config: RunnableConfig) -> dict[str, An
     sub_intents: list[AgentKind] = list(intent_plan.get("sub_intents") or [])
     secondary: AgentKind | None = intent_plan.get("secondary_intent")
     doc_id_b = _resolve_doc_id_b(state, config)
+    chat_memory_context = (state.get("chat_memory_prepend") or "").strip() or None
 
     content = _invoke_chat_specialist(
         agent_used=agent_used,
@@ -370,6 +422,7 @@ def research_turn(state: AgentChatState, config: RunnableConfig) -> dict[str, An
         doc_id=doc_id,
         doc_id_b=doc_id_b,
         company_id=company_id,
+        chat_memory_context=chat_memory_context,
     )
     secondary_ran: AgentKind | None = None
     if secondary and secondary != agent_used:
@@ -380,6 +433,7 @@ def research_turn(state: AgentChatState, config: RunnableConfig) -> dict[str, An
                 doc_id=doc_id,
                 doc_id_b=doc_id_b,
                 company_id=company_id,
+                chat_memory_context=chat_memory_context,
             )
             if secondary_block.strip():
                 content = f"{content}\n\n——\n【次级 · {secondary}】\n{secondary_block}"
@@ -402,11 +456,37 @@ def research_turn(state: AgentChatState, config: RunnableConfig) -> dict[str, An
     }
 
 
+def capture_chat_memory(state: AgentChatState, config: RunnableConfig) -> dict[str, Any]:
+    """Write the latest clean user/assistant turn to MemoryCore L0."""
+    from app.api.dependencies import get_chat_memory_client
+    from app.core.chat_memory.ids import resolve_session_id
+
+    messages = list(state.get("messages") or [])
+    user_text = _latest_human_text(messages)
+    assistant_text = _latest_ai_text(messages)
+    session_id = state.get("chat_memory_session_id") or resolve_session_id(config)
+    if user_text and assistant_text:
+        get_chat_memory_client().capture(
+            session_id=session_id,
+            user_text=user_text,
+            assistant_text=assistant_text,
+            metadata={
+                "doc_id": state.get("doc_id"),
+                "doc_id_b": state.get("doc_id_b"),
+            },
+        )
+    return {}
+
+
 def build_agent_chat_graph():
     builder = StateGraph(AgentChatState)
+    builder.add_node("recall_chat_memory", recall_chat_memory)
     builder.add_node("research_turn", research_turn)
-    builder.add_edge(START, "research_turn")
-    builder.add_edge("research_turn", END)
+    builder.add_node("capture_chat_memory", capture_chat_memory)
+    builder.add_edge(START, "recall_chat_memory")
+    builder.add_edge("recall_chat_memory", "research_turn")
+    builder.add_edge("research_turn", "capture_chat_memory")
+    builder.add_edge("capture_chat_memory", END)
     return builder.compile()
 
 

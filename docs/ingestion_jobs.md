@@ -45,9 +45,10 @@ Get-Content scripts/migrations/20260801_ingestion_jobs.sql -Raw |
 
 ## 当前边界与后续
 
-当前执行器仍由 API 进程内的 `ThreadPoolExecutor` 驱动；持久化任务状态、自动重试、重启恢复、
+API 默认只归档并创建 queued 任务（`INGESTION_INLINE_EXECUTION_ENABLED=false`）；生产执行器由
+独立 Worker 进程内的 `ThreadPoolExecutor` 驱动。持久化任务状态、自动重试、重启恢复、
 Repository 原子领取、Worker 租约、周期心跳、租约超时接管和旧 Worker fencing 已经可用。
-Local 并发测试与真实 PostgreSQL 双 Worker 领取测试均已覆盖。
+Local 并发测试与真实 PostgreSQL 多进程领取测试均已覆盖。
 
 独立 Worker 入口已经提供：
 
@@ -56,14 +57,15 @@ Local 并发测试与真实 PostgreSQL 双 Worker 领取测试均已覆盖。
 $env:INGESTION_INLINE_EXECUTION_ENABLED='false'
 uv run uvicorn app.main:app --reload
 
-# 独立进程轮询并原子领取任务
+# 独立进程通过 PostgreSQL LISTEN/NOTIFY 唤醒并原子领取任务
 $env:INGESTION_INLINE_EXECUTION_ENABLED='false'
 $env:INGESTION_WORKER_ID='worker-a' # 每个部署实例设置唯一稳定 ID
-uv run python scripts/run_ingestion_worker.py --poll-seconds 1
+uv run python scripts/run_ingestion_worker.py --poll-seconds 30
 ```
 
-`retry_wait` 使用持久化 `available_at`，因此进程重启不会丢失延迟重试。Redis 可用于后续唤醒与
-队列优化，但任务所有权仍以 PostgreSQL 租约为准，避免双重真相源。
+`retry_wait` 使用持久化 `available_at`，因此进程重启不会丢失延迟重试。PostgreSQL
+`LISTEN/NOTIFY` 提供即时唤醒，30 秒轮询用于通知丢失与重试恢复兜底；任务所有权仍以
+PostgreSQL 租约为准，避免双重真相源。
 
 运行中任务支持持久化取消请求；Worker 在下一流水线阶段边界停止，任务进入 `cancelled`，文档
 进入 `paused`，且不会触发失败重试。工作台任务页展示状态计数、活跃 Worker、待取消数和最老
@@ -91,7 +93,8 @@ uv run python scripts/run_ingestion_worker_soak.py
 ```
 
 通过条件为 24/24 succeeded、全部 `attempt == 1`、至少两个进程实际领取、文档全部
-completed、租约全部释放、子进程全部正常退出。2026-08-01 实测 24/24 通过，6 个 Worker
-实例均有实际领取，耗时 10.875 秒。部署环境只需按平台选择日志采集与告警通知渠道。
+completed、租约全部释放、子进程全部正常退出。2026-08-02 实测 24/24 通过，6 个 Worker
+实例均有实际领取，耗时 11.975 秒；事件唤醒 smoke 在 60 秒轮询兜底下 2.138 秒完成。
+部署环境仍需按平台选择日志采集与告警通知渠道。
 
 内部工作台“处理任务”页直接读取上述任务 API，不使用人工进度标记。

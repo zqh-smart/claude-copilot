@@ -34,6 +34,7 @@ class SourceGroundingService:
                 "grounded_fact_count": 0,
                 "ungrounded_fact_count": 0,
                 "ungrounded_samples": [],
+                "table_ungrounded_samples": [],
             }
 
         corpus = self._build_corpus(document)
@@ -45,6 +46,7 @@ class SourceGroundingService:
         table_checked = 0
         table_grounded = 0
         ungrounded_samples: list[dict[str, Any]] = []
+        table_ungrounded_samples: list[dict[str, Any]] = []
 
         for fact in facts:
             hit = self._ground_fact(fact, corpus=corpus, tables_by_id=tables_by_id)
@@ -56,6 +58,13 @@ class SourceGroundingService:
                 table_checked += 1
                 if hit.get("in_source_table"):
                     table_grounded += 1
+                elif len(table_ungrounded_samples) < sample_limit:
+                    table_ungrounded_samples.append(
+                        {
+                            **hit,
+                            "reason": "value_not_found_in_bound_source_table",
+                        }
+                    )
 
         total = len(facts)
         return {
@@ -66,6 +75,7 @@ class SourceGroundingService:
             "grounded_fact_count": grounded,
             "ungrounded_fact_count": total - grounded,
             "ungrounded_samples": ungrounded_samples,
+            "table_ungrounded_samples": table_ungrounded_samples,
         }
 
     def _build_corpus(self, document: ParsedDocument) -> str:
@@ -93,6 +103,7 @@ class SourceGroundingService:
                 "metric_key": fact.metric_key,
                 "period": fact.period,
                 "value": fact.value,
+                "source_table_id": fact.source_table_id,
                 "grounded": False,
                 "reason": "non_numeric_value",
             }
@@ -120,6 +131,7 @@ class SourceGroundingService:
             "metric_key": fact.metric_key,
             "period": fact.period,
             "value": fact.value,
+            "source_table_id": fact.source_table_id,
             "grounded": grounded,
             "in_corpus": in_corpus,
             "checked_source_table": checked_table,

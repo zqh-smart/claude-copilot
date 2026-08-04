@@ -7,19 +7,19 @@ Claude Copilot is a financial document intelligence system. Phase 1 focuses on t
 Engineering references (multi-root workspace):
 
 - **Dify**: document pipeline patterns (parser router, status machine, segments, indexing)
-- **agent-chat-ui-main**: LangGraph agent chat pages (`messages` UI); owns all subsequent agent-facing UI
+- **agent-chat-ui-main**: **sole frontend home** — Agent Chat + knowledge/workbench pages
 - **LangGraph**: multi-step research orchestration with critic/revision loops
 
 ## Layout
 
 ```text
-claude_copilot/                  # Backend + internal console (this repo)
+claude_copilot/                  # Backend only for UI purposes (this repo)
 ├── app/                         # Runtime
 │   ├── api/                     # FastAPI routes + thin services
 │   ├── core/                    # config, db, rag, kg, llm, prompts, errors
 │   ├── pipeline/feature_pipeline/  # Document AI pipeline (primary focus)
 │   └── workflows/               # Live LangGraph graphs: research/risk/quant/compare/report/orchestrator
-├── web/                         # Vite console: docs/research/compare/report/BI/eval/jobs/upload
+├── web/                         # DEPRECATED Vite console (frozen; do not add features)
 ├── src/claude_copilot/          # Installable domain package (schemas, entity resolution)
 ├── tests/                       # pytest
 ├── scripts/                     # backfill, smoke, benchmarks
@@ -28,7 +28,7 @@ claude_copilot/                  # Backend + internal console (this repo)
 └── .agents/skills/              # Agent skills for this repo
 
 # Sibling workspace folder (not in this repo):
-agent-chat-ui-main/              # Next.js Agent Chat UI → LangGraph `messages` chat pages
+agent-chat-ui-main/              # Next.js — ALL frontend pages (chat + workbench)
 ```
 
 **Boundary rules:**
@@ -37,8 +37,8 @@ agent-chat-ui-main/              # Next.js Agent Chat UI → LangGraph `messages
 - Runtime orchestration lives in `app/`.
 - Prefer protocols (`*Protocol`) over concrete backends so local JSON / Postgres / Qdrant / Neo4j stay swappable.
 - Keep API routes thin; business logic in services / pipeline / core.
-- **Agent chat UI**: implement/change in `agent-chat-ui-main`, not in `claude_copilot/web/`.
-- **L3 / docs workbench**: stay in `claude_copilot/web/` (eval board + research cards).
+- **All frontend pages** (Agent Chat, 知识库, 研究问答, 对比, 报告, BI, 评测, 任务, 上传) live in sibling `agent-chat-ui-main`. Do **not** add UI in `claude_copilot/web/`.
+- `claude_copilot/web/` is deprecated leftover; keep compiling only; no new features.
 
 ## Default Commands
 
@@ -54,8 +54,9 @@ uv run ruff check .
 uv run uvicorn app.main:app --reload
 docker compose up -d                         # postgres, qdrant, redis, neo4j
 
-# Workspace console (separate terminal)
-cd web && npm install && npm run dev         # http://localhost:5173 → proxies /api to :8000
+# Product frontend (separate terminal) — agent-chat-ui-main
+# pnpm dev → http://localhost:3000  (Chat + /knowledge /research /eval …)
+# Workbench calls FastAPI :8000 via /api/fastapi proxy; Chat uses LangGraph :2025
 ```
 
 ## Document Pipeline
@@ -134,23 +135,36 @@ python scripts/run_acceptance_suite.py --profile regression
 python scripts/run_acceptance_suite.py --profile all          # smoke then regression gate
 ```
 
-Workspace UI: see `docs/acceptance_suite.md` §0 (`web/` Vite console).
+Product UI: see `docs/acceptance_suite.md` §0 (`agent-chat-ui-main` :3000).
 
-## Agent Chat UI (sibling)
+## Agent Chat UI (sibling) — sole frontend
 
-Agent-facing chat pages live in workspace folder `agent-chat-ui-main` (Next.js).
-They talk to a **LangGraph API** serving the `agent` graph (messages-compatible), not FastAPI `:8000` directly.
+All user-facing pages live in workspace folder `agent-chat-ui-main` (Next.js):
 
-### 1) Start LangGraph agent server (claude_copilot)
+- `/` — Agent Chat → LangGraph `:2025` graph `agent`
+- `/knowledge` `/chat-memory` `/research` `/compare` `/reports` `/metrics` `/eval` `/jobs` `/upload` — workbench → FastAPI `:8000` (via `/api/fastapi` proxy)
+
+**Chat 记忆**（可选）：MemoryCore sidecar `:8420`，与文档三库分离。见 `docs/chat_memory.md`。
+
+### 1) Start stack (Windows)
 
 ```powershell
-# Windows (recommended; uses isolated .venv-langgraph, avoids locking .venv)
+docker compose up -d postgres qdrant neo4j redis
+
+# optional Chat memory sidecar (needed when CHAT_MEMORY_ENABLED=true)
+.\scripts\run_memory_core.ps1
+
+# FastAPI
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+
+# LangGraph agent (isolated .venv-langgraph)
 $env:PYTHONUTF8='1'
 .\scripts\run_agent_langgraph.ps1
 # → http://127.0.0.1:2025   graph id: agent  (override with LANGGRAPH_PORT)
 
 # optional: pin a Serving doc in langgraph.env
 # AGENT_CHAT_DOC_ID=<doc_uuid>
+# CHAT_MEMORY_ENABLED=true
 ```
 
 ### 2) Start Agent Chat UI
@@ -162,8 +176,8 @@ pnpm install
 pnpm dev   # http://localhost:3000
 ```
 
-Do not grow a parallel agent chat product inside `claude_copilot/web/`.  
-L3 pass_rate / 逐题对错看板仍在本仓库 `web/`「评测看板」页（`GET /api/v1/eval/serving*`）。
+Do not add frontend pages in `claude_copilot/web/` (deprecated).  
+L3 评测看板 / 知识库 / 切片 / 图谱 / 对话记忆：`/eval`、`/knowledge`、`/chat-memory`。
 
 ## Coding Conventions
 
@@ -176,6 +190,8 @@ L3 pass_rate / 逐题对错看板仍在本仓库 `web/`「评测看板」页（`
 ## Docs Index
 
 - `docs/agent_chat_ui.md` — Agent Chat UI ↔ LangGraph `agent` bridge
+- `docs/chat_memory.md` — MemoryCore sidecar Chat memory（≠ 三库文档知识）
+- `docs/tencent_memory_and_ui_adoption_plan.md` — Chat memory + UI 采用改造清单
 - `docs/project_architecture.md` — module boundaries
 - `docs/knowledge_graph.md` — graph model and backfill
 - `docs/structured_financial_data_api.md` — companies/metrics/research API
@@ -183,7 +199,8 @@ L3 pass_rate / 逐题对错看板仍在本仓库 `web/`「评测看板」页（`
 - `docs/acceptance_suite.md` — smoke/regression commands and pass criteria
 - `docs/eval_metrics.md` — stage metrics definitions (L1/L2 detail)
 - `docs/pipeline_eval_status.md` — current scorecard snapshot + next optimizations
-- `docs/loop_playbook.md` — autonomous `/loop` instructions（P7a–P7f 已完成；Living Design 对照）
+- `docs/loop_playbook.md` — autonomous `/loop` instructions（Phase G 已完成；Phase H 深化主线）
+- `docs/phase_h_acceptance.md` — Phase H 六项任务的样本、指标公式、硬阈值、命令与报告契约
 - `README.md` — onboarding, env, scripts
 
 ## Skills Index

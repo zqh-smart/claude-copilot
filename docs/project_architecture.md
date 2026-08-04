@@ -56,7 +56,8 @@ Dify 更适合借鉴文档工程化部分，尤其是：
 claude_copilot/
 ├── app/
 │   ├── api/                         # FastAPI 路由与服务入口
-│   ├── core/                        # 配置、观测、RAG、DB、KG、Prompts
+│   ├── core/                        # 配置、观测、RAG、DB、KG、Chat Memory、Prompts
+│   │   ├── chat_memory/             # MemoryCore sidecar 客户端（对话记忆 ≠ 文档 KG）
 │   │   ├── db/
 │   │   ├── kg/
 │   │   ├── prompts/
@@ -99,6 +100,9 @@ claude_copilot/
 ### `app/core/`
 
 核心能力层，优先参考 `Bank-copilot-main` 的后端组织方式。
+
+其中 `app/core/chat_memory/` 仅对接 **Chat 对话记忆**（TencentDB MemoryCore sidecar）。  
+年报文档 / 指标 / 图谱仍只走 Postgres + Qdrant + Neo4j，互不写入。详见 `docs/chat_memory.md`。
 
 当前预留：
 
@@ -176,7 +180,7 @@ LangGraph 工作流层。
 - `app/`, `src/`, `tests/`, `data/` 基础目录
 - FastAPI 启动入口与 `/health`
 - `pydantic-settings` 配置入口
-- LangSmith / Langfuse 观测占位配置
+- LangSmith / Langfuse 观测配置、统一 span 与 exporter adapters
 - 文档 schema
 - 首个测试用例
 - 首版 `project_architecture.md`
@@ -221,15 +225,12 @@ P7 / Phase F 已完成：
 Acceptance API/负面/真实冲突 E2E，以及扫描 OCR/复杂表 Stress golden；P7f 组合 API 与
 报告文件导出均有契约测试和真实数据/渲染验收。
 
-当前 Phase G 后续工作：
+Phase G 已完成：正式前端 E2E、正式多文档报告、Full L4/critic 三样本硬门禁、真实
+tracing wire smoke、多文档知识融合、KG 质量门禁、外部 JPM CER/TEDS，以及独立 Worker
+通知唤醒/Docker/并发 soak 均已通过。
 
-1. 两套前端浏览器 E2E。
-2. 正式多文档报告综合与 Full L4/critic 硬门禁。
-3. 真实 tracing exporter 冒烟（`scripts/run_tracing_exporter_smoke.py` 验证
-   Langfuse SDK OTLP payload、认证头与 trace ID；SaaS 环境仍需提供凭据后复验）。
-4. 多文档知识融合与 KG 生产化。
-5. 外部 golden、CER/TEDS、清洗噪声优化。
-6. 独立 Worker 默认部署、事件驱动唤醒与运维验收。
+当前 Phase H 后续工作以 `docs/loop_playbook.md` §13 为准：扩展评测分布和混合来源、极端
+OCR、企业 KG 与 lite Agent 深化，以及真实云端观测和部署平台告警闭环。
 
 这样可以保证：
 

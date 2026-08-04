@@ -11,8 +11,8 @@ Claude Copilot 面向金融文档智能分析场景，当前重点是先把文�
 - 主框架：LangGraph
 - 观测：LangSmith + Langfuse
 - 文档处理参考：Dify
-- Agent 对话页：工作区 sibling `agent-chat-ui-main`（LangGraph `messages` UI）
-- 内部工作台：本仓库 `web/`（文档 / 评测 L3 / 指标，非 Agent Chat）
+- **唯一前端**：工作区 sibling `agent-chat-ui-main`（Agent Chat + 知识库/研究/评测等工作台）
+- 本仓库 `web/`：已废弃（勿再加功能）；见 `web/README.md`
 
 ## 当前重点
 

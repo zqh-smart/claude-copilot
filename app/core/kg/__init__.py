@@ -6,6 +6,7 @@ inspired first by Bank-copilot-main and later extended for financial entity grap
 
 from app.core.kg.builder import KnowledgeGraphBuilder
 from app.core.kg.entity_extractor import FinancialEntityRelationExtractor
+from app.core.kg.llm_extractor import SchemaConstrainedKGExtractor
 from app.core.kg.quality import GraphQualityReport, evaluate_document_graph
 from app.core.kg.store import (
     KnowledgeGraphStoreProtocol,
@@ -19,6 +20,7 @@ __all__ = [
     "GraphQualityReport",
     "evaluate_document_graph",
     "FinancialEntityRelationExtractor",
+    "SchemaConstrainedKGExtractor",
     "KnowledgeGraphStoreProtocol",
     "LocalKnowledgeGraphStore",
     "Neo4jKnowledgeGraphStore",

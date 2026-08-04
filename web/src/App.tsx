@@ -15,9 +15,18 @@ import type {
   ScorecardSummary,
   ServingEvalSummary,
 } from "./api";
+import { KnowledgeBasePanel } from "./KnowledgeBase";
 import "./index.css";
 
-type Tab = "research" | "compare" | "reports" | "metrics" | "eval" | "jobs" | "upload";
+type Tab =
+  | "knowledge"
+  | "research"
+  | "compare"
+  | "reports"
+  | "metrics"
+  | "eval"
+  | "jobs"
+  | "upload";
 
 const SUGGESTED_QUESTIONS = [
   "2021年营业收入是多少？",
@@ -183,7 +192,7 @@ function PortfolioSelector({
 }
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>("research");
+  const [tab, setTab] = useState<Tab>("knowledge");
   const [health, setHealth] = useState("checking");
   const [error, setError] = useState<string | null>(null);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
@@ -524,7 +533,7 @@ export default function App() {
       <aside className="sidebar">
         <div className="brand">
           <h1>Claude Copilot</h1>
-          <p>金融文档工作台 · 文档 / 问答 / 评测</p>
+          <p>金融文档工作台 · 知识库 / 问答 / 评测</p>
         </div>
 
         <div className="panel stack">
@@ -591,6 +600,7 @@ export default function App() {
         <div className="tabs">
           {(
             [
+              ["knowledge", "知识库"],
               ["research", "研究问答"],
               ["compare", "对比看板"],
               ["reports", "报告中心"],
@@ -610,6 +620,18 @@ export default function App() {
             </button>
           ))}
         </div>
+
+        {tab === "knowledge" && (
+          <KnowledgeBasePanel
+            documents={documents}
+            servingDocIds={servingDocIds}
+            initialDocId={selectedDocId}
+            onOpenResearch={(docId) => {
+              setSelectedDocId(docId);
+              setTab("research");
+            }}
+          />
+        )}
 
         {tab === "research" && (
           <section className="panel stack">

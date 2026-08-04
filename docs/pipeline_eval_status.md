@@ -47,9 +47,10 @@ Baseline：`data/reports/eval/baseline_scorecard.json`
 - 脚本：`scripts/run_joint_retrieval_benchmark.py`
 - 基线：`data/reports/joint_retrieval_benchmark/baseline_joint_retrieval_benchmark.json`
 - 对比：`python scripts/run_joint_retrieval_benchmark.py --no-ablation --compare-baseline`
-- 固化规模：**10 docs / 95 Q**（gate **18/18**，joint **95/95**）
-- 软指标快照：Recall@5≈0.91 · MRR@10≈0.90 · nDCG@10≈0.90 · hard-neg@5≈0.50 · abstain=1.0
-- **停手约定（当前文档）**：不再加题、不调 fusion weights；仅当冲击软阈值全绿或线上明显捡错段时，再做 query-aware / section ownership
+- 三次扩文档复验（2026-08-03）：**22 docs / 156 Q**（gate **18/18**，joint **156/156**）
+- 本轮新增：`boyun_2021` / `nenghui_2021` / `dongpeng_2021` / `thunder_2021`（中科创达）
+- 软指标快照：Recall@5≈0.91 · MRR@10≈0.91 · nDCG@10≈0.91 · hard-neg@5≈0.35 · abstain=1.0
+- 不调 fusion weights；浪奇/同花顺合并营收仍靠语义（SQL 口径冲突后置）
 - Query-aware 惩罚已在线；`duplicate_block_ratio`（znz）≈0.056（目标 ≤0.03 后置）
 
 ## 混合检索（近期）

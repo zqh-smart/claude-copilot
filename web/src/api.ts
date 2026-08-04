@@ -26,11 +26,52 @@ export type DocumentRecord = {
   status: string;
   segment_count: number;
   error_message?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
   metadata: {
     company?: string | null;
     year?: number | null;
     doc_type?: string | null;
+    industry?: string | null;
+    company_aliases?: string[] | null;
   };
+};
+
+export type DocumentSegment = {
+  segment_id: string;
+  document_id: string;
+  parent_section_id?: string | null;
+  position: number;
+  content: string;
+  content_summary?: string | null;
+  keywords?: string[];
+  metadata?: Record<string, unknown> | null;
+};
+
+export type KnowledgeGraphNode = {
+  node_id: string;
+  node_type: string;
+  name: string;
+  document_id?: string | null;
+  properties?: Record<string, unknown>;
+};
+
+export type KnowledgeGraphRelationship = {
+  relationship_id: string;
+  relationship_type: string;
+  source_node_id: string;
+  target_node_id: string;
+  document_id: string;
+  evidence_text?: string | null;
+  confidence?: number;
+  properties?: Record<string, unknown>;
+};
+
+export type DocumentKnowledgeGraph = {
+  document_id: string;
+  company_id?: string | null;
+  nodes: KnowledgeGraphNode[];
+  relationships: KnowledgeGraphRelationship[];
 };
 
 export type IngestionJobEvent = {
@@ -225,6 +266,14 @@ export type ScorecardSummary = {
 export const api = {
   health: () => request<{ status: string }>("/health"),
   listDocuments: () => request<DocumentRecord[]>("/api/v1/documents"),
+  getDocument: (docId: string) =>
+    request<DocumentRecord>(`/api/v1/documents/${encodeURIComponent(docId)}`),
+  listSegments: (docId: string) =>
+    request<DocumentSegment[]>(`/api/v1/documents/${encodeURIComponent(docId)}/segments`),
+  getDocumentKnowledgeGraph: (docId: string) =>
+    request<DocumentKnowledgeGraph>(
+      `/api/v1/documents/${encodeURIComponent(docId)}/knowledge-graph`,
+    ),
   listIngestionJobs: () => request<IngestionJob[]>("/api/v1/documents/jobs"),
   getIngestionMetrics: () =>
     request<IngestionQueueMetrics>("/api/v1/documents/jobs/metrics"),
@@ -295,6 +344,12 @@ export const api = {
     }),
   research: (docId: string, question: string, topK = 5) =>
     request<ResearchResponse>("/api/v1/research/query", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ doc_id: docId, question, top_k: topK }),
+    }),
+  researchPreview: (docId: string, question: string, topK = 5) =>
+    request<ResearchResponse>("/api/v1/research/preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ doc_id: docId, question, top_k: topK }),

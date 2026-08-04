@@ -110,6 +110,8 @@ class MetricConflictCandidate:
     document_year: int | None
     has_provenance: bool
     is_grounded: bool
+    source_type: str | None = None
+    source_priority: int = 0
 
 
 @dataclass(frozen=True)
@@ -132,6 +134,8 @@ def candidate_from_fact(
         document_year=document_year,
         has_provenance=has_metric_provenance(fact),
         is_grounded=is_grounded_metric_fact(fact, schema),
+        source_type=str(fact.provenance.get("source_type") or "") or None,
+        source_priority=int(fact.provenance.get("source_priority") or 0),
     )
 
 
@@ -144,6 +148,8 @@ def candidate_from_observation(
         document_year=observation.document_year,
         has_provenance=observation_has_provenance(observation),
         is_grounded=observation_is_grounded(observation),
+        source_type=str(observation.provenance.get("source_type") or "") or None,
+        source_priority=int(observation.provenance.get("source_priority") or 0),
     )
 
 
@@ -157,6 +163,7 @@ def _candidate_sort_key(
         candidate.has_provenance and candidate.is_grounded,
         candidate.is_grounded,
         candidate.has_provenance,
+        candidate.source_priority,
         candidate.document_year or 0,
         candidate.document_id,
     )
@@ -228,8 +235,15 @@ def resolve_metric_conflict(
 
     distinct_values = {normalize_metric_value(candidate.value) for candidate in candidates}
     if len(distinct_values) <= 1:
+        winner = max(
+            candidates,
+            key=lambda candidate: _candidate_sort_key(
+                candidate,
+                prefer_document_id=prefer_document_id,
+            ),
+        )
         return MetricConflictResolution(
-            winner=candidates[0],
+            winner=winner,
             warnings=[],
             suppressed_document_ids=[],
         )

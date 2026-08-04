@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 
 from bs4 import BeautifulSoup
@@ -30,6 +31,8 @@ class ChunkingService:
                 if not chunk or not self._has_information(chunk):
                     continue
                 position += 1
+                metadata = dict(payload["metadata"])
+                metadata["segment_fingerprint"] = self._segment_fingerprint(chunk)
                 segments.append(
                     DocumentSegment(
                         segment_id=f"{document.doc_id}-segment-{position}",
@@ -39,11 +42,16 @@ class ChunkingService:
                         content=chunk,
                         content_summary=chunk[:120],
                         keywords=self._extract_keywords(chunk),
-                        metadata=payload["metadata"],
+                        metadata=metadata,
                     )
                 )
 
         return segments
+
+    @staticmethod
+    def _segment_fingerprint(content: str) -> str:
+        normalized = " ".join(content.split()).casefold()
+        return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
     def _iter_chunk_payloads(self, document: ParsedDocument) -> list[dict]:
         payloads: list[dict] = []

@@ -45,16 +45,30 @@ class ResearchService:
             self._revise_answer,
         )
 
-    def preview(self, *, doc_id: str, question: str, top_k: int) -> ResearchPreviewResponse:
+    def preview(
+        self,
+        *,
+        doc_id: str,
+        question: str,
+        top_k: int,
+        chat_memory_context: str | None = None,
+    ) -> ResearchPreviewResponse:
         inputs = {"doc_id": doc_id, "top_k": top_k, "question_length": len(question)}
         if self._capture_trace_content:
             inputs["question"] = question
+        if chat_memory_context:
+            inputs["chat_memory_context_length"] = len(chat_memory_context)
         with self._observability.trace(
             "research.preview",
             inputs=inputs,
             metadata={"service": "ResearchService"},
         ) as span:
-            response = self._preview(doc_id=doc_id, question=question, top_k=top_k)
+            response = self._preview(
+                doc_id=doc_id,
+                question=question,
+                top_k=top_k,
+                chat_memory_context=chat_memory_context,
+            )
             span.set_output(
                 {
                     "grounded": response.grounded,
@@ -65,18 +79,30 @@ class ResearchService:
             )
             return response
 
-    def _preview(self, *, doc_id: str, question: str, top_k: int) -> ResearchPreviewResponse:
+    def _preview(
+        self,
+        *,
+        doc_id: str,
+        question: str,
+        top_k: int,
+        chat_memory_context: str | None = None,
+    ) -> ResearchPreviewResponse:
         record = self._document_pipeline_service.get_document(doc_id)
         company_id = (
             build_company_id(record.metadata.company)
             if record.metadata.company
             else None
         )
+        memory = (chat_memory_context or "").strip()
+        synthesis_question = (
+            f"{memory}\n\n用户问题：{question}" if memory else question
+        )
         result = self._graph.invoke(
             {
                 "doc_id": doc_id,
                 "company_id": company_id,
                 "question": question,
+                "synthesis_question": synthesis_question,
                 "top_k": top_k,
                 "revision_count": 0,
                 "max_revisions": (
@@ -174,6 +200,10 @@ class ResearchService:
         }
 
     def _synthesize_answer(self, state: dict) -> dict:
+        # Retrieval keeps clean ``question``; synthesis may include chat-memory context.
+        synthesis_question = str(
+            state.get("synthesis_question") or state.get("question") or ""
+        )
         if self._grounded_engine is None:
             synthesis = self._fallback_synthesis(state)
             return {
@@ -185,7 +215,7 @@ class ResearchService:
         evidence = self._grounded_engine.build_evidence(state)
         try:
             synthesis = self._grounded_engine.synthesize(
-                question=state["question"],
+                question=synthesis_question,
                 evidence=evidence,
             )
             return {

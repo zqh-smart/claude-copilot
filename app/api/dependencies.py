@@ -6,6 +6,7 @@ from app.api.services.document_service import DocumentService
 from app.api.services.financial_data_service import FinancialDataService
 from app.api.services.ingestion_job_service import IngestionJobService
 from app.api.services.research_service import ResearchService
+from app.core.chat_memory import ChatMemoryProtocol, HttpChatMemoryClient, NoopChatMemory
 from app.core.config import get_settings
 from app.core.db import (
     LocalDocumentRepository,
@@ -197,6 +198,14 @@ def get_ingestion_job_service() -> IngestionJobService:
 @lru_cache
 def get_financial_data_service() -> FinancialDataService:
     return FinancialDataService(get_financial_data_repository())
+
+
+@lru_cache
+def get_chat_memory_client() -> ChatMemoryProtocol:
+    settings = get_settings()
+    if not settings.chat_memory_enabled:
+        return NoopChatMemory(reason="chat_memory_disabled")
+    return HttpChatMemoryClient(settings=settings)
 
 
 @lru_cache

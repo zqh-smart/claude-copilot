@@ -144,43 +144,61 @@ class LocalKnowledgeGraphStore:
             if relationship.source_node_id in node_map and relationship.target_node_id in node_map:
                 outgoing[relationship.source_node_id].append(relationship)
 
-        for first in relationships:
-            source = node_map.get(first.source_node_id)
-            middle = node_map.get(first.target_node_id)
-            if source is None or middle is None:
-                continue
-            for second in outgoing.get(middle.node_id, []):
-                if second.source_node_id != middle.node_id:
-                    continue
-                end = node_map.get(second.target_node_id)
-                if end is None or end.node_id == source.node_id:
-                    continue
+        def walk(
+            nodes: list[KnowledgeGraphNode],
+            edges: list[KnowledgeGraphRelationship],
+        ) -> None:
+            if len(edges) >= 2:
                 haystack = " ".join(
-                    (
-                        LocalKnowledgeGraphStore._path_text(source, middle, first),
-                        LocalKnowledgeGraphStore._path_text(middle, end, second),
+                    LocalKnowledgeGraphStore._path_text(
+                        nodes[index], nodes[index + 1], relationship
                     )
+                    for index, relationship in enumerate(edges)
                 )
                 matched = sum(term in haystack for term in terms)
                 bonus = max(
-                    LocalKnowledgeGraphStore._type_bonus(query, source, middle, first),
-                    LocalKnowledgeGraphStore._type_bonus(query, middle, end, second),
-                )
-                if terms and matched == 0 and bonus == 0:
-                    continue
-                score = min(1.0, 0.15 + matched / max(len(terms), 1) * 0.5 + bonus)
-                paths.append(
-                    GraphPath(
-                        path_id=f"{first.relationship_id}::{second.relationship_id}",
-                        summary=(
-                            f"{source.name} -[{first.relationship_type}]-> {middle.name} "
-                            f"-[{second.relationship_type}]-> {end.name}"
-                        ),
-                        score=round(score, 4),
-                        nodes=[source, middle, end],
-                        relationships=[first, second],
+                    LocalKnowledgeGraphStore._type_bonus(
+                        query,
+                        nodes[index],
+                        nodes[index + 1],
+                        relationship,
                     )
+                    for index, relationship in enumerate(edges)
                 )
+                if not terms or matched > 0 or bonus > 0:
+                    score = min(
+                        1.0,
+                        0.15 + matched / max(len(terms), 1) * 0.5 + bonus,
+                    )
+                    summary = " ".join(
+                        (
+                            nodes[0].name,
+                            *(
+                                f"-[{relationship.relationship_type}]-> "
+                                f"{nodes[index + 1].name}"
+                                for index, relationship in enumerate(edges)
+                            ),
+                        )
+                    )
+                    paths.append(
+                        GraphPath(
+                            path_id="::".join(edge.relationship_id for edge in edges),
+                            summary=summary,
+                            score=round(score, 4),
+                            nodes=list(nodes),
+                            relationships=list(edges),
+                        )
+                    )
+            if len(edges) == 3:
+                return
+            for relationship in outgoing.get(nodes[-1].node_id, []):
+                target = node_map.get(relationship.target_node_id)
+                if target is None or any(target.node_id == node.node_id for node in nodes):
+                    continue
+                walk([*nodes, target], [*edges, relationship])
+
+        for node in node_map.values():
+            walk([node], [])
         return paths
 
     @staticmethod

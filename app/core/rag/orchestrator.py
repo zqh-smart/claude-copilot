@@ -26,6 +26,16 @@ _WELL_KNOWN_COMPANY_GROUPS: tuple[tuple[str, ...], ...] = (
     ("苏州天华新能源科技股份有限公司", "天华新能", "天华超净", "300390"),
     ("湖北共同药业股份有限公司", "共同药业", "300966"),
     ("广州市浪奇实业股份有限公司", "广州浪奇", "浪奇", "000523"),
+    ("浙江核新同花顺网络信息股份有限公司", "同花顺", "300033"),
+    ("深圳顺络电子股份有限公司", "顺络电子", "002138"),
+    ("江苏爱朋医疗科技股份有限公司", "爱朋医疗", "300753"),
+    ("浙江运达风电股份有限公司", "运达股份", "运达风电", "300772"),
+    ("江苏博云塑业股份有限公司", "江苏博云", "博云塑业", "301003"),
+    ("上海能辉科技股份有限公司", "能辉科技", "301046"),
+    ("东鹏饮料集团股份有限公司", "东鹏饮料", "东鹏特饮", "605499"),
+    ("中科创达软件股份有限公司", "中科创达", "300496"),
+    ("Apple Inc.", "Apple", "AAPL"),
+    ("JPMorgan Chase & Co.", "JPMorgan", "JPM"),
     ("华衡科技股份有限公司", "华衡科技"),
 )
 
@@ -55,6 +65,7 @@ class QueryAnalyzer:
         "total_assets": ("total assets", "总资产"),
         "total_liabilities": ("total liabilities", "总负债"),
         "total_equity": ("total equity", "shareholders' equity", "股东权益", "净资产"),
+        "interest_income": ("interest income", "利息收入"),
         "net_interest_income": ("net interest income", "净利息收入"),
         "operating_income": ("operating income", "营业利润"),
         "net_cash_from_operating_activities": (

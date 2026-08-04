@@ -5,39 +5,37 @@
 
 ---
 
-## 0. 工作台前端（推荐查看结果）
+## 0. 产品前端（agent-chat-ui-main）
 
-避免只盯长 JSON：本地起 API + Vite 控制台。
+所有前端页面在 sibling `agent-chat-ui-main`（Next.js :3000）。本仓库 `web/` 已废弃。
 
 ```bash
-# 终端 1 — API（需 docker: postgres/qdrant/neo4j）
+# 终端 1 — FastAPI（需 docker: postgres/qdrant/neo4j）
 uvicorn app.main:app --reload --port 8000
 
-# 终端 2 — UI
-cd web
-npm install
-npm run dev
-# 打开 http://localhost:5173
+# 终端 2 — LangGraph agent（Chat 必需）
+.\scripts\run_agent_langgraph.ps1   # :2025
+
+# 终端 3 — UI
+cd ../agent-chat-ui-main
+pnpm install
+pnpm dev
+# 打开 http://localhost:3000
+# /            Agent Chat（LangGraph）
+# /knowledge   知识库（切片 / 召回测试 / 图谱）
+# /research    研究问答
+# /compare /reports /metrics /eval /jobs /upload
 ```
 
-控制台能力：文档列表、研究问答、跨文档/多公司对比、报告中心、BI、
-**L3 评测看板**、任务队列与上传。原始 JSON 折叠在「详情」。
+Workbench 经 `/api/fastapi` 代理访问 FastAPI `:8000`。`NEXT_PUBLIC_FASTAPI_URL` 默认 `http://localhost:8000`。
 
-> Agent 对话页不在本仓库：见工作区 sibling `agent-chat-ui-main`（`pnpm dev` → :3000）。  
-> L3 看板在本仓库 `web/`「评测看板」Tab，数据来自 `GET /api/v1/eval/serving` 与 `/serving/{doc_id}`。
-
-正式产品前端位于 sibling `agent-chat-ui-main`。浏览器门禁使用机器已安装的
-Chrome，LangGraph API 请求在测试内确定性 mock：
+浏览器门禁（Agent Chat）：
 
 ```bash
-# Agent Chat：对话壳、中文输入框、发送态和浏览器错误
 cd ../agent-chat-ui-main
 pnpm test:e2e
+pnpm build
 ```
-
-正式前端还必须通过 `pnpm build`；E2E 或生产构建任一失败，不得宣称
-Application Layer 前端可用。当前仓库 `web/` 是内部评测/运维工作台，不作为
-Agent Chat 产品前端扩建。
 
 ---
 
