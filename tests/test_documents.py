@@ -97,7 +97,45 @@ def test_document_upload_and_research_preview(tmp_path: Path) -> None:
     assert "风险" in research_payload["question"]
     assert len(research_payload["hits"]) >= 1
 
+    source = client.get(f"/api/v1/documents/{doc_id}/source")
+    assert source.status_code == 200
+    assert source.content == b"Revenue grew strongly. Risk factors include liquidity pressure."
+    assert source.headers["content-disposition"].startswith("attachment")
+    assert client.get("/api/v1/documents/unknown/source").status_code == 404
+
     app.dependency_overrides.clear()
+
+
+def test_document_source_rejects_paths_outside_archive_and_missing_files(tmp_path: Path) -> None:
+    document_service, _ = build_test_services(tmp_path)
+    pipeline = document_service._pipeline_service
+    record = pipeline.create_document(
+        filename="source.pdf",
+        content_type="application/pdf",
+        content=b"%PDF-1.4\nfixture",
+        company="Source Corp",
+        year=2025,
+        doc_type="annual_report",
+        source="test",
+    )
+    app.dependency_overrides[get_document_service] = lambda: document_service
+    try:
+        client = TestClient(app)
+        url = f"/api/v1/documents/{record.doc_id}/source"
+        response = client.get(url)
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/pdf"
+        assert response.headers["content-disposition"].startswith("inline")
+        outside = tmp_path / "private.txt"
+        outside.write_text("must not be served", encoding="utf-8")
+        record.storage_path = str(outside)
+        pipeline._document_repository.save(record)
+        assert client.get(url).status_code == 404
+        record.storage_path = str(tmp_path / "documents" / "missing.pdf")
+        pipeline._document_repository.save(record)
+        assert client.get(url).status_code == 404
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_pipeline_cancellation_pauses_document_at_stage_boundary(tmp_path: Path) -> None:

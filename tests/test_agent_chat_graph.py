@@ -15,6 +15,13 @@ from app.workflows.agent_chat.graph import (
     research_turn,
 )
 from app.workflows.orchestrator.graph import classify_intent
+from src.claude_copilot.schemas.research import (
+    ChatResearchResult,
+    GroundedCitation,
+    GroundedSynthesis,
+    ResearchHit,
+    ResearchPreviewResponse,
+)
 
 
 def test_latest_human_text_reads_last_user_message() -> None:
@@ -78,7 +85,10 @@ def test_format_answer_includes_fusion_summary() -> None:
 def test_classify_intent_routes_market_risk_question() -> None:
     assert classify_intent({"question": "公司面临哪些市场风险或风险暴露？"})["agent_used"] == "risk"
     assert classify_intent({"question": "2021年营业收入是多少？"})["agent_used"] == "structured"
-    assert classify_intent({"question": "2021年营业收入相对2020年为什么增长？"})["agent_used"] == "quant"
+    assert (
+        classify_intent({"question": "2021年营业收入相对2020年为什么增长？"})["agent_used"]
+        == "quant"
+    )
     assert classify_intent({"question": "对比两家公司的营业收入"})["agent_used"] == "compare"
     assert classify_intent({"question": "生成提纲报告"})["agent_used"] == "report"
 
@@ -103,9 +113,7 @@ def test_research_turn_runs_secondary_specialist_for_multi_intent() -> None:
             "app.workflows.agent_chat.graph._resolve_doc_id_b",
             return_value=None,
         ),
-        patch(
-            "app.api.dependencies.get_document_pipeline_service"
-        ) as get_pipeline,
+        patch("app.api.dependencies.get_document_pipeline_service") as get_pipeline,
         patch(
             "app.workflows.agent_chat.graph._invoke_chat_specialist",
             side_effect=fake_invoke,
@@ -113,11 +121,7 @@ def test_research_turn_runs_secondary_specialist_for_multi_intent() -> None:
     ):
         get_pipeline.return_value.get_document.return_value = _Record()
         result = research_turn(
-            {
-                "messages": [
-                    HumanMessage(content="2021年营业收入是多少以及有哪些市场风险？")
-                ]
-            },
+            {"messages": [HumanMessage(content="2021年营业收入是多少以及有哪些市场风险？")]},
             {},
         )
 
@@ -131,9 +135,7 @@ def test_research_turn_runs_secondary_specialist_for_multi_intent() -> None:
 
 def test_compare_without_doc_id_b_warns_and_skips_workflow() -> None:
     """Missing second doc must be an explicit warning — never invent company B."""
-    with patch(
-        "app.workflows.comparison_workflow.graph.graph.invoke"
-    ) as compare_invoke:
+    with patch("app.workflows.comparison_workflow.graph.graph.invoke") as compare_invoke:
         answer = _invoke_chat_specialist(
             agent_used="compare",
             question="对比两家公司的营业收入",
@@ -150,3 +152,94 @@ def test_compare_without_doc_id_b_warns_and_skips_workflow() -> None:
     assert "营业收入" not in answer or "未配置" in answer
     assert "931944638" not in answer
     assert "差额" not in answer
+
+
+def test_research_snapshot_survives_serialization_and_stays_with_its_turn() -> None:
+    from types import SimpleNamespace
+
+    from langchain_core.messages import messages_from_dict, messages_to_dict
+
+    previews = [
+        ResearchPreviewResponse(
+            doc_id=doc_id,
+            question="营收是多少？",
+            answer=f"{value}元 [V1]",
+            hits=[
+                ResearchHit(
+                    segment_id=f"{doc_id}-segment",
+                    score=0.9,
+                    content=f"营收{value}元",
+                    metadata={"page_start": page},
+                )
+            ],
+            synthesis=GroundedSynthesis(
+                answer=f"{value}元 [V1]",
+                confidence=1,
+                citations=[GroundedCitation(evidence_id="V1", claim=f"营收{value}元")],
+            ),
+            grounded=True,
+        )
+        for doc_id, value, page in [("doc-a", 100, 3), ("doc-b", 200, 8)]
+    ]
+    history = []
+    with (
+        patch("app.api.dependencies.get_document_pipeline_service") as pipeline,
+        patch("app.api.dependencies.get_research_service") as research,
+    ):
+        pipeline.return_value.get_document.return_value = SimpleNamespace(
+            metadata=SimpleNamespace(company="测试公司")
+        )
+        research.return_value.preview.side_effect = previews
+        for index, preview in enumerate(previews):
+            history.append(HumanMessage(id=f"human-{index}", content=preview.question))
+            out = research_turn(
+                {"messages": history, "doc_id": preview.doc_id},
+                {"configurable": {"thread_id": "thread-a"}},
+            )
+            history.extend(out["messages"])
+    restored = messages_from_dict(messages_to_dict(history))
+    for index, preview in enumerate(previews):
+        message = restored[index * 2 + 1]
+        snapshot = ChatResearchResult.model_validate(message.additional_kwargs["research_result"])
+        assert snapshot.thread_id == "thread-a"
+        assert snapshot.request_message_id == f"human-{index}"
+        assert snapshot.previews == [preview]
+        assert message.id
+        assert preview.answer in message.content
+    assert restored[1].id != restored[3].id
+
+
+def test_secondary_research_keeps_its_evidence_without_rerunning() -> None:
+    from types import SimpleNamespace
+
+    preview = ResearchPreviewResponse(
+        doc_id="doc-a", question="营收和风险", answer="100元", warnings=["证据有限"]
+    )
+    with (
+        patch("app.api.dependencies.get_document_pipeline_service") as pipeline,
+        patch(
+            "app.workflows.agent_chat.graph._invoke_chat_specialist",
+            side_effect=["风险摘要", preview],
+        ) as invoke,
+        patch(
+            "app.workflows.orchestrator.graph.classify_intent",
+            return_value={
+                "agent_used": "risk",
+                "secondary_intent": "structured",
+                "sub_intents": ["risk", "structured"],
+            },
+        ),
+    ):
+        pipeline.return_value.get_document.return_value = SimpleNamespace(
+            metadata=SimpleNamespace(company="测试")
+        )
+        out = research_turn(
+            {"doc_id": "doc-a", "messages": [HumanMessage(id="human-1", content="营收和风险")]},
+            {"configurable": {"thread_id": "thread-b"}},
+        )
+    assert invoke.call_count == 2
+    snapshot = ChatResearchResult.model_validate(
+        out["messages"][0].additional_kwargs["research_result"]
+    )
+    assert snapshot.previews == [preview]
+    assert snapshot.thread_id == "thread-b"

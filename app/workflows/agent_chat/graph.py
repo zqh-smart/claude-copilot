@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Annotated, Any, TypedDict
+from uuid import uuid4
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -15,6 +16,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
 from app.core.config import get_settings
+from src.claude_copilot.schemas.research import ChatResearchResult, ResearchPreviewResponse
 
 
 class AgentChatState(TypedDict, total=False):
@@ -180,7 +182,7 @@ def _invoke_chat_specialist(
     doc_id_b: str | None,
     company_id: str | None,
     chat_memory_context: str | None = None,
-) -> str:
+) -> str | ResearchPreviewResponse:
     """Run one specialist for agent chat; shared by primary and secondary intents.
 
     ``question`` must stay clean for retrieval/intent. ``chat_memory_context`` is
@@ -256,7 +258,13 @@ def _invoke_chat_specialist(
         top_k=5,
         chat_memory_context=chat_memory_context,
     )
-    content = _format_answer(preview)
+    return preview
+
+
+def _specialist_answer(result: str | ResearchPreviewResponse, agent_used: str) -> str:
+    if isinstance(result, str):
+        return result
+    content = _format_answer(result)
     if agent_used == "structured":
         content = f"【结构化 · Structured Agent】\n{content}"
     return content
@@ -416,7 +424,7 @@ def research_turn(state: AgentChatState, config: RunnableConfig) -> dict[str, An
     doc_id_b = _resolve_doc_id_b(state, config)
     chat_memory_context = (state.get("chat_memory_prepend") or "").strip() or None
 
-    content = _invoke_chat_specialist(
+    primary_result = _invoke_chat_specialist(
         agent_used=agent_used,
         question=question,
         doc_id=doc_id,
@@ -424,10 +432,12 @@ def research_turn(state: AgentChatState, config: RunnableConfig) -> dict[str, An
         company_id=company_id,
         chat_memory_context=chat_memory_context,
     )
+    content = _specialist_answer(primary_result, agent_used)
+    previews = [primary_result] if isinstance(primary_result, ResearchPreviewResponse) else []
     secondary_ran: AgentKind | None = None
     if secondary and secondary != agent_used:
         try:
-            secondary_block = _invoke_chat_specialist(
+            secondary_result = _invoke_chat_specialist(
                 agent_used=secondary,
                 question=question,
                 doc_id=doc_id,
@@ -435,7 +445,10 @@ def research_turn(state: AgentChatState, config: RunnableConfig) -> dict[str, An
                 company_id=company_id,
                 chat_memory_context=chat_memory_context,
             )
+            secondary_block = _specialist_answer(secondary_result, secondary)
             if secondary_block.strip():
+                if isinstance(secondary_result, ResearchPreviewResponse):
+                    previews.append(secondary_result)
                 content = f"{content}\n\n——\n【次级 · {secondary}】\n{secondary_block}"
                 secondary_ran = secondary
         except Exception:  # noqa: BLE001
@@ -449,8 +462,28 @@ def research_turn(state: AgentChatState, config: RunnableConfig) -> dict[str, An
     if note:
         content = f"{content}\n{note}"
 
+    request_message_id = next(
+        (
+            message.id
+            for message in reversed(state.get("messages") or [])
+            if isinstance(message, HumanMessage)
+        ),
+        None,
+    )
+    configurable = (config or {}).get("configurable") or {}
+    snapshot = ChatResearchResult(
+        thread_id=configurable.get("thread_id"),
+        request_message_id=request_message_id,
+        previews=previews,
+    )
     return {
-        "messages": [AIMessage(content=content)],
+        "messages": [
+            AIMessage(
+                id=str(uuid4()),
+                content=content,
+                additional_kwargs={"research_result": snapshot.model_dump(mode="json")},
+            )
+        ],
         "doc_id": doc_id,
         "doc_id_b": doc_id_b,
     }

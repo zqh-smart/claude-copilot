@@ -95,3 +95,12 @@ class ResearchPreviewResponse(BaseModel):
     critic: CriticReview | None = None
     revision_count: int = 0
     grounded: bool = False
+
+
+class ChatResearchResult(BaseModel):
+    """Research snapshots persisted with the AI message that produced them."""
+
+    schema_version: Literal[1] = 1
+    thread_id: str | None = None
+    request_message_id: str | None = None
+    previews: list[ResearchPreviewResponse] = Field(default_factory=list)

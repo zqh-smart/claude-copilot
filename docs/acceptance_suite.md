@@ -21,7 +21,8 @@ cd ../agent-chat-ui-main
 pnpm install
 pnpm dev
 # 打开 http://localhost:3000
-# /            Agent Chat（LangGraph）
+# /            首页概览
+# /chat        Agent Chat（LangGraph）
 # /knowledge   知识库（切片 / 召回测试 / 图谱）
 # /research    研究问答
 # /compare /reports /metrics /eval /jobs /upload
@@ -36,6 +37,21 @@ cd ../agent-chat-ui-main
 pnpm test:e2e
 pnpm build
 ```
+
+真实财报 Chat 联调（无 mock；创建一条真实测试会话，不上传替代文档）：
+
+```powershell
+cd ../agent-chat-ui-main
+$env:PLAYWRIGHT_BASE_URL='http://127.0.0.1:3000'
+$env:CHAT_LIVE='1'
+# 可选：指定已有 completed 财报；不指定则选首个 completed PDF
+# $env:CHAT_LIVE_DOC_ID='已有文档ID'
+# $env:CHAT_LIVE_QUESTION='2021年营业收入是多少？'
+pnpm exec playwright test --grep '@live' --workers=1
+Remove-Item Env:CHAT_LIVE
+```
+
+门禁先检查真实文档 API（10 秒超时），再验证提问、来源校验通过、引用原文可下载、浏览器打开来源、刷新恢复和新建/切回会话隔离。失败保留 Playwright trace；成功附 `live-chat-result`（文档、会话、问题消息 ID 和原文 URL）。默认测试跳过 `@live`，避免普通测试触发真实模型调用。数据库或模型不可用时该测试失败，不会降级成 mock 后宣布通过。
 
 ---
 

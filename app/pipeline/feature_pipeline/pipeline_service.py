@@ -9,7 +9,7 @@ from app.core.db import (
     ParsedDocumentRepositoryProtocol,
     SegmentRepositoryProtocol,
 )
-from app.core.errors import DocumentProcessingCancelledError
+from app.core.errors import DocumentNotFoundError, DocumentProcessingCancelledError
 from app.core.kg import (
     KnowledgeGraphBuilder,
     KnowledgeGraphStoreProtocol,
@@ -225,6 +225,14 @@ class DocumentPipelineService:
 
     def list_documents(self) -> list[DocumentRecord]:
         return self._document_repository.list()
+
+    def get_source_path(self, doc_id: str) -> Path:
+        record = self.get_document(doc_id)
+        root = Path(self._document_storage_path).resolve()
+        source = Path(record.storage_path).resolve()
+        if not source.is_relative_to(root) or not source.is_file():
+            raise DocumentNotFoundError("Document source is unavailable")
+        return source
 
     def get_document(self, doc_id: str) -> DocumentRecord:
         return self._document_repository.get(doc_id)

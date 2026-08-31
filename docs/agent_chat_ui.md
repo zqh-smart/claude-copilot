@@ -94,7 +94,7 @@ pnpm install
 pnpm dev
 ```
 
-打开 http://localhost:3000 ：`/` = Chat（Assistant=`agent`）；`/knowledge` · `/chat-memory` 等 = 工作台。
+打开 http://localhost:3000/chat ：Chat（Assistant=`agent`）；`/` 是首页概览，`/knowledge` · `/chat-memory` 等为工作台。
 
 Chat LLM 与 `.env` 对齐：`LLM_MODEL_API_TYPE=openai` + 本地 `192.168.0.102:30000`；embedding 仍用硅基。
 
@@ -102,9 +102,48 @@ Chat LLM 与 `.env` 对齐：`LLM_MODEL_API_TYPE=openai` + 本地 `192.168.0.102
 
 优先顺序：
 
-1. LangGraph `configurable.doc_id`
-2. 环境变量 `AGENT_CHAT_DOC_ID`
-3. 最新 `data/reports/serving_eval/*_serving_eval.json` 的 `doc_id`
+1. 消息提交的 state `doc_id`（Chat 顶部选择已处理完成的财报）
+2. LangGraph `configurable.doc_id`
+3. 环境变量 `AGENT_CHAT_DOC_ID`
+4. 最新 `data/reports/serving_eval/*_serving_eval.json` 的 `doc_id`
+
+## 按消息保存研究结果
+
+`research` / `structured` 分支复用本次 `ResearchService.preview`，不为侧栏重复检索。
+AI 消息的 `additional_kwargs.research_result` 保存 `ChatResearchResult`：
+
+- `schema_version: 1`、`thread_id`、`request_message_id`：关联会话及产生该答案的问题。
+- `previews: ResearchPreviewResponse[]`：完整研究快照，含文档、指标、证据、引用、审核结果及警告；次级研究分支也保留自己的结果。
+
+前端只显示当前会话最新答案、且问题消息 ID 匹配的快照。发出新问题、切换财报、请求失败时不回退展示上一条证据。历史消息没有快照时显示空态，不从答案文本猜测引用。刷新后从 LangGraph 消息历史恢复，不依赖前端临时缓存。
+
+引用区区分“答案引用”和“检索证据”。`Vn` 指向文档片段，`Sn` 指向结构化指标；指标使用其自身 `document_id`，不能直接套用当前财报 ID。页码仅取返回的来源元数据，缺少页码时打开原文。暂不能定位文档来源的 `Cn` / `Gn` 引用明确标记，不生成虚假链接。纯 risk / compare / quant / report 分支尚未提供统一研究快照，侧栏为空。
+
+原文接口：`GET /api/v1/documents/{doc_id}/source`。仅返回文档记录关联且位于配置归档目录内的文件；记录缺失、文件缺失或越界均返回 404。PDF 内联查看，其他格式作为附件下载。同源 FastAPI 代理保留 `Content-Disposition`、`Cache-Control` 和 `X-Content-Type-Options`。该接口沿用现有 API 访问模型，并非新增多租户授权层。
+
+验证：
+
+```powershell
+uv run pytest tests/test_agent_chat_graph.py tests/workflows tests/api/services/test_research_service.py tests/test_documents.py tests/core/rag -q
+uv run python scripts/run_stage_eval.py --compare-baseline --output data/reports/eval/chat_integration_scorecard.json
+
+cd ../agent-chat-ui-main
+pnpm exec tsc --noEmit --incremental false
+# 如 :3000 已运行，可复用服务，避免两个 Next dev 进程共享 .next
+$env:PLAYWRIGHT_BASE_URL='http://127.0.0.1:3000'
+pnpm test:e2e
+```
+
+浏览器测试使用隔离的 API / LangGraph 响应夹具，覆盖 `/chat` 入口、财报选择、流式结果绑定、刷新、切换会话和失败空态。这些测试不代替真实三库、模型和财报的完整联调。
+
+### 本轮验收记录（2026-08-27）
+
+- 上述后端相关回归：84 passed；浏览器隔离测试：5 passed；TypeScript 和修改文件的 Prettier 检查通过。
+- 指南针 2021 财报阶段评测：`core_metric_exact_match=1.0`、`source_grounding_rate=1.0`，与已有基线持平；Serving gate 通过。报告在 `data/reports/eval/chat_integration_scorecard.json`。整体对比为 `mixed`：解析吞吐量降低、小切片比例从 0.0097 升到 0.0126，不能据此宣称性能提升。
+- 前端 `/chat`、FastAPI `/health`、LangGraph `/info` 返回 200；文档列表请求超时。Docker Desktop 因本机运行时 socket 访问错误未恢复，三库真实财报完整联调仍待验收。未重置数据库卷、修改模型或替换框架。
+- 全量 pytest 尝试未完成；依赖数据库的接口测试仍受运行环境影响，不能将上述相关回归结果当作全量通过。
+- 后续已增加 `@live` 真实联调入口（命令见 `docs/acceptance_suite.md` §0）并实际执行：文档 API 在 10 秒前置检查中超时，尚未进入模型提问。失败 trace 保存为 `data/reports/chat_live_preflight_20260827.zip`。
+- 停止残留 Docker 进程后，Windows 仍拒绝重命名 `docker-secrets-engine` 运行时目录，未修改权限或重置卷。Docker 官方问题库有相同故障报告：[残留 socket 导致启动失败](https://github.com/docker/desktop-feedback/issues/460)。当前需用户在本机重启 Windows、再启动 Docker 后复验；这不是数据库已恢复的证明。
 
 ## 文件
 

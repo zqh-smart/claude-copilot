@@ -1,8 +1,11 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse
 
 from app.api.dependencies import get_document_service, get_ingestion_job_service
 from app.api.services import DocumentService, IngestionJobService
-from app.core.errors import IngestionJobNotFoundError
+from app.core.errors import DocumentNotFoundError, IngestionJobNotFoundError
 from src.claude_copilot.schemas.document import DocumentRecord, DocumentSegment
 from src.claude_copilot.schemas.ingestion import (
     IngestionBatchResponse,
@@ -12,6 +15,27 @@ from src.claude_copilot.schemas.ingestion import (
 from src.claude_copilot.schemas.knowledge_graph import DocumentKnowledgeGraph
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
+
+
+@router.get("/{doc_id}/source")
+def get_document_source(
+    doc_id: str,
+    document_service: Annotated[DocumentService, Depends(get_document_service)],
+) -> FileResponse:
+    try:
+        source, filename = document_service.get_source_file(doc_id)
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Document source is unavailable") from exc
+    media_type = (
+        "application/pdf" if source.suffix.lower() == ".pdf" else "application/octet-stream"
+    )
+    return FileResponse(
+        source,
+        filename=filename,
+        media_type=media_type,
+        content_disposition_type="inline" if media_type == "application/pdf" else "attachment",
+        headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"},
+    )
 
 
 def _parse_aliases(value: str | None) -> list[str]:

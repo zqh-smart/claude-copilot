@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi import UploadFile
 
 from app.pipeline.feature_pipeline.pipeline_service import DocumentPipelineService
@@ -37,6 +39,10 @@ class DocumentService:
 
     def get_document(self, doc_id: str) -> DocumentRecord:
         return self._pipeline_service.get_document(doc_id)
+
+    def get_source_file(self, doc_id: str) -> tuple[Path, str]:
+        source = self._pipeline_service.get_source_path(doc_id)
+        return source, self.get_document(doc_id).filename
 
     def get_segments(self, doc_id: str) -> list[DocumentSegment]:
         return self._pipeline_service.get_segments(doc_id)
