@@ -5,6 +5,7 @@ class ResearchState(TypedDict, total=False):
     doc_id: str
     company_id: str | None
     question: str
+    synthesis_question: str
     top_k: int
     hits: list[dict]
     query_analysis: dict
@@ -20,6 +21,10 @@ class ResearchState(TypedDict, total=False):
     max_revisions: int
     grounded: bool
     answer: str
+    second_retrieve_done: bool
+    retrieval_passes: int
+    second_retrieval_plan: dict | None
+    retrieval_diagnostics: list[dict]
 
 
 class _FallbackCompiledGraph:

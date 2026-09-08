@@ -56,7 +56,7 @@ def compose_comparison_workflow_answer(
     warnings: list[str],
 ) -> str:
     parts = [
-        "【§5.4 对比分析工作流 · lite】",
+        "【对比】",
         "",
         "## 1. 财务指标对比",
         compare_answer.strip() or "（无对比结果）",
@@ -70,7 +70,7 @@ def compose_comparison_workflow_answer(
         for warning in warnings[:8]:
             parts.append(f"- {warning}")
     parts.append("")
-    parts.append("（工作流 lite：无导出、无对比平台 UI）")
+    parts.append("指标对照见 Chat 侧栏「结果」。")
     return "\n".join(parts).strip()
 
 
@@ -162,7 +162,7 @@ def _default_compose(state: dict) -> dict:
     warnings = list(state.get("warnings") or [])
     if not state.get("doc_id_a") or not state.get("doc_id_b"):
         parts = [
-            "【§5.4 对比分析工作流 · lite】",
+            "【对比】",
             "未配置文档：对比需要 doc_id_a 与 doc_id_b。",
             "未生成第二家公司指标；不会臆造对比结果，请补齐后重试。",
         ]

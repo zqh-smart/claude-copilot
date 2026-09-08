@@ -23,10 +23,12 @@ ParsedDocument + FinancialSchema
 - `Document`
 - `Metric`
 - `Risk`
+- `Section`
 
 关系类型：
 
 - `HAS_DOCUMENT`
+- `HAS_SECTION`
 - `REPORTS_METRIC`
 - `HAS_RISK`
 - `OWNS`

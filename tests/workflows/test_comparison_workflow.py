@@ -11,11 +11,13 @@ def test_compose_comparison_workflow_answer_sections() -> None:
         risk_summary_b="未命中 HAS_RISK",
         warnings=["缺一期指标"],
     )
-    assert "§5.4" in text
+    assert "【对比】" in text
     assert "财务指标对比" in text
     assert "风险对照" in text
     assert "market_risk" in text
     assert "缺一期指标" in text
+    assert "侧栏「结果」" in text
+    assert "无对比平台 UI" not in text
 
 
 def test_comparison_workflow_graph_with_injected_steps() -> None:
@@ -43,7 +45,7 @@ def test_comparison_workflow_graph_with_injected_steps() -> None:
     result = graph.invoke(
         {"doc_id_a": "a", "doc_id_b": "b", "question": "对比两家公司"}
     )
-    assert "§5.4" in result["answer"]
+    assert "【对比】" in result["answer"]
     assert "A revenue > B" in result["answer"]
     assert "liquidity_risk" in result["answer"]
     assert result["compare_matrix"][0]["metric_key"] == "revenue"

@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from scripts.run_l4_research_eval import (
     DEFAULT_GOLDEN,
     L4_THRESHOLDS,
+    _agentic_retrieval_case,
     _gate_status,
+    _summarize_agentic_retrieval,
     resolve_l4_samples,
 )
 
@@ -54,3 +57,33 @@ def test_gate_status_thresholds() -> None:
     assert hard["kind"] == "regression_full_hard"
     assert hard["met"] is True
     assert _gate_status(regression, 0.99, retrieval_only=False)["met"] is False
+
+
+def test_agentic_retrieval_summary_measures_marginal_evidence() -> None:
+    preview = SimpleNamespace(
+        retrieval_diagnostics=[
+            {"pass_index": 1, "new_vector_hits": 3},
+            {
+                "pass_index": 2,
+                "new_vector_hits": 2,
+                "new_metrics": 1,
+                "new_graph_paths": 1,
+            },
+        ]
+    )
+    retried = _agentic_retrieval_case(preview)
+    not_retried = _agentic_retrieval_case(SimpleNamespace(retrieval_diagnostics=[]))
+
+    summary = _summarize_agentic_retrieval(
+        [
+            {"agentic_retrieval": retried},
+            {"agentic_retrieval": not_retried},
+        ]
+    )
+
+    assert retried["effective"] is True
+    assert summary["trigger_rate"] == 0.5
+    assert summary["effective_retry_rate"] == 1.0
+    assert summary["new_vector_hits"] == 2
+    assert summary["new_metrics"] == 1
+    assert summary["new_graph_paths"] == 1

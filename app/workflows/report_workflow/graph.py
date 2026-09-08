@@ -58,7 +58,7 @@ def compose_report_workflow_answer(
     warnings: list[str],
 ) -> str:
     parts = [
-        "【§5.5 自动报告工作流 · lite】",
+        "【报告提纲】",
         "",
         "## A. 提纲正文",
         report_answer.strip() or "（无提纲）",
@@ -71,7 +71,7 @@ def compose_report_workflow_answer(
         for warning in warnings[:8]:
             parts.append(f"- {warning}")
     parts.append("")
-    parts.append("（工作流 lite：输出 Markdown 提纲，无 PDF/报告中心）")
+    parts.append("完整 HTML/PDF 可在工作台「报告」页导出。")
     return "\n".join(parts).strip()
 
 

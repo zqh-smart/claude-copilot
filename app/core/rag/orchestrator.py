@@ -12,7 +12,12 @@ from app.core.db.serving_facts import (
     resolve_metric_conflict,
 )
 from app.core.kg import KnowledgeGraphStoreProtocol
-from app.core.rag.retriever import LocalRetriever
+from app.core.rag.retriever import (
+    LocalRetriever,
+    segment_matches_requested_years,
+    segment_matches_section_hints,
+    segment_section_type,
+)
 from src.claude_copilot.entity_resolution import EntityResolver
 from src.claude_copilot.schemas.financial_data import FinancialMetricObservation
 from src.claude_copilot.schemas.knowledge_graph import GraphPath
@@ -170,6 +175,7 @@ class QueryAnalyzer:
             "cash flow statement",
         ),
     }
+    _EXPLANATION_CUES = ("为什么", "为何", "why", "reason", "原因", "explain")
 
     def analyze(self, question: str) -> QueryAnalysis:
         normalized = re.sub(r"\s+", " ", question).strip().casefold()
@@ -234,6 +240,12 @@ class QueryAnalyzer:
         for section_type, cues in self._SECTION_HINTS.items():
             if any(cue in normalized for cue in cues):
                 hints.append(section_type)
+        if (
+            "financial_statement" in hints
+            and "management_discussion" not in hints
+            and any(cue in normalized for cue in self._EXPLANATION_CUES)
+        ):
+            hints.append("management_discussion")
         return hints
 
 
@@ -261,8 +273,9 @@ class RetrievalOrchestrator:
         routes_override: list[str] | None = None,
         company_name: str | None = None,
         company_aliases: list[str] | None = None,
+        analysis_override: QueryAnalysis | None = None,
     ) -> OrchestratedRetrievalResult:
-        analysis = self._query_analyzer.analyze(question)
+        analysis = analysis_override or self._query_analyzer.analyze(question)
         if routes_override is not None:
             # Eval-only channel ablation: keep analyzer intent/metrics, force active routes.
             analysis = analysis.model_copy(update={"routes": list(routes_override)})
@@ -291,6 +304,11 @@ class RetrievalOrchestrator:
                 top_k=top_k,
                 section_hints=analysis.section_hints,
                 metric_keys=list(analysis.metric_keys or []),
+                years=list(analysis.years or []),
+            )
+            warnings.extend(self._year_constraint_warnings(analysis.years, vector_hits))
+            warnings.extend(
+                self._section_constraint_warnings(analysis.section_hints, vector_hits)
             )
 
         if "sql" in analysis.routes:
@@ -327,6 +345,12 @@ class RetrievalOrchestrator:
                     document_id=None if company_id else doc_id,
                     company_id=company_id,
                     limit=top_k,
+                    year=analysis.years[0] if len(analysis.years) == 1 else None,
+                    section_hint=(
+                        analysis.section_hints[0]
+                        if len(analysis.section_hints) == 1
+                        else None
+                    ),
                 )
                 if not graph_paths:
                     warnings.append("Graph route returned no matching relationships")
@@ -459,12 +483,14 @@ class RetrievalOrchestrator:
         graph_paths: list[GraphPath],
     ) -> FusionSummary:
         highlights: list[str] = []
-
-        for segment, score in vector_hits[:3]:
-            section_type = (segment.metadata or {}).get("section_type")
-            prefix = f"[语义·{section_type}]" if section_type else "[语义]"
-            snippet = segment.content.strip().replace("\n", " ")[:120]
-            highlights.append(f"{prefix} {snippet} (score={score:.3f})")
+        section_groups: dict[str, list[str]] = defaultdict(list)
+        for segment, score in vector_hits[:6]:
+            section_type = str((segment.metadata or {}).get("section_type") or "未标注")
+            snippet = segment.content.strip().replace("\n", " ")[:80]
+            section_groups[section_type].append(f"{snippet} (score={score:.3f})")
+        for section_type, snippets in section_groups.items():
+            prefix = f"[语义·{section_type}]"
+            highlights.append(f"{prefix} {' | '.join(snippets[:2])}")
 
         seen_metric_keys: set[tuple[str, str]] = set()
         for item in metrics[:8]:
@@ -498,6 +524,14 @@ class RetrievalOrchestrator:
                 f"图谱 {len(graph_paths)} 条。"
             ),
         ]
+        if analysis.years:
+            summary_parts.append(
+                f"期间约束：{'、'.join(str(year) for year in analysis.years)}。"
+            )
+        if analysis.section_hints:
+            summary_parts.append(
+                f"章节约束：{'、'.join(analysis.section_hints)}。"
+            )
         if highlights:
             summary_parts.append(f"要点：{'；'.join(highlights[:4])}。")
 
@@ -511,6 +545,53 @@ class RetrievalOrchestrator:
             summary="".join(summary_parts),
         )
 
+    def _sql_year_filter(self, analysis: QueryAnalysis) -> set[int]:
+        years = set(analysis.years or [])
+        if not years:
+            return set()
+        if analysis.needs_growth:
+            years.update(year - 1 for year in list(years))
+        return years
+
+    @staticmethod
+    def _year_constraint_warnings(
+        years: list[int],
+        vector_hits: list[tuple],
+    ) -> list[str]:
+        if not years or not vector_hits:
+            return []
+        mismatched = [
+            segment
+            for segment, _ in vector_hits
+            if not segment_matches_requested_years(segment, years)
+        ]
+        if not mismatched:
+            return []
+        return [
+            "Vector year constraint relaxed: kept "
+            f"{len(mismatched)} hit(s) outside {years}"
+        ]
+
+    @staticmethod
+    def _section_constraint_warnings(
+        section_hints: list[str],
+        vector_hits: list[tuple],
+    ) -> list[str]:
+        if not section_hints or not vector_hits:
+            return []
+        mismatched = [
+            segment
+            for segment, _ in vector_hits
+            if segment_section_type(segment)
+            and not segment_matches_section_hints(segment, section_hints)
+        ]
+        if not mismatched:
+            return []
+        return [
+            "Vector section constraint relaxed: kept "
+            f"{len(mismatched)} hit(s) outside {section_hints}"
+        ]
+
     def _retrieve_metrics(
         self,
         company_id: str,
@@ -520,12 +601,14 @@ class RetrievalOrchestrator:
         document_id: str | None = None,
     ) -> list[FinancialMetricObservation]:
         observations: list[FinancialMetricObservation] = []
+        year_filter = self._sql_year_filter(analysis)
+        query_year = next(iter(year_filter)) if len(year_filter) == 1 else None
         metric_keys = analysis.metric_keys or [None]
         for metric_key in metric_keys:
             observations.extend(
                 self._financial_repository.query_metrics(
                     company_id,
-                    year=analysis.years[0] if len(analysis.years) == 1 else None,
+                    year=query_year,
                     metric_key=metric_key,
                     document_id=document_id,
                     limit=max(20, top_k * 10),
@@ -536,15 +619,16 @@ class RetrievalOrchestrator:
                 observations.extend(
                     self._financial_repository.query_metrics(
                         company_id,
-                        year=analysis.years[0] if len(analysis.years) == 1 else None,
+                        year=query_year,
                         metric_key=metric_key,
                         document_id=None,
                         limit=max(20, top_k * 10),
                     )
                 )
-        if len(analysis.years) > 1:
-            year_filter = set(analysis.years)
-            observations = [item for item in observations if item.period_year in year_filter]
+        if year_filter:
+            observations = [
+                item for item in observations if item.period_year in year_filter
+            ]
         return observations
 
     def _calculate(

@@ -6,6 +6,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Protocol
 
+from app.core.db.financial_data_repository import extract_period_year
+from app.core.db.lexical import tokenize
 from src.claude_copilot.schemas.knowledge_graph import (
     CompanyKnowledgeGraph,
     DocumentKnowledgeGraph,
@@ -29,6 +31,8 @@ class KnowledgeGraphStoreProtocol(Protocol):
         document_id: str | None = None,
         company_id: str | None = None,
         limit: int = 10,
+        year: int | None = None,
+        section_hint: str | None = None,
     ) -> list[GraphPath]: ...
 
 
@@ -49,6 +53,8 @@ class NoOpKnowledgeGraphStore:
         document_id: str | None = None,
         company_id: str | None = None,
         limit: int = 10,
+        year: int | None = None,
+        section_hint: str | None = None,
     ) -> list[GraphPath]:
         return []
 
@@ -84,6 +90,8 @@ class LocalKnowledgeGraphStore:
         document_id: str | None = None,
         company_id: str | None = None,
         limit: int = 10,
+        year: int | None = None,
+        section_hint: str | None = None,
     ) -> list[GraphPath]:
         graphs = (
             [self.get_document(document_id)]
@@ -118,7 +126,12 @@ class LocalKnowledgeGraphStore:
                 )
             )
         deduped = {path.path_id: path for path in paths}
-        return sorted(deduped.values(), key=lambda item: (-item.score, item.path_id))[:limit]
+        filtered = _filter_graph_paths(
+            list(deduped.values()),
+            year=year,
+            section_hint=section_hint,
+        )
+        return sorted(filtered, key=lambda item: (-item.score, item.path_id))[:limit]
 
     @staticmethod
     def _collect_paths(
@@ -233,10 +246,7 @@ class LocalKnowledgeGraphStore:
 
     @staticmethod
     def _query_terms(query: str) -> set[str]:
-        normalized = query.casefold()
-        english = set(re.findall(r"[a-z0-9_]{2,}", normalized))
-        chinese = set(re.findall(r"[\u4e00-\u9fff]{2,}", normalized))
-        return english | chinese
+        return set(tokenize(query))
 
     @staticmethod
     def _path_text(
@@ -268,11 +278,19 @@ class LocalKnowledgeGraphStore:
             if relationship.relationship_type == "HAS_RISK":
                 bonus += 0.06
             return bonus
-        if (
-            any(term in normalized for term in ("metric", "revenue", "指标", "营收", "利润"))
-            and "metric" in node_types
-        ):
-            return 0.2
+        metric_query = any(
+            term in normalized
+            for term in ("metric", "revenue", "指标", "财务数据", "营收", "利润")
+        )
+        if metric_query and "metric" in node_types:
+            bonus = 0.2
+            reports_metric_query = any(
+                term in normalized
+                for term in ("report", "reported", "reports", "报告", "披露")
+            )
+            if reports_metric_query and relationship.relationship_type == "REPORTS_METRIC":
+                bonus += 0.15
+            return bonus
         if (
             any(term in normalized for term in ("relationship", "related", "关系", "关联"))
             and relationship.relationship_type
@@ -308,9 +326,11 @@ class Neo4jKnowledgeGraphStore:
         "document": "Document",
         "metric": "Metric",
         "risk": "Risk",
+        "section": "Section",
     }
     _RELATIONSHIPS = {
         "HAS_DOCUMENT",
+        "HAS_SECTION",
         "REPORTS_METRIC",
         "HAS_RISK",
         "OWNS",
@@ -450,6 +470,8 @@ class Neo4jKnowledgeGraphStore:
         document_id: str | None = None,
         company_id: str | None = None,
         limit: int = 10,
+        year: int | None = None,
+        section_hint: str | None = None,
     ) -> list[GraphPath]:
         graph = (
             self.get_document(document_id)
@@ -461,7 +483,13 @@ class Neo4jKnowledgeGraphStore:
         if graph is None:
             return []
         local = _InMemoryGraphSearch(graph)
-        return local.search(query, company_id=company_id, limit=limit)
+        return local.search(
+            query,
+            company_id=company_id,
+            limit=limit,
+            year=year,
+            section_hint=section_hint,
+        )
 
     def _records_to_graph(
         self,
@@ -543,6 +571,8 @@ class _InMemoryGraphSearch(LocalKnowledgeGraphStore):
         document_id: str | None = None,
         company_id: str | None = None,
         limit: int = 10,
+        year: int | None = None,
+        section_hint: str | None = None,
     ) -> list[GraphPath]:
         if company_id and self._graph.company_id != company_id:
             return []
@@ -554,7 +584,76 @@ class _InMemoryGraphSearch(LocalKnowledgeGraphStore):
             query=query,
             terms=terms,
         )
-        return sorted(paths, key=lambda item: (-item.score, item.path_id))[:limit]
+        filtered = _filter_graph_paths(paths, year=year, section_hint=section_hint)
+        return sorted(filtered, key=lambda item: (-item.score, item.path_id))[:limit]
+
+
+def _coerce_path_years(value: object) -> set[int]:
+    years: set[int] = set()
+    if isinstance(value, bool):
+        return years
+    if isinstance(value, int) and 1900 <= value <= 2100:
+        years.add(value)
+    elif isinstance(value, str):
+        year = extract_period_year(value)
+        if year is not None:
+            years.add(year)
+    elif isinstance(value, (list, tuple, set)):
+        for item in value:
+            years.update(_coerce_path_years(item))
+    return years
+
+
+def _path_years(path: GraphPath) -> set[int]:
+    years: set[int] = set()
+    for node in path.nodes:
+        properties = node.properties or {}
+        for key in ("year", "period_year", "period", "years"):
+            years.update(_coerce_path_years(properties.get(key)))
+    for relationship in path.relationships:
+        properties = relationship.properties or {}
+        years.update(_coerce_path_years(properties.get("period_year")))
+        years.update(_coerce_path_years(properties.get("year")))
+    return years
+
+
+def _path_section_types(path: GraphPath) -> set[str]:
+    section_types: set[str] = set()
+    for node in path.nodes:
+        properties = node.properties or {}
+        section_type = properties.get("section_type")
+        if section_type:
+            section_types.add(str(section_type))
+    for relationship in path.relationships:
+        properties = relationship.properties or {}
+        section_type = properties.get("section_type")
+        if section_type:
+            section_types.add(str(section_type))
+    return section_types
+
+
+def _filter_graph_paths(
+    paths: list[GraphPath],
+    *,
+    year: int | None,
+    section_hint: str | None,
+) -> list[GraphPath]:
+    filtered = paths
+    if year is not None:
+        filtered = [
+            path
+            for path in filtered
+            if not (found := _path_years(path)) or year in found
+        ]
+    if section_hint:
+        hinted = [
+            path
+            for path in filtered
+            if section_hint in _path_section_types(path)
+        ]
+        if hinted:
+            filtered = hinted
+    return filtered
 
 
 def _merge_company_graphs(

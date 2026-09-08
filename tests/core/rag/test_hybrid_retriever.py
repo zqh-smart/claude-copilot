@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from app.core.db import LocalSegmentRepository
-from app.core.rag import LocalRetriever
+from app.core.rag import LocalRetriever, QueryExpansionService
 from src.claude_copilot.schemas.document import DocumentSegment
 
 
@@ -179,7 +179,78 @@ def test_hybrid_retriever_penalizes_note_tables_for_risk_question(tmp_path: Path
         top_k=2,
         section_hints=["risk_section"],
     )
-    assert hits[0][0].segment_id == "risk-mda"
+    assert [segment.segment_id for segment, _ in hits] == ["risk-mda"]
+
+
+def test_hybrid_retriever_drops_exclusive_other_year_chunks(tmp_path: Path) -> None:
+    repository = LocalSegmentRepository(str(tmp_path))
+    repository.replace_for_document(
+        "doc-year",
+        [
+            DocumentSegment(
+                segment_id="rev-2020",
+                document_id="doc-year",
+                position=1,
+                content="2020年营业收入80亿元，经纪业务贡献主要增量。",
+                metadata={"period_year": 2020},
+            ),
+            DocumentSegment(
+                segment_id="rev-2021",
+                document_id="doc-year",
+                position=2,
+                content="2021年营业收入100亿元，软件业务成为新的增长点。",
+                metadata={"period_year": 2021},
+            ),
+        ],
+    )
+
+    hits = LocalRetriever(repository).retrieve(
+        "2021年营业收入是多少？",
+        doc_id="doc-year",
+        top_k=2,
+        years=[2021],
+    )
+
+    assert [segment.segment_id for segment, _ in hits] == ["rev-2021"]
+
+
+def test_hybrid_retriever_gates_to_hinted_sections(tmp_path: Path) -> None:
+    repository = LocalSegmentRepository(str(tmp_path))
+    repository.replace_for_document(
+        "doc-sections",
+        [
+            DocumentSegment(
+                segment_id="overview",
+                document_id="doc-sections",
+                position=1,
+                content="公司基本情况：成立于1997年，主营证券分析软件。",
+                metadata={"section_type": "company_overview"},
+            ),
+            DocumentSegment(
+                segment_id="mda",
+                document_id="doc-sections",
+                position=2,
+                content="管理层讨论与分析：公司经营情况良好，收入持续增长。",
+                metadata={"section_type": "management_discussion"},
+            ),
+            DocumentSegment(
+                segment_id="note",
+                document_id="doc-sections",
+                position=3,
+                content="附注：会计政策变更说明，对个别科目列报无重大影响。",
+                metadata={"section_type": "financial_note"},
+            ),
+        ],
+    )
+
+    hits = LocalRetriever(repository).retrieve(
+        "管理层如何讨论与分析公司经营情况？",
+        doc_id="doc-sections",
+        top_k=3,
+        section_hints=["management_discussion"],
+    )
+
+    assert [segment.segment_id for segment, _ in hits] == ["mda"]
 
 
 def test_hybrid_retriever_filters_evidence_free_cross_references() -> None:
@@ -201,3 +272,156 @@ def test_hybrid_retriever_filters_evidence_free_cross_references() -> None:
     )
 
     assert [segment.segment_id for segment, _ in filtered] == ["evidence"]
+
+
+def test_hybrid_retriever_expands_same_section_position_window(tmp_path: Path) -> None:
+    repository = LocalSegmentRepository(str(tmp_path))
+    repository.replace_for_document(
+        "doc-window",
+        [
+            DocumentSegment(
+                segment_id="header",
+                document_id="doc-window",
+                position=1,
+                content="利润表项目：营业收入",
+                metadata={"section_type": "financial_statement", "page": 64},
+            ),
+            DocumentSegment(
+                segment_id="value-2021",
+                document_id="doc-window",
+                position=2,
+                content="2021年金额931944638元",
+                metadata={
+                    "section_type": "financial_statement",
+                    "period_year": 2021,
+                    "page": 64,
+                },
+            ),
+            DocumentSegment(
+                segment_id="overview",
+                document_id="doc-window",
+                position=3,
+                content="公司基本情况：成立于1997年，主营证券分析软件。",
+                metadata={"section_type": "company_overview"},
+            ),
+        ],
+    )
+
+    hits = LocalRetriever(repository).retrieve(
+        "2021年营业收入是多少？",
+        doc_id="doc-window",
+        top_k=3,
+        section_hints=["financial_statement"],
+        years=[2021],
+        metric_keys=["revenue"],
+    )
+
+    assert {segment.segment_id for segment, _ in hits} >= {"header", "value-2021"}
+    assert all(segment.segment_id != "overview" for segment, _ in hits)
+    retrieval = hits[0][0].metadata["retrieval"]
+    assert retrieval["position"] in {1, 2}
+    assert retrieval["page"] == 64
+    assert "lexical_score" in retrieval
+    assert "fused_score" in retrieval
+
+
+def test_hybrid_retriever_score_floor_drops_weak_fused_hits() -> None:
+    strong = DocumentSegment(
+        segment_id="strong",
+        document_id="doc",
+        position=1,
+        content="2021年营业收入931944638元",
+    )
+    weak = DocumentSegment(
+        segment_id="weak",
+        document_id="doc",
+        position=2,
+        content="公司注册地址位于深圳市。",
+    )
+
+    kept = LocalRetriever._apply_score_floor([(strong, 0.80), (weak, 0.10)])
+
+    assert [segment.segment_id for segment, _ in kept] == ["strong"]
+
+
+def test_hybrid_retriever_preserves_fused_score_after_reranking(
+    tmp_path: Path,
+) -> None:
+    class _FixedReranker:
+        def rerank(self, query, hits, *, keep_top_k=3):
+            return [(hits[0][0], 0.97)]
+
+    repository = LocalSegmentRepository(str(tmp_path))
+    repository.replace_for_document(
+        "doc-rerank",
+        [
+            DocumentSegment(
+                segment_id="revenue",
+                document_id="doc-rerank",
+                position=1,
+                content="Revenue increased because product demand improved.",
+            )
+        ],
+    )
+
+    hits = LocalRetriever(repository, reranker=_FixedReranker()).retrieve(
+        "Why did revenue increase?",
+        doc_id="doc-rerank",
+        top_k=1,
+    )
+
+    retrieval = hits[0][0].metadata["retrieval"]
+    assert retrieval["rerank_score"] == 0.97
+    assert retrieval["final_score"] == 0.97
+    assert retrieval["fused_score"] != retrieval["rerank_score"]
+
+
+def test_hybrid_retriever_prefers_cover_legal_name_for_identity_query(
+    tmp_path: Path,
+) -> None:
+    class _FixedReranker:
+        def rerank(self, query, hits, *, keep_top_k=3):
+            by_id = {segment.segment_id: segment for segment, _ in hits}
+            return [
+                (by_id["disclaimer"], 0.09),
+                (by_id["company-name"], 0.02),
+            ]
+
+    repository = LocalSegmentRepository(str(tmp_path))
+    repository.replace_for_document(
+        "doc-cover",
+        [
+            DocumentSegment(
+                segment_id="company-name",
+                document_id="doc-cover",
+                position=1,
+                content="湖北共同药业股份有限公司",
+                metadata={"page": 1, "block_type": "heading"},
+            ),
+            DocumentSegment(
+                segment_id="disclaimer",
+                document_id="doc-cover",
+                position=2,
+                content="公司董事会保证年度报告内容真实、准确、完整。",
+                metadata={"page": 2, "block_type": "paragraph"},
+            ),
+        ],
+    )
+
+    hits = LocalRetriever(repository, reranker=_FixedReranker()).retrieve(
+        "这份年报的公司全称是什么？",
+        doc_id="doc-cover",
+        top_k=2,
+    )
+
+    assert hits[0][0].segment_id == "company-name"
+    retrieval = hits[0][0].metadata["retrieval"]
+    assert retrieval["rerank_score"] == 0.02
+    assert retrieval["final_score"] == 0.1
+
+
+def test_query_expansion_adds_net_income_aliases() -> None:
+    expanded = QueryExpansionService().expand("2021年净利润是多少？")
+
+    assert expanded[0] == "2021年净利润是多少？"
+    assert any("归属于母公司股东的净利润" in item for item in expanded)

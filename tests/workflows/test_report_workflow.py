@@ -10,12 +10,13 @@ def test_compose_report_workflow_answer_sections() -> None:
         quant_summary="- revenue：YoY 2021=10.00%",
         warnings=["风险检索降级"],
     )
-    assert "§5.5" in text
+    assert "【报告提纲】" in text
     assert "提纲正文" in text
     assert "增长快照" in text
     assert "YoY 2021=10.00%" in text
     assert "风险检索降级" in text
-    assert "无 PDF" in text
+    assert "工作台「报告」页" in text
+    assert "无 PDF/报告中心" not in text
 
 
 def test_report_workflow_graph_with_injected_steps() -> None:
@@ -46,6 +47,6 @@ def test_report_workflow_graph_with_injected_steps() -> None:
         quant_fn=quant,
     )
     result = graph.invoke({"doc_id": "doc-1", "question": "生成提纲报告"})
-    assert "§5.5" in result["answer"]
+    assert "【报告提纲】" in result["answer"]
     assert "提纲：营收与风险" in result["answer"]
     assert "YoY 2021=10.00%" in result["answer"]

@@ -275,7 +275,7 @@ def format_multi_intent_note(
         if "quant" in others:
             suggestions.append("「营收同比增长多少？」")
         if "compare" in others:
-            suggestions.append("「对比两家公司营收」（需 doc_id_b）")
+            suggestions.append("「对比两家公司营收」（需先选对比财报）")
         if "report" in others:
             suggestions.append("「生成提纲报告」")
         if "structured" in others:
@@ -311,7 +311,7 @@ def _resolve_company_id(state: OrchestratorState) -> str | None:
 
 def _format_structured_answer(preview: Any) -> str:
     metrics = list(getattr(preview, "metrics", None) or [])
-    parts = ["【结构化 · Structured Agent】"]
+    parts = ["【结构化】"]
     if metrics:
         parts.append("检索到的结构化指标：")
         for item in metrics[:8]:
@@ -334,7 +334,7 @@ def _format_structured_answer(preview: Any) -> str:
 
 def _format_quant_answer(preview: Any) -> str:
     calculations = list(getattr(preview, "calculations", None) or [])
-    parts = ["【量化 · Quant Agent】"]
+    parts = ["【量化】"]
     if calculations:
         parts.append("增长与同比计算：")
         for item in calculations[:6]:
@@ -436,10 +436,10 @@ def _default_delegate_compare(state: OrchestratorState) -> dict[str, Any]:
         return {
             "agent_used": "compare",
             "answer": (
-                "【对比 · Comparator】未配置第二份文档。"
-                "请设置 AGENT_CHAT_DOC_ID_B，或在 LangGraph configurable 中传入 doc_id_b。"
+                "【对比】未选择第二份文档。"
+                "请在顶部选择「对比财报」。"
             ),
-            "warnings": ["missing doc_id_b for comparator"],
+            "warnings": ["还未选择对比财报。请在顶部选择「对比财报」。"],
         }
     result = comparison_workflow.invoke(
         {

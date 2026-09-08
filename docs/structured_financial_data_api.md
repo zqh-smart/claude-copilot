@@ -49,12 +49,14 @@ reporting period, not merely to the source document year.
 
 ## Retrieval Orchestrator
 
-`POST /api/v1/research/query` now analyzes each question and reports one of
-three routing decisions:
+`POST /api/v1/research/query` analyzes each question and reports one of four
+routing decisions:
 
 - `semantic`: Vector/Qdrant retrieval only.
 - `structured`: SQL financial facts only.
 - `hybrid`: Vector and SQL retrieval in parallel, followed by evidence fusion.
+- `relational`: Knowledge-graph path retrieval, optionally combined with the
+  vector or SQL channels.
 
 The response includes `query_analysis`, `hits`, `metrics`, deterministic
 `calculations` (YoY/CAGR), and `warnings`. Existing request fields remain
@@ -67,6 +69,27 @@ compatible:
   "top_k": 3
 }
 ```
+
+### Bounded Agentic retrieval
+
+When the first pass has a concrete evidence gap, the service may execute one
+additional retrieval plan through the same `RetrievalOrchestrator`. The retry
+can preserve or add vector, SQL, and graph routes; it does not call a storage
+backend directly unless the orchestrator returns no new evidence and the local
+vector fallback is needed.
+
+The response exposes:
+
+- `second_retrieval_plan`: retry reason, rewritten query, active routes,
+  metric/year/section constraints, and the retry budget.
+- `retrieval_diagnostics`: per-pass channel counts plus `new_vector_hits`,
+  `new_metrics`, and `new_graph_paths` for measuring marginal evidence.
+- `fusion_summary`: recomputed after evidence from both passes is merged.
+
+The retry budget is currently one. A structured SQL answer that already has
+the requested metric is sufficient evidence and does not trigger an unnecessary
+vector retry. Pinned-document year validation is applied again to second-pass
+metrics before they are merged.
 
 ## Grounded synthesis and critic loop
 

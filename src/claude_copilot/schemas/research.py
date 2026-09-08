@@ -28,6 +28,30 @@ class QueryAnalysis(BaseModel):
     section_hints: list[str] = Field(default_factory=list)
 
 
+class SecondRetrievalPlan(BaseModel):
+    reason: str
+    rewritten_query: str
+    routes: list[Literal["vector", "sql", "graph"]] = Field(default_factory=list)
+    metric_keys: list[str] = Field(default_factory=list)
+    years: list[int] = Field(default_factory=list)
+    needs_growth: bool = False
+    section_hints: list[str] = Field(default_factory=list)
+    budget: int = Field(default=1, ge=1, le=2)
+
+
+class RetrievalPassDiagnostic(BaseModel):
+    pass_index: int = Field(ge=1)
+    reason: str | None = None
+    query: str
+    routes: list[str] = Field(default_factory=list)
+    vector_hit_count: int = 0
+    metric_count: int = 0
+    graph_path_count: int = 0
+    new_vector_hits: int = 0
+    new_metrics: int = 0
+    new_graph_paths: int = 0
+
+
 class MetricCalculation(BaseModel):
     metric_key: str
     yearly_values: dict[int, float] = Field(default_factory=dict)
@@ -95,6 +119,8 @@ class ResearchPreviewResponse(BaseModel):
     critic: CriticReview | None = None
     revision_count: int = 0
     grounded: bool = False
+    second_retrieval_plan: SecondRetrievalPlan | None = None
+    retrieval_diagnostics: list[RetrievalPassDiagnostic] = Field(default_factory=list)
 
 
 class ChatResearchResult(BaseModel):

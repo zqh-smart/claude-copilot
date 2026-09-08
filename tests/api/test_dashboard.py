@@ -34,9 +34,15 @@ def test_portfolio_dashboard_api_returns_machine_readable_warning() -> None:
 
 
 def test_portfolio_dashboard_api_rejects_empty_selection() -> None:
-    response = client.post(
-        "/api/v1/dashboard/portfolio",
-        json={"company_ids": [], "metric_keys": ["revenue"]},
-    )
+    app.dependency_overrides[get_financial_data_service] = MagicMock
+    app.dependency_overrides[get_graph_store] = MagicMock
+    try:
+        response = client.post(
+            "/api/v1/dashboard/portfolio",
+            json={"company_ids": [], "metric_keys": ["revenue"]},
+        )
+    finally:
+        app.dependency_overrides.pop(get_financial_data_service, None)
+        app.dependency_overrides.pop(get_graph_store, None)
 
     assert response.status_code == 422

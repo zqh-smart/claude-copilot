@@ -170,6 +170,47 @@ def _has_evidence(preview) -> bool:
     return bool(preview.hits or preview.metrics or preview.graph_paths)
 
 
+def _agentic_retrieval_case(preview) -> dict[str, Any]:
+    diagnostics = list(getattr(preview, "retrieval_diagnostics", None) or [])
+    retry = diagnostics[-1] if len(diagnostics) > 1 else None
+
+    def value(item: object, key: str) -> int:
+        if item is None:
+            return 0
+        if isinstance(item, dict):
+            return int(item.get(key) or 0)
+        return int(getattr(item, key, 0) or 0)
+
+    new_vector = value(retry, "new_vector_hits")
+    new_metrics = value(retry, "new_metrics")
+    new_graph = value(retry, "new_graph_paths")
+    triggered = retry is not None
+    return {
+        "triggered": triggered,
+        "effective": triggered and (new_vector + new_metrics + new_graph > 0),
+        "new_vector_hits": new_vector,
+        "new_metrics": new_metrics,
+        "new_graph_paths": new_graph,
+    }
+
+
+def _summarize_agentic_retrieval(case_results: list[dict[str, Any]]) -> dict[str, Any]:
+    rows = [item.get("agentic_retrieval") or {} for item in case_results]
+    triggered = sum(bool(item.get("triggered")) for item in rows)
+    effective = sum(bool(item.get("effective")) for item in rows)
+    return {
+        "total_cases": len(rows),
+        "triggered_cases": triggered,
+        "trigger_rate": round(triggered / max(len(rows), 1), 4),
+        "effective_cases": effective,
+        "effective_retry_rate": round(effective / max(triggered, 1), 4),
+        "no_gain_cases": triggered - effective,
+        "new_vector_hits": sum(int(item.get("new_vector_hits") or 0) for item in rows),
+        "new_metrics": sum(int(item.get("new_metrics") or 0) for item in rows),
+        "new_graph_paths": sum(int(item.get("new_graph_paths") or 0) for item in rows),
+    }
+
+
 def _expect_value_ok(case: dict, preview) -> bool | None:
     expected = case.get("expect_value")
     if expected is None:
@@ -227,10 +268,16 @@ def _score_case(case: dict, preview) -> dict:
         "warnings": list(preview.warnings or []),
         "answer_preview": (preview.answer or "")[:400],
         "passed": passed,
+        "agentic_retrieval": _agentic_retrieval_case(preview),
     }
 
 
-def _gate_status(sample: dict[str, Any], pass_rate: float, *, retrieval_only: bool) -> dict[str, Any]:
+def _gate_status(
+    sample: dict[str, Any],
+    pass_rate: float,
+    *,
+    retrieval_only: bool,
+) -> dict[str, Any]:
     role = sample.get("role")
     if retrieval_only:
         threshold = L4_THRESHOLDS["retrieval_only_pass_rate"]
@@ -287,6 +334,7 @@ def _run_retrieval_sample(
     for case in cases:
         preview = research.preview(doc_id=doc_id, question=case["question"], top_k=top_k)
         scored = score_retrieval_case(case, preview)
+        scored["agentic_retrieval"] = _agentic_retrieval_case(preview)
         case_results.append(scored)
         print(json.dumps({"sample": sample["name"], **scored}, ensure_ascii=False, indent=2))
 
@@ -308,6 +356,7 @@ def _run_retrieval_sample(
             "embedding": settings.embedding_backend,
         },
         "gate": _gate_status(sample, pass_rate, retrieval_only=True),
+        "agentic_retrieval": _summarize_agentic_retrieval(case_results),
         "l4_retrieval": {
             "total": len(case_results),
             "passed": passed,
@@ -372,6 +421,7 @@ def _run_full_sample(
             "embedding": settings.embedding_backend,
         },
         "gate": _gate_status(sample, pass_rate, retrieval_only=False),
+        "agentic_retrieval": _summarize_agentic_retrieval(case_results),
         "l4": {
             "total": len(case_results),
             "passed": passed,
@@ -432,11 +482,27 @@ def _write_summary(
                 bool((item.get("gate") or {}).get("met")) for item in sample_reports
             ),
         },
+        "agentic_retrieval": _summarize_agentic_retrieval(
+            [
+                case
+                for report in sample_reports
+                for case in (
+                    (report.get("l4") or report.get("l4_retrieval") or {}).get("cases")
+                    or []
+                )
+            ]
+        ),
     }
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     out_path = OUT_DIR / "latest_l4_summary.json"
     out_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps({"wrote_summary": str(out_path), **summary["aggregate"]}, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {"wrote_summary": str(out_path), **summary["aggregate"]},
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
     return out_path
 
 

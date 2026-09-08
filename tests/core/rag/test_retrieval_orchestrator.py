@@ -126,6 +126,23 @@ def test_query_analyzer_infers_management_section_hints() -> None:
     assert "management_discussion" in analysis.section_hints
 
 
+def test_query_analyzer_keeps_mda_with_cashflow_why_question() -> None:
+    analysis = QueryAnalyzer().analyze(
+        "2021年经营活动现金流量净额相对2020年为什么增长？"
+    )
+
+    assert analysis.intent == "hybrid"
+    assert "financial_statement" in analysis.section_hints
+    assert "management_discussion" in analysis.section_hints
+
+
+def test_query_analyzer_why_without_statement_cue_does_not_force_mda() -> None:
+    analysis = QueryAnalyzer().analyze("为什么营收下降？请分析原因")
+
+    assert "financial_statement" not in analysis.section_hints
+    assert "management_discussion" not in analysis.section_hints
+
+
 def test_query_analyzer_avoids_overlapping_metric_aliases() -> None:
     analysis = QueryAnalyzer().analyze("2024年净利息收入是多少？")
 
@@ -225,6 +242,46 @@ def test_orchestrator_builds_fusion_summary_for_hybrid_query(tmp_path: Path) -> 
     assert any("[结构化]" in item or "[语义" in item for item in result.fusion_summary.highlights)
 
 
+def test_fusion_summary_groups_vector_hits_by_section(tmp_path: Path) -> None:
+    segment_repository = LocalSegmentRepository(str(tmp_path))
+    segment_repository.replace_for_document(
+        "doc-1",
+        [
+            DocumentSegment(
+                segment_id="mda-a",
+                document_id="doc-1",
+                position=1,
+                content="管理层讨论与分析：营业收入增长。",
+                metadata={"section_type": "management_discussion"},
+            ),
+            DocumentSegment(
+                segment_id="mda-b",
+                document_id="doc-1",
+                position=2,
+                content="管理层讨论与分析：软件业务贡献增量。",
+                metadata={"section_type": "management_discussion"},
+            ),
+        ],
+    )
+    result = RetrievalOrchestrator(
+        vector_retriever=LocalRetriever(segment_repository),
+        financial_repository=StubFinancialRepository(),
+    ).retrieve(
+        "管理层如何讨论与分析公司经营情况？",
+        doc_id="doc-1",
+        company_id="acme",
+        top_k=3,
+    )
+
+    semantic = [
+        item
+        for item in (result.fusion_summary.highlights if result.fusion_summary else [])
+        if item.startswith("[语义·management_discussion]")
+    ]
+    assert semantic
+    assert " | " in semantic[0] or "营业收入" in semantic[0]
+
+
 def test_orchestrator_abstains_sql_on_cross_company_mention(tmp_path: Path) -> None:
     result = build_orchestrator(tmp_path).retrieve(
         "聚灿光电2021年营业收入是多少？",
@@ -255,6 +312,155 @@ def test_orchestrator_keeps_sql_when_question_names_pinned_company(
 
     assert len(result.metrics) >= 1
     assert not any("Company scope mismatch" in warning for warning in result.warnings)
+
+
+class YearBlindFinancialRepository(StubFinancialRepository):
+    """Simulates a repo that ignores the year= argument so the orchestrator must bind."""
+
+    def query_metrics(
+        self,
+        company_id: str,
+        *,
+        year=None,
+        metric_key=None,
+        statement_type=None,
+        document_id=None,
+        limit=500,
+    ):
+        items = [
+            item
+            for item in self.items
+            if item.company_id == company_id
+            and (document_id is None or item.document_id == document_id)
+            and (metric_key is None or item.metric_key == metric_key)
+        ]
+        return items[:limit]
+
+
+def test_orchestrator_binds_sql_to_question_year(tmp_path: Path) -> None:
+    orchestrator = RetrievalOrchestrator(
+        vector_retriever=LocalRetriever(LocalSegmentRepository(str(tmp_path))),
+        financial_repository=YearBlindFinancialRepository(),
+    )
+
+    result = orchestrator.retrieve(
+        "2024年营业收入是多少？",
+        doc_id="doc-1",
+        company_id="acme",
+        top_k=3,
+    )
+
+    assert result.analysis.years == [2024]
+    assert [item.period_year for item in result.metrics] == [2024]
+    assert result.fusion_summary is not None
+    assert "期间约束：2024" in result.fusion_summary.summary
+
+
+def test_orchestrator_keeps_prior_year_for_growth_question(tmp_path: Path) -> None:
+    orchestrator = RetrievalOrchestrator(
+        vector_retriever=LocalRetriever(LocalSegmentRepository(str(tmp_path))),
+        financial_repository=YearBlindFinancialRepository(),
+    )
+
+    result = orchestrator.retrieve(
+        "2024年营收同比增长多少？",
+        doc_id="doc-1",
+        company_id="acme",
+        top_k=3,
+    )
+
+    assert result.analysis.years == [2024]
+    assert result.analysis.needs_growth is True
+    assert {item.period_year for item in result.metrics} == {2023, 2024}
+    assert 2022 not in {item.period_year for item in result.metrics}
+
+
+def test_orchestrator_drops_wrong_year_vector_hits(tmp_path: Path) -> None:
+    segment_repository = LocalSegmentRepository(str(tmp_path))
+    segment_repository.replace_for_document(
+        "doc-1",
+        [
+            DocumentSegment(
+                segment_id="rev-2020",
+                document_id="doc-1",
+                position=1,
+                content="2020年营业收入为80亿元，主要来自经纪业务。",
+                metadata={"section_type": "management_discussion", "period_year": 2020},
+            ),
+            DocumentSegment(
+                segment_id="rev-2021",
+                document_id="doc-1",
+                position=2,
+                content="2021年营业收入为100亿元，同比增长25%。",
+                metadata={"section_type": "management_discussion", "period_year": 2021},
+            ),
+        ],
+    )
+    orchestrator = RetrievalOrchestrator(
+        vector_retriever=LocalRetriever(segment_repository),
+        financial_repository=StubFinancialRepository(),
+    )
+
+    result = orchestrator.retrieve(
+        "2021年营业收入为什么增长？请分析原因",
+        doc_id="doc-1",
+        company_id="acme",
+        top_k=3,
+    )
+
+    hit_ids = [segment.segment_id for segment, _ in result.vector_hits]
+    assert "rev-2021" in hit_ids
+    assert "rev-2020" not in hit_ids
+    assert hit_ids[0] == "rev-2021"
+    assert not any("year constraint relaxed" in warning for warning in result.warnings)
+
+
+def test_orchestrator_gates_vector_hits_to_hinted_section(tmp_path: Path) -> None:
+    segment_repository = LocalSegmentRepository(str(tmp_path))
+    segment_repository.replace_for_document(
+        "doc-1",
+        [
+            DocumentSegment(
+                segment_id="risk",
+                document_id="doc-1",
+                position=1,
+                content="市场竞争加剧的风险：同业竞争与产品迭代加快。",
+                metadata={"section_type": "risk_section"},
+            ),
+            DocumentSegment(
+                segment_id="note",
+                document_id="doc-1",
+                position=2,
+                content="金融资产公允价值计量及金融负债合同负债余额如下表所示。",
+                metadata={"section_type": "financial_note"},
+            ),
+            DocumentSegment(
+                segment_id="statement",
+                document_id="doc-1",
+                position=3,
+                content="利润表列示营业收入及相关风险准备金变动。",
+                metadata={"section_type": "financial_statement"},
+            ),
+        ],
+    )
+    orchestrator = RetrievalOrchestrator(
+        vector_retriever=LocalRetriever(segment_repository),
+        financial_repository=StubFinancialRepository(),
+    )
+
+    result = orchestrator.retrieve(
+        "公司面临哪些市场风险？",
+        doc_id="doc-1",
+        company_id="acme",
+        top_k=3,
+    )
+
+    hit_ids = [segment.segment_id for segment, _ in result.vector_hits]
+    assert hit_ids == ["risk"]
+    assert "risk_section" in result.analysis.section_hints
+    assert result.fusion_summary is not None
+    assert "章节约束：risk_section" in result.fusion_summary.summary
+    assert not any("section constraint relaxed" in warning for warning in result.warnings)
 
 
 def test_orchestrator_ignores_polluted_aliases_for_scope_gate(tmp_path: Path) -> None:

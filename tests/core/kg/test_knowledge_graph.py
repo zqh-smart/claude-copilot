@@ -59,9 +59,11 @@ def test_build_store_and_query_document_knowledge_graph(tmp_path) -> None:
         "document",
         "metric",
         "risk",
+        "section",
     }
     assert {item.relationship_type for item in restored.relationships} >= {
         "HAS_DOCUMENT",
+        "HAS_SECTION",
         "REPORTS_METRIC",
         "HAS_RISK",
         "EVIDENCED_BY",
@@ -77,6 +79,115 @@ def test_build_store_and_query_document_knowledge_graph(tmp_path) -> None:
         relationship.relationship_type == "HAS_RISK"
         for path in risk_paths
         for relationship in path.relationships
+    )
+
+
+def test_builder_adds_sections_and_search_binds_year(tmp_path) -> None:
+    document = ParsedDocument(
+        doc_id="doc-years",
+        metadata=DocumentMetadata(
+            doc_type="annual_report",
+            source="test",
+            filename="report-2021.txt",
+            company="ACME",
+            year=2021,
+        ),
+        financial_schema=FinancialSchema(
+            company="ACME",
+            year=2021,
+            metric_facts=[
+                FinancialMetricFact(
+                    metric_key="revenue",
+                    period="2020",
+                    value=80,
+                    unit="million",
+                    currency="USD",
+                    source_section="management_discussion",
+                ),
+                FinancialMetricFact(
+                    metric_key="revenue",
+                    period="2021",
+                    value=100,
+                    unit="million",
+                    currency="USD",
+                    source_section="management_discussion",
+                ),
+            ],
+            semantic_sections=[
+                SemanticSectionSchema(
+                    section_id="mda-1",
+                    section_type="management_discussion",
+                    title="MD&A",
+                    evidence_text="Revenue increased in 2021.",
+                    page_range=(2, 3),
+                ),
+                SemanticSectionSchema(
+                    section_id="risk-1",
+                    section_type="risk_section",
+                    title="Market risk",
+                    evidence_text="2021 market risk from competition.",
+                    page_range=(8, 9),
+                ),
+            ],
+        ),
+    )
+
+    graph = KnowledgeGraphBuilder().build(document)
+    store = LocalKnowledgeGraphStore(str(tmp_path))
+    store.replace_document(graph)
+
+    section_types = {
+        node.properties.get("section_type")
+        for node in graph.nodes
+        if node.node_type == "section"
+    }
+    assert section_types == {"management_discussion", "risk_section"}
+    assert any(item.relationship_type == "HAS_SECTION" for item in graph.relationships)
+
+    paths = store.search(
+        "2021 市场风险",
+        document_id="doc-years",
+        year=2021,
+        section_hint="risk_section",
+        limit=5,
+    )
+    assert paths
+    assert any(
+        node.node_type in {"risk", "section"}
+        and (
+            node.node_type == "risk"
+            or node.properties.get("section_type") == "risk_section"
+        )
+        for path in paths
+        for node in path.nodes
+    )
+    top = paths[0]
+    assert any(
+        node.node_type == "risk" or node.properties.get("section_type") == "risk_section"
+        for node in top.nodes
+    )
+    top_is_2020_only_metric = any(
+        node.node_type == "metric" and node.properties.get("period_year") == 2020
+        for node in top.nodes
+    ) and not any(
+        node.node_type == "risk" or node.properties.get("section_type") == "risk_section"
+        for node in top.nodes
+    )
+    assert not top_is_2020_only_metric
+    assert all(
+        (not years) or 2021 in years
+        for path in paths
+        for years in [
+            {
+                year
+                for node in path.nodes
+                for year in (
+                    [node.properties.get("year"), node.properties.get("period_year")]
+                    + list(node.properties.get("years") or [])
+                )
+                if isinstance(year, int)
+            }
+        ]
     )
 
 

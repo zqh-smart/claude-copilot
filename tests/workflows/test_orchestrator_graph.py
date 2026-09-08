@@ -76,6 +76,8 @@ def test_format_multi_intent_note_mentions_secondary_or_suggestions() -> None:
     suggestion_only = format_multi_intent_note(["risk", "compare"], "risk")
     assert "可再问" in suggestion_only
     assert "对比两家公司" in suggestion_only
+    assert "对比财报" in suggestion_only
+    assert "doc_id_b" not in suggestion_only
 
 
 def test_classify_intent_hybrid_growth_and_amount_prefers_quant() -> None:
@@ -118,8 +120,14 @@ def test_default_delegate_compare_missing_doc_id_b_warns() -> None:
 
     compare_invoke.assert_not_called()
     assert result["agent_used"] == "compare"
-    assert "未配置第二份文档" in result["answer"]
-    assert "missing doc_id_b for comparator" in result["warnings"]
+    assert "【对比】" in result["answer"]
+    assert "Comparator" not in result["answer"]
+    assert "未选择第二份文档" in result["answer"]
+    assert "对比财报" in result["answer"]
+    assert "AGENT_CHAT_DOC_ID_B" not in result["answer"]
+    assert "doc_id_b" not in result["answer"]
+    assert "对比财报" in result["warnings"][0]
+    assert "doc_id_b" not in result["warnings"][0]
     assert "差额" not in result["answer"]
 
 

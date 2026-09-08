@@ -116,12 +116,23 @@ def _compare_to_baseline(
     regressions: list[str] = []
     notes: list[str] = []
 
+    corpus_fields = (
+        ("aggregate", "total"),
+        ("aggregate", "gate_total"),
+        ("aggregate", "benchmark_total"),
+        ("ranking", "explicit_relevance_cases"),
+        ("abstention", "evaluated_cases"),
+    )
+    for group, key in corpus_fields:
+        current_value = cur[group].get(key)
+        baseline_value = base[group].get(key)
+        if current_value != baseline_value:
+            regressions.append(
+                f"corpus drift: {group}.{key} {baseline_value} -> {current_value}"
+            )
+
     cur_gate = cur["aggregate"]["gate_passed"]
     base_gate = base["aggregate"]["gate_passed"]
-    cur_gate_total = cur["aggregate"]["gate_total"]
-    base_gate_total = base["aggregate"]["gate_total"]
-    if cur_gate_total != base_gate_total:
-        notes.append(f"gate_total changed {base_gate_total} -> {cur_gate_total}")
     if (cur_gate or 0) < (base_gate or 0):
         regressions.append(f"gate_passed {base_gate} -> {cur_gate}")
 
@@ -506,7 +517,8 @@ def main() -> int:
     gate_ok = aggregate["gate_passed"] == aggregate["gate_total"]
     if not gate_ok:
         return 2
-    if args.compare_baseline and summary.get("diff_vs_baseline", {}).get("net_verdict") == "negative":
+    comparison_verdict = summary.get("diff_vs_baseline", {}).get("net_verdict")
+    if args.compare_baseline and comparison_verdict == "negative":
         return 1
     return 0
 

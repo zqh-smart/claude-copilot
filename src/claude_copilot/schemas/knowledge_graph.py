@@ -11,9 +11,11 @@ GraphNodeType = Literal[
     "document",
     "metric",
     "risk",
+    "section",
 ]
 GraphRelationshipType = Literal[
     "HAS_DOCUMENT",
+    "HAS_SECTION",
     "REPORTS_METRIC",
     "HAS_RISK",
     "OWNS",

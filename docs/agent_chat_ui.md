@@ -117,7 +117,7 @@ AI 消息的 `additional_kwargs.research_result` 保存 `ChatResearchResult`：
 
 前端只显示当前会话最新答案、且问题消息 ID 匹配的快照。发出新问题、切换财报、请求失败时不回退展示上一条证据。历史消息没有快照时显示空态，不从答案文本猜测引用。刷新后从 LangGraph 消息历史恢复，不依赖前端临时缓存。
 
-引用区区分“答案引用”和“检索证据”。`Vn` 指向文档片段，`Sn` 指向结构化指标；指标使用其自身 `document_id`，不能直接套用当前财报 ID。页码仅取返回的来源元数据，缺少页码时打开原文。暂不能定位文档来源的 `Cn` / `Gn` 引用明确标记，不生成虚假链接。纯 risk / compare / quant / report 分支尚未提供统一研究快照，侧栏为空。
+引用区区分“答案引用”和“检索证据”。`Vn` 指向文档片段，`Sn` 指向结构化指标；指标使用其自身 `document_id`，不能直接套用当前财报 ID。页码仅取返回的来源元数据，缺少页码时打开原文。暂不能定位文档来源的 `Cn` / `Gn` 引用明确标记，不生成虚假链接。`risk` / `compare` / `quant` / `report` 把本次图输出收成同一份快照：风险片段或 HAS_RISK 证据、对比矩阵两侧指标、量化指标、报告提纲段落；不为侧栏再检索一遍。
 
 原文接口：`GET /api/v1/documents/{doc_id}/source`。仅返回文档记录关联且位于配置归档目录内的文件；记录缺失、文件缺失或越界均返回 404。PDF 内联查看，其他格式作为附件下载。同源 FastAPI 代理保留 `Content-Disposition`、`Cache-Control` 和 `X-Content-Type-Options`。该接口沿用现有 API 访问模型，并非新增多租户授权层。
 

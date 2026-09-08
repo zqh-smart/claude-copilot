@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import re
+from typing import Any
 
+from app.core.db.financial_data_repository import extract_period_year
 from app.core.kg.entity_extractor import FinancialEntityRelationExtractor
 from src.claude_copilot.entity_resolution import EntityResolver
 from src.claude_copilot.schemas.document import ParsedDocument
@@ -94,6 +96,13 @@ class KnowledgeGraphBuilder:
                 confidence=1.0,
             )
 
+        section_ids = self._add_sections(
+            document,
+            nodes=nodes,
+            relationships=relationships,
+            document_node_id=document_node_id,
+        )
+
         if document.financial_schema is not None:
             for fact in document.financial_schema.metric_facts:
                 metric_id = self._stable_id(
@@ -111,6 +120,7 @@ class KnowledgeGraphBuilder:
                     properties={
                         "metric_key": fact.metric_key,
                         "period": fact.period,
+                        "period_year": extract_period_year(fact.period),
                         "value": fact.value,
                         "statement_type": fact.statement_type,
                         "unit": fact.unit,
@@ -129,6 +139,9 @@ class KnowledgeGraphBuilder:
                         page_range=fact.page_range,
                         evidence_text=(f"{fact.metric_key} ({fact.period}) = {fact.value}"),
                         confidence=0.98,
+                        properties={
+                            "period_year": extract_period_year(fact.period),
+                        },
                     )
                 self._add_relationship(
                     relationships,
@@ -140,6 +153,18 @@ class KnowledgeGraphBuilder:
                     evidence_text=(f"{fact.metric_key} ({fact.period}) = {fact.value}"),
                     confidence=1.0,
                 )
+                section_id = self._match_section_id(section_ids, fact.source_section)
+                if section_id:
+                    self._add_relationship(
+                        relationships,
+                        "EVIDENCED_BY",
+                        metric_id,
+                        section_id,
+                        document.doc_id,
+                        page_range=fact.page_range,
+                        evidence_text=(f"{fact.metric_key} ({fact.period}) = {fact.value}"),
+                        confidence=0.9,
+                    )
 
         for risk_key, evidence, page_range in self._extract_risks(document):
             risk_id = self._stable_id("risk", document.doc_id, risk_key, evidence[:240])
@@ -185,6 +210,18 @@ class KnowledgeGraphBuilder:
                 evidence_text=evidence,
                 confidence=1.0,
             )
+            risk_section_id = section_ids.get("risk_section")
+            if risk_section_id:
+                self._add_relationship(
+                    relationships,
+                    "EVIDENCED_BY",
+                    risk_id,
+                    risk_section_id,
+                    document.doc_id,
+                    page_range=page_range,
+                    evidence_text=evidence,
+                    confidence=0.9,
+                )
 
         if company_node_id and company_id:
             for entity in self._extractor.extract(document, company_id=company_id):
@@ -226,6 +263,116 @@ class KnowledgeGraphBuilder:
             nodes=list(nodes.values()),
             relationships=list(relationships.values()),
         )
+
+    def _add_sections(
+        self,
+        document: ParsedDocument,
+        *,
+        nodes: dict[str, KnowledgeGraphNode],
+        relationships: dict[str, KnowledgeGraphRelationship],
+        document_node_id: str,
+    ) -> dict[str, str]:
+        ids_by_type: dict[str, str] = {}
+        type_counts: dict[str, int] = {}
+        for section_type, title, section_id, page_range, body in self._typed_section_sources(
+            document
+        ):
+            node_id = self._stable_id(
+                "section",
+                document.doc_id,
+                section_type,
+                title or section_id or "",
+            )
+            evidence = title or (body[:200] if body else None)
+            properties: dict[str, Any] = {
+                "section_type": section_type,
+                "page_range": page_range,
+                "year": document.metadata.year,
+            }
+            if title:
+                properties["title"] = title
+            nodes[node_id] = KnowledgeGraphNode(
+                node_id=node_id,
+                node_type="section",
+                name=title or section_type,
+                document_id=document.doc_id,
+                properties=properties,
+            )
+            self._add_relationship(
+                relationships,
+                "HAS_SECTION",
+                document_node_id,
+                node_id,
+                document.doc_id,
+                page_range=page_range,
+                evidence_text=evidence,
+                confidence=1.0,
+            )
+            self._add_relationship(
+                relationships,
+                "EVIDENCED_BY",
+                node_id,
+                document_node_id,
+                document.doc_id,
+                page_range=page_range,
+                evidence_text=evidence,
+                confidence=1.0,
+            )
+            ids_by_type[section_type] = node_id
+            type_counts[section_type] = type_counts.get(section_type, 0) + 1
+        return {key: value for key, value in ids_by_type.items() if type_counts[key] == 1}
+
+    @staticmethod
+    def _typed_section_sources(
+        document: ParsedDocument,
+    ) -> list[tuple[str, str | None, str | None, tuple[int, int] | None, str | None]]:
+        schema = document.financial_schema
+        if schema is not None and schema.semantic_sections:
+            return [
+                (
+                    section.section_type,
+                    section.title,
+                    section.section_id,
+                    section.page_range,
+                    section.evidence_text,
+                )
+                for section in schema.semantic_sections
+                if section.section_type
+            ]
+        sources: list[tuple[str, str | None, str | None, tuple[int, int] | None, str | None]] = []
+        for section in document.sections:
+            if not section.section_type:
+                continue
+            page_range = (
+                (section.page_start, section.page_end or section.page_start)
+                if section.page_start is not None
+                else None
+            )
+            sources.append(
+                (
+                    section.section_type,
+                    section.title,
+                    section.section_id,
+                    page_range,
+                    section.content,
+                )
+            )
+        return sources
+
+    @staticmethod
+    def _match_section_id(
+        section_ids: dict[str, str],
+        source_section: str | None,
+    ) -> str | None:
+        if not source_section:
+            return None
+        if source_section in section_ids:
+            return section_ids[source_section]
+        folded = source_section.casefold()
+        for section_type, node_id in section_ids.items():
+            if section_type.casefold() == folded:
+                return node_id
+        return None
 
     def _extract_risks(
         self,
@@ -281,6 +428,7 @@ class KnowledgeGraphBuilder:
         page_range: tuple[int, int] | None = None,
         evidence_text: str | None = None,
         confidence: float = 1.0,
+        properties: dict[str, Any] | None = None,
     ) -> None:
         relationship_id = self._stable_id(
             "relationship",
@@ -289,6 +437,7 @@ class KnowledgeGraphBuilder:
             target_node_id,
             document_id,
         )
+        payload = {key: value for key, value in (properties or {}).items() if value is not None}
         target[relationship_id] = KnowledgeGraphRelationship(
             relationship_id=relationship_id,
             relationship_type=relationship_type,
@@ -298,6 +447,7 @@ class KnowledgeGraphBuilder:
             page_range=page_range,
             evidence_text=evidence_text[:1800] if evidence_text else None,
             confidence=confidence,
+            properties=payload,
         )
 
     @staticmethod
