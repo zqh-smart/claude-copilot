@@ -1,0 +1,14 @@
+---
+description: Claude Copilot is a backend + frontend monorepo
+alwaysApply: true
+---
+
+# Claude Copilot monorepo
+
+- Root: `D:\GithubProject\claude-copilot`
+- `backend/` = FastAPI + LangGraph. Run Python commands from `backend/`.
+- `frontend/apps/workbench/` = Vue 3 + Vite product workbench.
+- `frontend/apps/chat-ui/` = Next.js agent-chat-ui product surface.
+- Do not add UI in deprecated `backend/web/`.
+- Nested `frontend/agent-chat-ui-main/` is not the product surface.
+- Python package / DB name `claude_copilot` stays; it is not the folder name.

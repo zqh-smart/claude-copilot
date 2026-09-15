@@ -1,0 +1,39 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+*.tsbuildinfo
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# LangGraph API
+.langgraph_api
+.env
+.next/
+test-results/
+playwright-report/
+next-env.d.ts
+tmp-page-shots/
+/runtime/
+/apps/workbench/runtime/
+
+# Leftover nested fork; not the product surface
+/agent-chat-ui-main/

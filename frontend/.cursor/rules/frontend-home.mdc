@@ -1,0 +1,16 @@
+---
+description: This repo is the Claude Copilot product frontend
+alwaysApply: true
+---
+
+# This folder is `frontend`
+
+- Disk path: `D:\GithubProject\claude-copilot\frontend` (formerly `agent-chat-ui-main`).
+- Backend in the same repo: `D:\GithubProject\claude-copilot\backend`.
+- Open the monorepo via `D:\GithubProject\claude-copilot.code-workspace`.
+- `apps/workbench` is the Vue 3 + Vite + Element Plus/Yudao-style financial workbench.
+- `apps/chat-ui` is the official Next.js agent-chat-ui integration and owns full Agent Chat.
+- Do not port React chat components into Vue or share LangGraph Message/Thread types.
+- Share only Claude Copilot business DTOs through `packages/contracts`.
+- Workbench data and narrow SSE flows go through FastAPI `:8000`; Chat uses the Agent gateway/LangGraph integration.
+- Development ports are workbench `:3000`, chat `:3001`, FastAPI `:8000`; production routes `/`, `/chat/**`, `/api/**` on one origin.

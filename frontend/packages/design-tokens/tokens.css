@@ -1,0 +1,18 @@
+:root {
+  --cc-brand-primary: #1a5945;
+  --cc-brand-primary-hover: #24765a;
+  --cc-brand-primary-soft: #68a98f;
+  --cc-brand-deep: #123f32;
+  --cc-brand-accent: #c9943b;
+  --cc-bg-page: #f2f5f3;
+  --cc-bg-card: #ffffff;
+  --cc-bg-accent: #e7f1ec;
+  --cc-text-primary: #1a2e27;
+  --cc-text-secondary: #60726b;
+  --cc-border-color: #dfe7e2;
+  --cc-radius-sm: 10px;
+  --cc-radius-md: 13px;
+  --cc-radius-lg: 16px;
+  --cc-sidebar-width: 232px;
+  --cc-shadow-card: 0 8px 28px rgb(18 63 50 / 6%);
+}

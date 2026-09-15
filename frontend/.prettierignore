@@ -1,0 +1,9 @@
+# Ignore artifacts:
+build
+coverage
+agent-chat-ui-main/
+test-results/
+playwright-report/
+
+#
+pnpm-lock.yaml

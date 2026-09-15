@@ -1,0 +1,35 @@
+{
+	"folders": [
+		{
+			"name": "claude-copilot",
+			"path": "."
+		}
+	],
+	"settings": {
+		"files.exclude": {
+			"**/.next": true,
+			"**/.pytest_cache": true,
+			"**/.venv": true,
+			"**/__pycache__": true,
+			"**/dist": true,
+			"**/node_modules": true,
+			"**/runtime": true,
+			"frontend/agent-chat-ui-main": true,
+			"frontend/vue-app": true
+		},
+		"search.exclude": {
+			"**/.next/**": true,
+			"**/.venv/**": true,
+			"**/dist/**": true,
+			"**/node_modules/**": true,
+			"**/runtime/**": true
+		},
+		"files.watcherExclude": {
+			"**/.next/**": true,
+			"**/.venv/**": true,
+			"**/dist/**": true,
+			"**/node_modules/**": true,
+			"**/runtime/**": true
+		}
+	}
+}
