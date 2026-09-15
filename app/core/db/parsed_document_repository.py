@@ -130,7 +130,9 @@ class PostgresParsedDocumentRepository:
         document_year = parsed_document.metadata.year or schema.year
 
         for fact in serving_facts:
-            period_key = metric_period_key(fact.metric_key, fact.period)
+            period_key = metric_period_key(
+                fact.metric_key, fact.period, fact.entity_scope
+            )
             conflicting_rows = [
                 item
                 for item in existing_items.get(period_key, [])
@@ -229,7 +231,9 @@ class PostgresParsedDocumentRepository:
                 continue
             document = matching_documents[row.doc_id]
             document_year = (document.metadata_json or {}).get("year")
-            grouped[metric_period_key(row.metric_key, row.period)].append(
+            grouped[
+                metric_period_key(row.metric_key, row.period, row.entity_scope)
+            ].append(
                 _ExistingMetricItem(
                     row=row,
                     document_year=document_year if isinstance(document_year, int) else None,

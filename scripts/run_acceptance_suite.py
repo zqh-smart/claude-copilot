@@ -9,30 +9,24 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PDF_DIR = Path(
-    r"Z:/BaiduNetdiskDownload/阶段12：LLM大型复杂项目实战"
-    r"/项目实战2：大模型金融对话交互系统/allpdf-part1"
-)
+DOCUMENT_DIR = ROOT / "data" / "documents"
 
 SMOKE = {
     "name": "znz_2021",
-    "pdf": PDF_DIR
-    / "2022-01-25__北京指南针科技发展股份有限公司__300803__指南针__2021年__年度报告.pdf",
+    "pdf": DOCUMENT_DIR / "95686a1aa6534494a1806fdc8e9d6b1c.pdf",
     "golden": ROOT / "data" / "golden" / "znz_2021_stage_expectations.json",
     "scorecard": ROOT / "data" / "reports" / "eval" / "latest_scorecard.json",
 }
 REGRESSION_SAMPLES = [
     {
         "name": "jucan_2021",
-        "pdf": PDF_DIR
-        / "2022-01-29__聚灿光电科技股份有限公司__300708__聚灿光电__2021年__年度报告.pdf",
+        "pdf": DOCUMENT_DIR / "8a73d2fbfd0d4d799d5489e24fe21bd3.pdf",
         "golden": ROOT / "data" / "golden" / "jucan_2021_stage_expectations.json",
         "scorecard": ROOT / "data" / "reports" / "eval" / "jucan_2021_scorecard.json",
     },
     {
         "name": "tianhua_2021",
-        "pdf": PDF_DIR
-        / "2022-02-08__苏州天华新能源科技股份有限公司__300390__天华新能__2021年__年度报告.pdf",
+        "pdf": DOCUMENT_DIR / "267bbddf6aeb4738a9b8e31de568d867.pdf",
         "golden": ROOT / "data" / "golden" / "tianhua_2021_stage_expectations.json",
         "scorecard": ROOT / "data" / "reports" / "eval" / "tianhua_2021_scorecard.json",
     },
@@ -109,6 +103,26 @@ def _golden_status(path: Path) -> str:
     return str(payload.get("status") or "ready")
 
 
+def _scope_contract_failures(payload: dict) -> list[str]:
+    failures: list[str] = []
+    default_scope = payload.get("default_entity_scope")
+    if default_scope not in {"consolidated", "parent_company", "unknown"}:
+        failures.append("default_entity_scope must be declared")
+    for case in [
+        *(payload.get("retrieval_cases") or []),
+        *(payload.get("benchmark_cases") or []),
+    ]:
+        question = str(case.get("question") or "").casefold()
+        expected_scope = case.get("expect_entity_scope") or default_scope
+        if any(cue in question for cue in ("母公司", "parent company", "standalone")):
+            if expected_scope != "parent_company":
+                failures.append(f"{case.get('id')}: parent-company question has wrong scope")
+        if any(cue in question for cue in ("合并", "consolidated", "group basis")):
+            if expected_scope != "consolidated":
+                failures.append(f"{case.get('id')}: consolidated question has wrong scope")
+    return failures
+
+
 def _run(cmd: list[str]) -> int:
     print("+", " ".join(cmd), flush=True)
     completed = subprocess.run(cmd, cwd=ROOT)
@@ -143,6 +157,11 @@ def _run_sample(
             "See docs/acceptance_suite.md §5."
         )
         return 0
+    expectations = json.loads(sample["golden"].read_text(encoding="utf-8"))
+    scope_failures = _scope_contract_failures(expectations)
+    if scope_failures:
+        print("INVALID_SCOPE_CONTRACT " + " | ".join(scope_failures))
+        return 1
     if not sample["pdf"].exists():
         print(f"MISSING_PDF {sample['pdf']}")
         return 1
@@ -203,7 +222,7 @@ def _run_sample(
 
 def _run_stress(sample: dict) -> int:
     expectations = json.loads(sample["golden"].read_text(encoding="utf-8"))
-    matches = sorted(PDF_DIR.glob(expectations["document"]["filename_glob"]))
+    matches = sorted(DOCUMENT_DIR.glob(expectations["document"]["filename_glob"]))
     if len(matches) != 1:
         pattern = expectations["document"]["filename_glob"]
         print(f"STRESS_PDF_MATCH_COUNT {len(matches)} pattern={pattern}")
@@ -222,7 +241,7 @@ def _run_stress(sample: dict) -> int:
 
 def _run_table_stress(sample: dict) -> int:
     expectations = json.loads(sample["golden"].read_text(encoding="utf-8"))
-    matches = sorted(PDF_DIR.glob(expectations["document"]["filename_glob"]))
+    matches = sorted(DOCUMENT_DIR.glob(expectations["document"]["filename_glob"]))
     if len(matches) != 1:
         pattern = expectations["document"]["filename_glob"]
         print(f"TABLE_STRESS_PDF_MATCH_COUNT {len(matches)} pattern={pattern}")
@@ -243,7 +262,7 @@ def _run_conflict(sample: dict) -> int:
     expectations = json.loads(sample["golden"].read_text(encoding="utf-8"))
     matches: list[Path] = []
     for document in expectations["documents"]:
-        document_matches = sorted(PDF_DIR.glob(document["filename_glob"]))
+        document_matches = sorted(DOCUMENT_DIR.glob(document["filename_glob"]))
         if len(document_matches) != 1:
             print(
                 f"CONFLICT_PDF_MATCH_COUNT {len(document_matches)} "

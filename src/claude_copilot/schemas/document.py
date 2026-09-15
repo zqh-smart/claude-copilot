@@ -4,6 +4,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+EntityScope = Literal["consolidated", "parent_company", "unknown"]
+
 
 class DocumentProcessingStatus(StrEnum):
     WAITING = "waiting"
@@ -111,6 +113,7 @@ class FinancialMetricFact(BaseModel):
     period: str
     value: int | float | str
     statement_type: str | None = None
+    entity_scope: EntityScope = "unknown"
     unit: str | None = None
     currency: str | None = None
     source_table_id: str | None = None
@@ -123,6 +126,7 @@ class FinancialMetricFact(BaseModel):
 class FinancialStatementSchema(BaseModel):
     table_id: str | None = None
     statement_type: str | None = None
+    entity_scope: EntityScope = "unknown"
     title: str | None = None
     period_headers: list[str] = Field(default_factory=list)
     unit: str | None = None

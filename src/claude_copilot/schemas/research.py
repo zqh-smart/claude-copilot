@@ -2,6 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from src.claude_copilot.schemas.document import EntityScope
 from src.claude_copilot.schemas.financial_data import FinancialMetricObservation
 from src.claude_copilot.schemas.knowledge_graph import GraphPath
 
@@ -26,6 +27,7 @@ class QueryAnalysis(BaseModel):
     years: list[int] = Field(default_factory=list)
     needs_growth: bool = False
     section_hints: list[str] = Field(default_factory=list)
+    entity_scope: EntityScope = "unknown"
 
 
 class SecondRetrievalPlan(BaseModel):
@@ -36,6 +38,7 @@ class SecondRetrievalPlan(BaseModel):
     years: list[int] = Field(default_factory=list)
     needs_growth: bool = False
     section_hints: list[str] = Field(default_factory=list)
+    entity_scope: EntityScope = "unknown"
     budget: int = Field(default=1, ge=1, le=2)
 
 

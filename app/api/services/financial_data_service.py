@@ -35,6 +35,7 @@ class FinancialDataService:
         year: int | None,
         metric_key: str | None,
         statement_type: str | None,
+        entity_scope: str | None,
         limit: int,
     ) -> FinancialMetricsResponse:
         company = self._require_company(company_id)
@@ -43,6 +44,7 @@ class FinancialDataService:
             year=year,
             metric_key=metric_key,
             statement_type=statement_type,
+            entity_scope=entity_scope,
             limit=limit,
         )
         return FinancialMetricsResponse(
@@ -53,6 +55,7 @@ class FinancialDataService:
                     "year": year,
                     "metric_key": metric_key,
                     "statement_type": statement_type,
+                    "entity_scope": entity_scope,
                     "limit": limit,
                 }.items()
                 if value is not None
@@ -68,13 +71,27 @@ class FinancialDataService:
         *,
         start_year: int | None,
         end_year: int | None,
+        entity_scope: str = "consolidated",
     ) -> MetricTrendResponse:
         company = self._require_company(company_id)
         observations = self._repository.query_metrics(
             company_id,
             metric_key=metric_key,
+            entity_scope=entity_scope,
             limit=5000,
         )
+        warnings: list[str] = []
+        if not observations and entity_scope == "consolidated":
+            observations = self._repository.query_metrics(
+                company_id,
+                metric_key=metric_key,
+                entity_scope="unknown",
+                limit=5000,
+            )
+            if observations:
+                warnings.append(
+                    "consolidated scope unavailable; used legacy unknown-scope facts"
+                )
         observations = [
             item
             for item in observations
@@ -83,7 +100,6 @@ class FinancialDataService:
             and (end_year is None or item.period_year <= end_year)
         ]
 
-        warnings: list[str] = []
         units = sorted({item.unit for item in observations if item.unit})
         currencies = sorted({item.currency for item in observations if item.currency})
         if len(units) > 1:
@@ -184,15 +200,19 @@ class FinancialDataService:
             for doc_id in requested
             if doc_id not in available_documents
         ]
-        grouped: dict[tuple[str, str], list] = defaultdict(list)
+        grouped: dict[tuple[str, str, str], list] = defaultdict(list)
         for observation in observations:
             if observation.metric_key and observation.period:
-                grouped[(observation.metric_key, observation.period)].append(observation)
+                grouped[
+                    (observation.metric_key, observation.period, observation.entity_scope)
+                ].append(observation)
 
         facts: list[FusedMetricFact] = []
         conflicts: list[MetricFusionConflict] = []
         metrics_index: dict[str, dict[str, int | float | str]] = defaultdict(dict)
-        for (metric_key, period), candidates in sorted(grouped.items()):
+        metrics_index_scope: dict[tuple[str, str], str] = {}
+        scope_priority = {"parent_company": 0, "unknown": 1, "consolidated": 2}
+        for (metric_key, period, _entity_scope), candidates in sorted(grouped.items()):
             resolution = resolve_metric_conflict(
                 [candidate_from_observation(item) for item in candidates],
                 metric_key=metric_key,
@@ -214,6 +234,7 @@ class FinancialDataService:
                     period=period,
                     value=winner.value,
                     statement_type=winner.statement_type,
+                    entity_scope=winner.entity_scope,
                     unit=winner.unit,
                     currency=winner.currency,
                     winner_document_id=winner.document_id,
@@ -225,7 +246,14 @@ class FinancialDataService:
                     provenance=dict(winner.provenance),
                 )
             )
-            metrics_index[metric_key][period] = winner.value
+            index_key = (metric_key, period)
+            current_scope = metrics_index_scope.get(index_key)
+            if (
+                current_scope is None
+                or scope_priority[winner.entity_scope] > scope_priority[current_scope]
+            ):
+                metrics_index[metric_key][period] = winner.value
+                metrics_index_scope[index_key] = winner.entity_scope
             warnings.extend(resolution.warnings)
             if len(distinct_values) > 1:
                 conflicts.append(
@@ -242,7 +270,7 @@ class FinancialDataService:
         return FinancialKnowledgeFusionResponse(
             company=company,
             document_ids=available_documents,
-            reporting_periods=sorted({period for _, period in grouped}),
+            reporting_periods=sorted({period for _, period, _ in grouped}),
             facts=facts,
             metrics_index={key: dict(value) for key, value in metrics_index.items()},
             conflicts=conflicts,

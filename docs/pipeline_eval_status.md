@@ -23,7 +23,7 @@ Baseline：`data/reports/eval/baseline_scorecard.json`
 
 ### Golden（已校正）
 
-- revenue 2021/2020 = 931944638 / 691620925
+- revenue 2021/2020（合并口径）= **932420978 / 692598184**（Serving 结构化真值；MD&A 表内 932420978 与合并利润表一致）
 - net_cash_from_operating_activities 2021/2020 = **373048933 / 230581891**  
   （旧 golden 把 2020 值误标成 2021，源自同比%列错位）
 

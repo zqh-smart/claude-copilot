@@ -5,6 +5,10 @@ import re
 
 from bs4 import BeautifulSoup
 
+from app.pipeline.feature_pipeline.chunking.contextual import (
+    apply_contextual_prefix,
+    build_contextual_prefix,
+)
 from src.claude_copilot.schemas.document import (
     DocumentSegment,
     ParsedDocument,
@@ -17,9 +21,16 @@ from src.claude_copilot.schemas.document import (
 class ChunkingService:
     """Section-aware chunking: semantic sections first, then uncovered blocks/tables."""
 
-    def __init__(self, chunk_size: int = 800, overlap: int = 100) -> None:
+    def __init__(
+        self,
+        chunk_size: int = 800,
+        overlap: int = 100,
+        *,
+        contextual_prefix: bool = False,
+    ) -> None:
         self._chunk_size = chunk_size
         self._overlap = overlap
+        self._contextual_prefix = contextual_prefix
 
     def chunk(self, document: ParsedDocument) -> list[DocumentSegment]:
         segments: list[DocumentSegment] = []
@@ -27,11 +38,23 @@ class ChunkingService:
 
         for payload in self._iter_chunk_payloads(document):
             chunk_size = payload.get("chunk_size", self._chunk_size)
-            for chunk in self._split_text(payload["content"], chunk_size=chunk_size):
+            body = payload["content"]
+            if self._contextual_prefix:
+                prefix = build_contextual_prefix(
+                    document,
+                    section_title=payload["metadata"].get("section_title"),
+                    section_type=payload["metadata"].get("section_type"),
+                    page=payload["metadata"].get("page")
+                    or payload["metadata"].get("page_start"),
+                )
+                body = apply_contextual_prefix(body, prefix)
+            for chunk in self._split_text(body, chunk_size=chunk_size):
                 if not chunk or not self._has_information(chunk):
                     continue
                 position += 1
                 metadata = dict(payload["metadata"])
+                if self._contextual_prefix:
+                    metadata["contextual_prefix"] = True
                 metadata["segment_fingerprint"] = self._segment_fingerprint(chunk)
                 segments.append(
                     DocumentSegment(

@@ -86,6 +86,20 @@ def test_postgres_storage_backend_uses_postgres_repositories(monkeypatch, tmp_pa
 
     assert isinstance(dependencies.get_document_repository(), PostgresDocumentRepository)
     assert isinstance(dependencies.get_segment_repository(), PostgresSegmentRepository)
-    assert isinstance(dependencies.get_parsed_document_repository(), PostgresParsedDocumentRepository)
+    assert isinstance(
+        dependencies.get_parsed_document_repository(),
+        PostgresParsedDocumentRepository,
+    )
 
     clear_dependency_caches()
+
+
+def test_qdrant_memory_url_builds_embedded_client(monkeypatch) -> None:
+    settings = SimpleNamespace(qdrant_url=":memory:")
+    monkeypatch.setattr(dependencies, "get_settings", lambda: settings)
+    dependencies.get_qdrant_client.cache_clear()
+
+    client = dependencies.get_qdrant_client()
+
+    assert client.get_collections().collections == []
+    dependencies.get_qdrant_client.cache_clear()

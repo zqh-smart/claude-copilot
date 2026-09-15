@@ -35,6 +35,7 @@ class StubFinancialRepository:
                 period=str(year),
                 period_year=year,
                 value=value,
+                entity_scope="consolidated",
                 unit="millions",
                 currency="USD",
             )
@@ -54,6 +55,7 @@ class StubFinancialRepository:
         year=None,
         metric_key=None,
         statement_type=None,
+        entity_scope=None,
         document_id=None,
         limit=500,
     ):
@@ -64,6 +66,7 @@ class StubFinancialRepository:
             and (document_id is None or item.document_id == document_id)
             and (year is None or item.period_year == year)
             and (metric_key is None or item.metric_key == metric_key)
+            and (entity_scope is None or item.entity_scope == entity_scope)
         ]
         return items[:limit]
 
@@ -324,6 +327,7 @@ class YearBlindFinancialRepository(StubFinancialRepository):
         year=None,
         metric_key=None,
         statement_type=None,
+        entity_scope=None,
         document_id=None,
         limit=500,
     ):
@@ -333,6 +337,7 @@ class YearBlindFinancialRepository(StubFinancialRepository):
             if item.company_id == company_id
             and (document_id is None or item.document_id == document_id)
             and (metric_key is None or item.metric_key == metric_key)
+            and (entity_scope is None or item.entity_scope == entity_scope)
         ]
         return items[:limit]
 
@@ -354,6 +359,29 @@ def test_orchestrator_binds_sql_to_question_year(tmp_path: Path) -> None:
     assert [item.period_year for item in result.metrics] == [2024]
     assert result.fusion_summary is not None
     assert "期间约束：2024" in result.fusion_summary.summary
+
+
+def test_query_analyzer_driver_explanation_without_metric_skips_sql_route() -> None:
+    analysis = QueryAnalyzer().analyze("管理层如何解释主营业务增长的驱动因素？")
+
+    assert analysis.intent == "semantic"
+    assert analysis.routes == ["vector"]
+    assert analysis.metric_keys == []
+
+
+def test_query_analyzer_business_market_risk_hints_risk_section() -> None:
+    analysis = QueryAnalyzer().analyze("公司面临哪些市场风险？")
+
+    assert "risk_section" in analysis.section_hints
+
+
+def test_query_analyzer_resolves_financial_entity_scope() -> None:
+    analyzer = QueryAnalyzer()
+
+    assert analyzer.analyze("合并口径下2021年营业收入是多少？").entity_scope == "consolidated"
+    assert analyzer.analyze("母公司2021年营业收入是多少？").entity_scope == "parent_company"
+    assert analyzer.analyze("2021年营业收入是多少？").entity_scope == "consolidated"
+    assert analyzer.analyze("公司面临哪些风险？").entity_scope == "unknown"
 
 
 def test_orchestrator_keeps_prior_year_for_growth_question(tmp_path: Path) -> None:

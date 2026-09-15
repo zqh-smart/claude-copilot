@@ -29,11 +29,21 @@ The metrics endpoint accepts:
 - `year`
 - `metric_key`
 - `statement_type`
+- `entity_scope` (`consolidated`, `parent_company`, or `unknown`)
 - `limit` (1–5000)
 
-The trend endpoint accepts `start_year` and `end_year`. It returns numeric
+The trend endpoint accepts `start_year`, `end_year`, and `entity_scope`; its scope
+defaults to `consolidated`. It returns numeric
 yearly points, YoY growth, CAGR, source observations, and warnings when values
 conflict or units/currencies are inconsistent.
+
+Research SQL retrieval also defaults financial metric questions to `consolidated`.
+Questions that explicitly say `母公司`, `parent company`, or `standalone` select
+`parent_company` instead.
+
+Existing PostgreSQL deployments must apply
+`scripts/migrations/20260913_financial_item_entity_scope.sql`. Existing local-JSON
+documents should be re-ingested because their historical facts have no reliable scope field.
 
 ## Examples
 

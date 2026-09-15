@@ -59,7 +59,11 @@ class Settings(BaseSettings):
     rerank_model_id: str = "BAAI/bge-reranker-v2-m3"
     hybrid_vector_weight: float = 0.65
     hybrid_lexical_weight: float = 0.35
-    retrieval_candidate_multiplier: int = 4
+    hybrid_fusion_mode: Literal["rrf", "linear"] = "rrf"
+    retrieval_candidate_multiplier: int = 6
+    contextual_chunk_prefix_enabled: bool = False
+    research_deep_retrieval_enabled: bool = True
+    research_agentic_second_pass_enabled: bool = True
     silicon_base_url: str = "https://api.siliconflow.cn/v1"
     silicon_key: str | None = None
     bailian_api_key: str | None = Field(

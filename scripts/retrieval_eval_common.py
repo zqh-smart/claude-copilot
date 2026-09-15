@@ -144,9 +144,14 @@ def load_retrieval_eval_cases(
     case_ids: list[str] | None = None,
 ) -> list[dict]:
     """Load gate cases; optionally append joint-benchmark expansion cases."""
-    cases = list(expectations.get("retrieval_cases") or [])
+    cases = [dict(case) for case in (expectations.get("retrieval_cases") or [])]
     if include_benchmark:
-        cases.extend(list(expectations.get("benchmark_cases") or []))
+        cases.extend(dict(case) for case in (expectations.get("benchmark_cases") or []))
+    default_scope = expectations.get("default_entity_scope")
+    if default_scope:
+        for case in cases:
+            if case.get("expect_metric_key") and not case.get("expect_abstain"):
+                case.setdefault("expect_entity_scope", default_scope)
     if case_ids:
         allowed = set(case_ids)
         cases = [case for case in cases if case.get("id") in allowed]
@@ -342,6 +347,24 @@ def summarize_retrieval_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
     failures = Counter(
         category for item in cases for category in item.get("failure_categories") or []
     )
+    hard_negative_by_tag: dict[str, dict[str, float | int]] = {}
+    for item in cases:
+        ranking = item.get("ranking") or {}
+        if not ranking.get("evaluated"):
+            continue
+        hn_rate = ranking.get("hard_negative_rate_at_5")
+        if hn_rate is None:
+            continue
+        tags = item.get("tags") or ["untagged"]
+        for tag in tags:
+            bucket = hard_negative_by_tag.setdefault(
+                str(tag),
+                {"cases": 0, "hard_negative_rate_at_5_sum": 0.0},
+            )
+            bucket["cases"] = int(bucket["cases"]) + 1
+            bucket["hard_negative_rate_at_5_sum"] = float(
+                bucket["hard_negative_rate_at_5_sum"]
+            ) + float(hn_rate)
     abstain_cases = [item for item in cases if item.get("expect_abstain")]
     latencies = [
         float(item["latency_ms"])
@@ -413,6 +436,17 @@ def summarize_retrieval_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
             for name, channels in channel_sets.items()
         },
         "failure_categories": dict(sorted(failures.items())),
+        "hard_negative_by_tag": {
+            tag: {
+                "cases": int(values["cases"]),
+                "hard_negative_rate_at_5": round(
+                    float(values["hard_negative_rate_at_5_sum"])
+                    / max(int(values["cases"]), 1),
+                    4,
+                ),
+            }
+            for tag, values in sorted(hard_negative_by_tag.items())
+        },
     }
 
 
@@ -469,6 +503,9 @@ def score_retrieval_case(case: dict, preview: Any) -> dict:
             value = getattr(metric, "value", None) or (
                 metric.get("value") if isinstance(metric, dict) else None
             )
+            entity_scope = getattr(metric, "entity_scope", None) or (
+                metric.get("entity_scope") if isinstance(metric, dict) else None
+            )
             if key != case["expect_metric_key"]:
                 continue
             if case.get("expect_period") and not periods_equal(period, case["expect_period"]):
@@ -477,8 +514,15 @@ def score_retrieval_case(case: dict, preview: Any) -> dict:
                 value, case["expect_value"]
             ):
                 continue
+            if case.get("expect_entity_scope") and entity_scope != case["expect_entity_scope"]:
+                continue
             metric_ok = True
-            matched_metric = {"metric_key": key, "period": period, "value": value}
+            matched_metric = {
+                "metric_key": key,
+                "period": period,
+                "value": value,
+                "entity_scope": entity_scope,
+            }
             break
 
     semantic_ok = True
@@ -580,6 +624,7 @@ def score_retrieval_case(case: dict, preview: Any) -> dict:
         "warnings": list(preview.warnings or []),
         "ranking": ranking,
         "failure_categories": failure_categories,
+        "tags": list(case.get("tags") or []),
         "answer_preview": (preview.answer or "")[:400],
         "passed": passed,
     }

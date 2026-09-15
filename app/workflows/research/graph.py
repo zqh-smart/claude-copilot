@@ -25,6 +25,7 @@ class ResearchState(TypedDict, total=False):
     retrieval_passes: int
     second_retrieval_plan: dict | None
     retrieval_diagnostics: list[dict]
+    research_subtasks: list[str]
 
 
 class _FallbackCompiledGraph:

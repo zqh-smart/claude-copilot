@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from decimal import Decimal
+from typing import cast
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -12,7 +13,7 @@ from app.core.db.protocols import DocumentRepositoryProtocol, ParsedDocumentRepo
 from app.core.db.serving_facts import enrich_serving_fact_provenance, select_serving_metric_facts
 from app.core.errors import DocumentNotFoundError
 from src.claude_copilot.entity_resolution import build_canonical_company_id
-from src.claude_copilot.schemas.document import DocumentProcessingStatus
+from src.claude_copilot.schemas.document import DocumentProcessingStatus, EntityScope
 from src.claude_copilot.schemas.financial_data import CompanySummary, FinancialMetricObservation
 
 
@@ -85,6 +86,7 @@ class LocalFinancialDataRepository:
         year: int | None = None,
         metric_key: str | None = None,
         statement_type: str | None = None,
+        entity_scope: str | None = None,
         document_id: str | None = None,
         limit: int = 500,
     ) -> list[FinancialMetricObservation]:
@@ -109,6 +111,8 @@ class LocalFinancialDataRepository:
                     continue
                 if statement_type is not None and fact.statement_type != statement_type:
                     continue
+                if entity_scope is not None and fact.entity_scope != entity_scope:
+                    continue
                 observations.append(
                     FinancialMetricObservation(
                         company_id=company_id,
@@ -120,6 +124,7 @@ class LocalFinancialDataRepository:
                         period_year=period_year,
                         value=fact.value,
                         statement_type=fact.statement_type,
+                        entity_scope=fact.entity_scope,
                         unit=fact.unit,
                         currency=fact.currency,
                         source_table_id=fact.source_table_id,
@@ -211,6 +216,7 @@ class PostgresFinancialDataRepository:
         year: int | None = None,
         metric_key: str | None = None,
         statement_type: str | None = None,
+        entity_scope: str | None = None,
         document_id: str | None = None,
         limit: int = 500,
     ) -> list[FinancialMetricObservation]:
@@ -252,6 +258,8 @@ class PostgresFinancialDataRepository:
                 statement = statement.where(FinancialItemORM.metric_key == metric_key)
             if statement_type is not None:
                 statement = statement.where(FinancialItemORM.statement_type == statement_type)
+            if entity_scope is not None:
+                statement = statement.where(FinancialItemORM.entity_scope == entity_scope)
             rows = session.execute(statement).scalars().all()
 
             table_rows = (
@@ -289,6 +297,7 @@ class PostgresFinancialDataRepository:
                         period_year=period_year,
                         value=value,
                         statement_type=row.statement_type,
+                        entity_scope=cast(EntityScope, row.entity_scope),
                         unit=row.unit,
                         currency=row.currency,
                         source_table_id=row.source_table_id,

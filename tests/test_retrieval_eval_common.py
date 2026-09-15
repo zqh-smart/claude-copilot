@@ -109,6 +109,79 @@ def test_score_retrieval_case_structured_metric_match() -> None:
     assert scored["passed"] is True
 
 
+def test_score_retrieval_case_rejects_wrong_entity_scope() -> None:
+    preview = SimpleNamespace(
+        query_analysis=SimpleNamespace(intent="structured", routes=["sql"]),
+        metrics=[
+            SimpleNamespace(
+                metric_key="revenue",
+                period="2021",
+                value=2_009_197_450.44,
+                entity_scope="parent_company",
+            ),
+        ],
+        hits=[],
+        graph_paths=[],
+        warnings=[],
+        answer="",
+    )
+    case = {
+        "expect_route": "structured",
+        "expect_metric_key": "revenue",
+        "expect_period": "2021",
+        "expect_value": 2_009_197_450.44,
+        "expect_entity_scope": "consolidated",
+    }
+
+    scored = score_retrieval_case(case, preview)
+
+    assert scored["metric_ok"] is False
+    assert scored["passed"] is False
+
+
+def test_summarize_retrieval_cases_groups_hard_negative_by_tag() -> None:
+    cases = [
+        {
+            "ranking": {
+                "evaluated": True,
+                "relevance_source": "explicit_segment_fingerprints",
+                "hard_negative_rate_at_5": 1.0,
+            },
+            "tags": ["hard_negative", "table_scope"],
+            "failure_categories": [],
+        },
+        {
+            "ranking": {
+                "evaluated": True,
+                "relevance_source": "explicit_segment_fingerprints",
+                "hard_negative_rate_at_5": 0.0,
+            },
+            "tags": ["hard_negative"],
+            "failure_categories": [],
+        },
+    ]
+    summary = summarize_retrieval_cases(cases)
+    assert summary["hard_negative_by_tag"]["hard_negative"]["cases"] == 2
+    assert summary["hard_negative_by_tag"]["hard_negative"]["hard_negative_rate_at_5"] == 0.5
+    assert summary["hard_negative_by_tag"]["table_scope"]["cases"] == 1
+
+
+def test_load_retrieval_cases_inherits_default_entity_scope() -> None:
+    cases = load_retrieval_eval_cases(
+        {
+            "default_entity_scope": "consolidated",
+            "retrieval_cases": [
+                {
+                    "id": "ocf",
+                    "expect_metric_key": "net_cash_from_operating_activities",
+                }
+            ],
+        }
+    )
+
+    assert cases[0]["expect_entity_scope"] == "consolidated"
+
+
 def test_score_retrieval_case_reports_proxy_ranking_and_failure_category() -> None:
     preview = SimpleNamespace(
         query_analysis=SimpleNamespace(intent="semantic", routes=["vector"]),

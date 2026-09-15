@@ -60,6 +60,14 @@ Remove-Item Env:CHAT_LIVE
 | 集合 | 样本 | Golden | 状态 |
 |------|------|--------|------|
 | **Smoke** | 指南针 2021（300803） | `data/golden/znz_2021_stage_expectations.json` | ✔ ready（L2/L3 硅基复验 8/8） |
+
+合并/母公司口径真值见 `data/fixtures/consolidated_metric_truth.json`。本地 golden（gitignore）更新后执行：
+
+```bash
+uv run python scripts/sync_golden_entity_scope.py
+```
+
+再重跑 Serving 入库与 L3 联合检索；旧 156/156 报告不可沿用。
 | **Regression** | 聚灿光电 2021（300708） | `data/golden/jucan_2021_stage_expectations.json` | ✔ ready（L2 exact=1.0；L3 5/5） |
 | **Regression** | 天华新能 2021（300390） | `data/golden/tianhua_2021_stage_expectations.json` | ✔ ready（L2 exact=1.0；L3 5/5） |
 | **Stress** | 共同药业 2021 扫描版（300966） | `data/golden/gongtong_2021_pdf_stress.json` | ✔ ready（174 页无文本层；MinerU 真实 OCR 3 页） |
@@ -68,10 +76,10 @@ Remove-Item Env:CHAT_LIVE
 
 **门禁约定**：改 pipeline / serving / 检索后，先跑 Smoke，再跑 Regression；**全部 ready 样本都过**才可宣称 Knowledge Layer「检索可用」。
 
-PDF 默认目录（本机）：
+核心 Smoke/Regression PDF 使用仓库内固定样本：
 
 ```text
-Z:/BaiduNetdiskDownload/阶段12：LLM大型复杂项目实战/项目实战2：大模型金融对话交互系统/allpdf-part1/
+data/documents/
 ```
 
 | 样本 | 文件名 |
@@ -101,6 +109,17 @@ Z:/BaiduNetdiskDownload/阶段12：LLM大型复杂项目实战/项目实战2：�
 
 ### L3 检索
 
+无 Docker 时可运行：
+
+```bash
+python scripts/run_serving_ingest_eval.py --execution-mode local-protocol
+```
+
+该模式仍执行 Qdrant 向量、词法、结构化和本地图协议链路，但使用进程内 Qdrant、
+hash embedding 与确定性 rerank。报告写入 `data/reports/local_protocol_eval/`，并明确标注
+`production_equivalent=false`；它只用于可重复诊断，不能替代 Postgres/Qdrant/Neo4j
+生产三库 L3 门禁。
+
 - `run_serving_ingest_eval.py`：`l3.pass_rate == 1.0`（全部 `retrieval_cases` 通过）
 - 生产复验：`EMBEDDING_BACKEND=silicon`、无 hash fallback、向量维 = `EMBEDDING_DIMENSIONS`、collection 与模型一致（当前 `document_segments_bge_m3` / 1024）
 - Silicon 不可用时默认失败；仅离线调试加 `--allow-hash-fallback`
@@ -109,6 +128,12 @@ Z:/BaiduNetdiskDownload/阶段12：LLM大型复杂项目实战/项目实战2：�
   基线：`data/reports/joint_retrieval_benchmark/baseline_joint_retrieval_benchmark.json`  
   对比：`--compare-baseline`；冻结：`--save-baseline`  
   当前文档停手：不加题、不调 fusion；仅软阈值/线上捡错段时再做 query-aware / section ownership
+- **检索消融（诊断，非硬门禁）**  
+  - RRF vs linear：`uv run python scripts/run_retrieval_fusion_ablation.py` → `data/reports/retrieval_fusion_ablation/`  
+  - Agentic 二轮 on/off：`uv run python scripts/run_agentic_retrieval_ablation.py` → `data/reports/agentic_retrieval_ablation/`  
+- **GraphRAG 金标（100+ 扩展题）**：`uv run python scripts/run_graph_rag_gold_eval.py`  
+  题集：`data/fixtures/graph_rag_gold_queries.json`（`doc_slots × templates`）；报告：`data/reports/graph_rag_gold/latest_graph_rag_gold.json`  
+  需 Serving 入库后各 `document_key` 可解析到 `doc_id`；无文档时跳过并汇总 `skipped_case_count`
 
 ### L4（独立硬门禁）
 
@@ -305,7 +330,7 @@ python scripts/run_acceptance_suite.py --profile smoke --with-api
 |------|------|------|
 | 健康 | `GET /health` | `status == ok` |
 | 公司列表 | `GET /api/v1/companies` | 含指南针 `company_id` |
-| 结构化指标 | `GET /api/v1/companies/{id}/metrics?metric_key=revenue&year=2021` | `revenue` 2021 ≈ `931944638` |
+| 结构化指标 | `GET /api/v1/companies/{id}/metrics?metric_key=revenue&year=2021&entity_scope=consolidated` | 指南针 `revenue` 2021 ≈ `932420978`（合并口径） |
 | 检索路由 | `POST /api/v1/research/query`（golden `q_revenue_2021`） | 路由含 `sql`/structured；返回 metric 值匹配 |
 
 未入库时脚本 exit `1` 并打印 prerequisite；断言失败 exit `2`。
@@ -344,7 +369,8 @@ python -m pytest tests/test_serving_gate.py tests/test_serving_facts.py tests/te
 
 | 指标 | 2021 | 2020 |
 |------|-----:|-----:|
-| revenue（营业收入） | 1311334600.52 | 1279195406.04 |
+| revenue（营业收入，**合并口径**） | 2009197450.44 | 1406674200.72 |
+| revenue（母公司口径，显式问句） | 1311334600.52 | 1279195406.04 |
 | net_cash_from_operating_activities | 465398314.38 | 232760752.03 |
 
 现金流行核对：`经营活动产生的现金流量净额 | 465,398,314.38 | 232,760,752.03 | 99.95`（末列同比%已丢弃）。  
@@ -354,7 +380,8 @@ python -m pytest tests/test_serving_gate.py tests/test_serving_facts.py tests/te
 
 | 指标 | 2021 | 2020 |
 |------|-----:|-----:|
-| revenue（营业收入） | 469378042.95 | 565068173.71 |
+| revenue（营业收入，**合并口径**） | 3397557862.27 | 1313177402.56 |
+| revenue（母公司口径，显式问句） | 469378042.95 | 565068173.71 |
 | net_cash_from_operating_activities | 180482013.62 | 349953492.93 |
 
 现金流行核对：`经营活动产生的现金流量净额 | 180,482,013.62 | 349,953,492.93 | -48.43`（末列同比%已丢弃）。

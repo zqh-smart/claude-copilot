@@ -17,6 +17,15 @@ _NOTE_TABLE_PENALTY = 0.12
 _YEAR_MATCH_BOOST = 0.08
 _RELATIVE_SCORE_FLOOR = 0.35
 _WINDOW_SCORE_DECAY = 0.85
+_RRF_K = 60
+_INSTRUMENT_RISK_CUES = (
+    "利率",
+    "汇率",
+    "公允价值",
+    "金融工具",
+    "interest rate",
+    "fair value",
+)
 _COMPANY_IDENTITY_BOOST = 0.08
 _YEAR_RE = re.compile(r"(?<!\d)(19\d{2}|20\d{2})(?!\d)")
 
@@ -94,6 +103,7 @@ class LocalRetriever:
         candidate_multiplier: int = 4,
         vector_weight: float = 0.65,
         lexical_weight: float = 0.35,
+        fusion_mode: str = "rrf",
     ) -> None:
         self._segment_repository = segment_repository
         self._vector_store = vector_store
@@ -102,6 +112,7 @@ class LocalRetriever:
         self._candidate_multiplier = max(1, candidate_multiplier)
         self._vector_weight = vector_weight
         self._lexical_weight = lexical_weight
+        self._fusion_mode = fusion_mode if fusion_mode in {"rrf", "linear"} else "rrf"
 
     def retrieve(
         self,
@@ -142,7 +153,11 @@ class LocalRetriever:
             fallback = [(segment, 0.01) for segment in fallback_segments]
             fallback = self._apply_section_constraint(fallback, section_hints)
             fallback = self._apply_year_constraint(fallback, years)
-            return self._attach_retrieval_diagnostics(fallback[:top_k], merged)
+            return self._attach_retrieval_diagnostics(
+                fallback[:top_k],
+                merged,
+                fusion_mode=self._fusion_mode,
+            )
 
         candidates = self._build_candidates(
             merged,
@@ -179,6 +194,7 @@ class LocalRetriever:
             merged,
             fused_scores=fused_scores,
             rerank_scores=rerank_scores,
+            fusion_mode=self._fusion_mode,
         )
 
     @staticmethod
@@ -255,14 +271,20 @@ class LocalRetriever:
         requested_years = set(years or [])
         question_fold = question.casefold()
         candidates: list[tuple[DocumentSegment, float]] = []
+        rrf_scores = (
+            self._rrf_fusion_scores(merged) if self._fusion_mode == "rrf" else {}
+        )
         for item in merged.values():
             segment = item["segment"]
             vector_score = float(item["vector_score"])
             lexical_score = float(item["lexical_score"])
-            combined_score = (
-                vector_score * self._vector_weight
-                + lexical_score * self._lexical_weight
-            )
+            if self._fusion_mode == "linear":
+                combined_score = (
+                    vector_score * self._vector_weight
+                    + lexical_score * self._lexical_weight
+                )
+            else:
+                combined_score = rrf_scores.get(segment.segment_id, 0.0)
             combined_score += self._query_aware_adjustment(
                 segment,
                 question_fold=question_fold,
@@ -277,6 +299,41 @@ class LocalRetriever:
             reverse=True,
         )
         return candidates
+
+    @staticmethod
+    def _rrf_fusion_scores(merged: dict[str, dict[str, object]], *, k: int = _RRF_K) -> dict[str, float]:
+        """Reciprocal rank fusion over dense and lexical channels (Qdrant-style hybrid)."""
+        if not merged:
+            return {}
+        by_vector = sorted(
+            merged.values(),
+            key=lambda item: (float(item["vector_score"]), len(item["segment"].content)),
+            reverse=True,
+        )
+        by_lexical = sorted(
+            merged.values(),
+            key=lambda item: (float(item["lexical_score"]), len(item["segment"].content)),
+            reverse=True,
+        )
+        vector_rank = {
+            item["segment"].segment_id: rank
+            for rank, item in enumerate(by_vector, start=1)
+            if float(item["vector_score"]) > 0
+        }
+        lexical_rank = {
+            item["segment"].segment_id: rank
+            for rank, item in enumerate(by_lexical, start=1)
+            if float(item["lexical_score"]) > 0
+        }
+        fused: dict[str, float] = {}
+        for segment_id in merged:
+            score = 0.0
+            if segment_id in vector_rank:
+                score += 1.0 / (k + vector_rank[segment_id])
+            if segment_id in lexical_rank:
+                score += 1.0 / (k + lexical_rank[segment_id])
+            fused[segment_id] = score
+        return fused
 
     @staticmethod
     def _apply_year_constraint(
@@ -370,6 +427,7 @@ class LocalRetriever:
         *,
         fused_scores: dict[str, float] | None = None,
         rerank_scores: dict[str, float] | None = None,
+        fusion_mode: str = "rrf",
     ) -> list[tuple[DocumentSegment, float]]:
         annotated: list[tuple[DocumentSegment, float]] = []
         for segment, score in hits:
@@ -382,6 +440,7 @@ class LocalRetriever:
             if page is None and isinstance(page_range, (list, tuple)) and page_range:
                 page = page_range[0]
             metadata["retrieval"] = {
+                "fusion_mode": fusion_mode,
                 "vector_score": round(float(bucket.get("vector_score") or 0.0), 4),
                 "lexical_score": round(float(bucket.get("lexical_score") or 0.0), 4),
                 "fused_score": round(
@@ -467,6 +526,14 @@ class LocalRetriever:
             or "risk" in question_fold
         )
         if risk_q and any(cue in content for cue in _NOTE_TABLE_CUES):
+            if section_type in {"financial_statement", "financial_note", ""}:
+                delta -= _NOTE_TABLE_PENALTY
+
+        business_market_risk_q = (
+            any(cue in question_fold for cue in ("市场风险", "市场竞争", "竞争加剧"))
+            and not any(cue in question_fold for cue in _INSTRUMENT_RISK_CUES)
+        )
+        if business_market_risk_q and any(cue in content for cue in _INSTRUMENT_RISK_CUES):
             if section_type in {"financial_statement", "financial_note", ""}:
                 delta -= _NOTE_TABLE_PENALTY
 

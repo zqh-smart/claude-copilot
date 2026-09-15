@@ -9,6 +9,7 @@ from app.core.db import (
     ParsedDocumentRepositoryProtocol,
     SegmentRepositoryProtocol,
 )
+from app.core.config import get_settings
 from app.core.errors import DocumentNotFoundError, DocumentProcessingCancelledError
 from app.core.kg import (
     KnowledgeGraphBuilder,
@@ -67,7 +68,10 @@ class DocumentPipelineService:
         self._table_intelligence = TableIntelligenceService()
         self._structure_reconstruction = StructureReconstructionService()
         self._schema_mapping = FinancialSchemaMappingService()
-        self._chunking = ChunkingService()
+        chunk_settings = get_settings()
+        self._chunking = ChunkingService(
+            contextual_prefix=chunk_settings.contextual_chunk_prefix_enabled,
+        )
         self._indexing = IndexingService(segment_repository, vector_store)
         self._graph_builder = KnowledgeGraphBuilder()
         self._graph_store = graph_store or NoOpKnowledgeGraphStore()

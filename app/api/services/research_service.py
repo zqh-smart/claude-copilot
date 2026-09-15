@@ -51,6 +51,10 @@ class ResearchService:
             self._revise_answer,
         )
 
+    @property
+    def orchestrator(self) -> RetrievalOrchestrator | None:
+        return self._orchestrator
+
     def preview(
         self,
         *,
@@ -150,6 +154,18 @@ class ResearchService:
         )
 
     def _run_retrieval(self, state: dict) -> dict:
+        from app.core.config import get_settings
+        from app.core.rag.research_planner import is_deep_research_question
+
+        settings = get_settings()
+        question = str(state.get("question") or "")
+        if (
+            self._orchestrator is not None
+            and settings.research_deep_retrieval_enabled
+            and is_deep_research_question(question)
+        ):
+            return self._run_deep_retrieval(state)
+
         if self._orchestrator is not None:
             record = self._document_pipeline_service.get_document(state["doc_id"])
             result = self._orchestrator.retrieve(
@@ -170,6 +186,7 @@ class ResearchService:
                 warnings,
                 metrics,
             )
+            warnings.extend(self._entity_scope_conflict_warnings(metrics, analysis))
             second_retrieve_done = False
             retrieval_passes = 1
             second_plan: SecondRetrievalPlan | None = None
@@ -188,7 +205,7 @@ class ResearchService:
                 analysis=analysis,
                 question=str(state.get("question") or ""),
             )
-            if reason:
+            if reason and settings.research_agentic_second_pass_enabled:
                 second_plan = self._build_second_retrieval_plan(
                     reason=reason,
                     question=state["question"],
@@ -209,6 +226,7 @@ class ResearchService:
                         years=second_plan.years,
                         needs_growth=second_plan.needs_growth,
                         section_hints=second_plan.section_hints,
+                        entity_scope=second_plan.entity_scope,
                     ),
                 )
                 second_metrics = [
@@ -372,6 +390,114 @@ class ResearchService:
             ],
         }
 
+    def _run_deep_retrieval(self, state: dict) -> dict:
+        from app.core.rag.orchestrator import QueryAnalyzer
+        from app.core.rag.research_planner import plan_deep_research
+
+        assert self._orchestrator is not None
+        record = self._document_pipeline_service.get_document(state["doc_id"])
+        question = str(state["question"] or "")
+        top_k = int(state["top_k"])
+        analyzer = QueryAnalyzer()
+        base_analysis = analyzer.analyze(question)
+
+        hits: list[dict] = []
+        metrics: list[dict] = []
+        graph_paths: list[dict] = []
+        calculations: list[dict] = []
+        subtasks = plan_deep_research(question)
+        warnings: list[str] = [f"Deep retrieval: {len(subtasks)} subtasks."]
+        diagnostics: list[dict] = []
+        subtask_ids: list[str] = []
+
+        for pass_index, task in enumerate(subtasks, start=1):
+            subtask_ids.append(task.task_id)
+            override = QueryAnalysis(
+                intent=base_analysis.intent,
+                routes=list(base_analysis.routes),
+                metric_keys=task.metric_keys or list(base_analysis.metric_keys),
+                years=list(base_analysis.years),
+                needs_growth=base_analysis.needs_growth,
+                section_hints=task.section_hints or list(base_analysis.section_hints),
+                entity_scope=base_analysis.entity_scope,
+            )
+            result = self._orchestrator.retrieve(
+                task.question,
+                doc_id=state["doc_id"],
+                company_id=state.get("company_id"),
+                top_k=top_k,
+                company_name=record.metadata.company,
+                company_aliases=list(record.metadata.company_aliases or []),
+                analysis_override=override,
+            )
+            task_hits = self._serialize_hits(result.vector_hits)
+            hits = self._merge_hits(hits, task_hits, top_k * 3)
+            task_metrics = [item.model_dump(mode="json") for item in result.metrics]
+            metrics = self._merge_records(
+                task_metrics,
+                metrics,
+                identity_fields=("document_id", "metric_key", "period_year", "value"),
+                limit=30,
+            )
+            task_paths = [item.model_dump(mode="json") for item in result.graph_paths]
+            graph_paths = self._merge_records(
+                task_paths,
+                graph_paths,
+                identity_fields=("path_id",),
+                limit=top_k * 2,
+            )
+            task_calcs = [item.model_dump(mode="json") for item in result.calculations]
+            calculations = self._merge_records(
+                task_calcs,
+                calculations,
+                identity_fields=("metric_key",),
+            )
+            warnings.extend(result.warnings)
+            diagnostics.append(
+                self._retrieval_diagnostic(
+                    pass_index=pass_index,
+                    query=task.question,
+                    result=result,
+                    reason=f"deep_subtask:{task.task_id}",
+                )
+            )
+
+        analysis = base_analysis.model_dump(mode="json")
+        warnings, metrics = self._apply_doc_year_guard(
+            record,
+            analysis,
+            warnings,
+            metrics,
+        )
+        warnings.extend(self._entity_scope_conflict_warnings(metrics, analysis))
+        fusion_summary = FusionSummary(
+            query_intent=analysis.get("intent") or "hybrid",
+            routes=list(dict.fromkeys(analysis.get("routes") or [])),
+            vector_snippet_count=len(hits),
+            metric_count=len(metrics),
+            graph_path_count=len(graph_paths),
+            summary=(
+                f"Deep research fused {len(hits)} snippets, "
+                f"{len(metrics)} metrics, {len(graph_paths)} graph paths "
+                f"across {len(subtask_ids)} subtasks."
+            ),
+        ).model_dump(mode="json")
+
+        return {
+            "hits": hits,
+            "query_analysis": analysis,
+            "metrics": metrics,
+            "calculations": calculations,
+            "graph_paths": graph_paths,
+            "fusion_summary": fusion_summary,
+            "warnings": warnings,
+            "second_retrieve_done": False,
+            "retrieval_passes": len(subtask_ids),
+            "second_retrieval_plan": None,
+            "research_subtasks": subtask_ids,
+            "retrieval_diagnostics": diagnostics,
+        }
+
     def _synthesize_answer(self, state: dict) -> dict:
         # Retrieval keeps clean ``question``; synthesis may include chat-memory context.
         synthesis_question = str(
@@ -438,6 +564,8 @@ class ResearchService:
                 question=state["question"],
                 evidence=state.get("evidence", []),
                 synthesis=synthesis,
+                metrics=list(state.get("metrics") or []),
+                query_analysis=state.get("query_analysis"),
             )
             return {
                 "critic": review.model_dump(mode="json"),
@@ -473,6 +601,9 @@ class ResearchService:
                     review,
                     synthesis,
                     state.get("evidence", []),
+                    question=state["question"],
+                    metrics=list(state.get("metrics") or []),
+                    query_analysis=state.get("query_analysis") or {},
                 )
             except Exception:  # noqa: BLE001
                 pass
@@ -525,6 +656,7 @@ class ResearchService:
                         years=plan.years,
                         needs_growth=plan.needs_growth,
                         section_hints=plan.section_hints,
+                        entity_scope=plan.entity_scope,
                     ),
                 )
                 extra_hits = second_result.vector_hits
@@ -811,8 +943,44 @@ class ResearchService:
             years=list(kwargs.get("years") or []),
             needs_growth=bool(analysis.get("needs_growth")),
             section_hints=list(kwargs.get("section_hints") or []),
+            entity_scope=analysis.get("entity_scope", "unknown"),
             budget=1,
         )
+
+    @staticmethod
+    def _entity_scope_conflict_warnings(
+        metrics: list[dict],
+        analysis: dict,
+    ) -> list[str]:
+        """Flag when multiple entity scopes compete for the same metric period."""
+        if not metrics:
+            return []
+        requested_scope = analysis.get("entity_scope")
+        grouped: dict[tuple[str, str], set[str]] = {}
+        for item in metrics:
+            key = (str(item.get("metric_key") or ""), str(item.get("period") or ""))
+            scope = str(item.get("entity_scope") or "unknown")
+            grouped.setdefault(key, set()).add(scope)
+        conflicts = [
+            key
+            for key, scopes in grouped.items()
+            if len(scopes) > 1 and "unknown" not in scopes
+        ]
+        if not conflicts:
+            return []
+        if requested_scope in {"consolidated", "parent_company"}:
+            return [
+                (
+                    "Entity scope conflict: multiple scopes present for "
+                    f"{conflicts[0][0]} {conflicts[0][1]}; prefer {requested_scope}."
+                )
+            ]
+        return [
+            (
+                "Entity scope conflict: multiple scopes present for "
+                f"{conflicts[0][0]} {conflicts[0][1]}."
+            )
+        ]
 
     @staticmethod
     def _apply_doc_year_guard(

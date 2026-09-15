@@ -1535,6 +1535,101 @@ def test_financial_schema_mapping_aggregates_statements_notes_and_sections() -> 
     assert schema.metadata["note_fact_count"] == 1
 
 
+def test_financial_schema_mapping_preserves_scope_and_indexes_consolidated() -> None:
+    service = FinancialSchemaMappingService()
+    document = ParsedDocument(
+        doc_id="doc-scope",
+        metadata=build_metadata("scope.pdf", ".pdf"),
+        tables=[
+            ParsedTable(
+                table_id="parent-income",
+                table_type="income_statement",
+                title="二、财务报表",
+                page=98,
+                period_headers=["2021"],
+                normalized_metrics={"revenue": {"2021": 1_311_334_600.52}},
+                metadata={"nearby_context": "4、母公司利润表"},
+            ),
+            ParsedTable(
+                table_id="consolidated-income",
+                table_type="income_statement",
+                title="二、财务报表",
+                page=96,
+                period_headers=["2021"],
+                normalized_metrics={"revenue": {"2021": 2_009_197_450.44}},
+                metadata={"nearby_context": "3、合并利润表"},
+            ),
+        ],
+    )
+
+    schema = service.map(document).financial_schema
+
+    assert schema is not None
+    assert {(fact.entity_scope, fact.value) for fact in schema.metric_facts} == {
+        ("consolidated", 2_009_197_450.44),
+        ("parent_company", 1_311_334_600.52),
+    }
+    assert schema.metrics_index["revenue"]["2021"] == 2_009_197_450.44
+
+
+def test_financial_schema_mapping_uses_page_heading_for_continued_tables() -> None:
+    service = FinancialSchemaMappingService()
+    document = ParsedDocument(
+        doc_id="doc-scope-heading",
+        metadata=build_metadata("scope-heading.pdf", ".pdf"),
+        page_blocks=[
+            ParsedPageBlock(
+                block_id="h1",
+                block_type="heading",
+                text="5、合并现金流量表",
+                page=99,
+                order=1,
+            ),
+            ParsedPageBlock(
+                block_id="h2",
+                block_type="heading",
+                text="6、母公司现金流量表",
+                page=101,
+                order=1,
+            ),
+        ],
+        tables=[
+            ParsedTable(
+                table_id="consolidated-cash",
+                table_type="cash_flow",
+                title="二、财务报表",
+                page=100,
+                period_headers=["2021"],
+                normalized_metrics={
+                    "net_cash_from_operating_activities": {"2021": 465_398_314.38}
+                },
+            ),
+            ParsedTable(
+                table_id="parent-cash",
+                table_type="cash_flow",
+                title="二、财务报表",
+                page=102,
+                period_headers=["2021"],
+                normalized_metrics={
+                    "net_cash_from_operating_activities": {"2021": 93_070_915.09}
+                },
+            ),
+        ],
+    )
+
+    schema = service.map(document).financial_schema
+
+    assert schema is not None
+    assert {(fact.entity_scope, fact.value) for fact in schema.metric_facts} == {
+        ("consolidated", 465_398_314.38),
+        ("parent_company", 93_070_915.09),
+    }
+    assert (
+        schema.metrics_index["net_cash_from_operating_activities"]["2021"]
+        == 465_398_314.38
+    )
+
+
 def test_financial_schema_mapping_builds_stable_note_fact_keys() -> None:
     service = FinancialSchemaMappingService()
     document = ParsedDocument(

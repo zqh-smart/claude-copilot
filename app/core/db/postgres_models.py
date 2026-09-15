@@ -159,6 +159,9 @@ class FinancialItemORM(Base):
     metric_key: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
     fact_key: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
     statement_type: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    entity_scope: Mapped[str] = mapped_column(
+        Text, nullable=False, default="unknown", server_default="unknown", index=True
+    )
     period: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
     value_numeric: Mapped[float | None] = mapped_column(Numeric, nullable=True)
     value_text: Mapped[str | None] = mapped_column(Text, nullable=True)

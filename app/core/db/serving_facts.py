@@ -13,8 +13,12 @@ def fact_key(fact: FinancialMetricFact) -> str:
     return f"{fact.metric_key}::{fact.period}::{fact.value}"
 
 
-def metric_period_key(metric_key: str, period: str) -> str:
-    return f"{metric_key}::{period}"
+def metric_period_key(
+    metric_key: str,
+    period: str,
+    entity_scope: str = "unknown",
+) -> str:
+    return f"{metric_key}::{period}::{entity_scope}"
 
 
 def select_serving_metric_facts(
@@ -205,12 +209,12 @@ def dedupe_serving_metric_facts(
     *,
     schema: FinancialSchema | None = None,
 ) -> list[FinancialMetricFact]:
-    """Keep one fact per metric_key+period before cross-document conflict checks."""
-    grouped: dict[tuple[str, str], list[FinancialMetricFact]] = {}
+    """Keep one fact per metric, period, and reporting scope."""
+    grouped: dict[tuple[str, str, str], list[FinancialMetricFact]] = {}
     for fact in facts:
         if not fact.metric_key or not fact.period:
             continue
-        key = (fact.metric_key, fact.period)
+        key = (fact.metric_key, fact.period, fact.entity_scope)
         grouped.setdefault(key, []).append(fact)
     deduped: list[FinancialMetricFact] = []
     for candidates in grouped.values():

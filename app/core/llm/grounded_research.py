@@ -7,6 +7,12 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.core.llm.client import JsonChatClientProtocol
+from app.core.llm.evidence_verifiers import (
+    merge_verifier_issues,
+    verify_citation_entailment,
+    verify_entity_scope,
+    verify_numeric_claims,
+)
 from src.claude_copilot.schemas.research import (
     CriticIssue,
     CriticReview,
@@ -152,6 +158,8 @@ class GroundedResearchEngine:
         question: str,
         evidence: list[dict[str, Any]],
         synthesis: GroundedSynthesis,
+        metrics: list[dict[str, Any]] | None = None,
+        query_analysis: dict[str, Any] | None = None,
     ) -> CriticReview:
         payload = self._client.complete_json(
             system_prompt=self._critic_system_prompt(),
@@ -176,7 +184,14 @@ class GroundedResearchEngine:
                 ),
             )
             review = CriticReview.model_validate(_normalize_critic_categories(payload))
-        return self._apply_deterministic_checks(review, synthesis, evidence)
+        return self._apply_deterministic_checks(
+            review,
+            synthesis,
+            evidence,
+            question=question,
+            metrics=metrics or [],
+            query_analysis=query_analysis or {},
+        )
 
     def _sanitize_synthesis_citations(
         self,
@@ -372,6 +387,10 @@ class GroundedResearchEngine:
         review: CriticReview,
         synthesis: GroundedSynthesis,
         evidence: list[dict[str, Any]],
+        *,
+        question: str = "",
+        metrics: list[dict[str, Any]] | None = None,
+        query_analysis: dict[str, Any] | None = None,
     ) -> CriticReview:
         valid_ids = {item["evidence_id"] for item in evidence}
         invalid_ids = sorted(
@@ -410,6 +429,16 @@ class GroundedResearchEngine:
                     ),
                 )
             )
+        verifier_issues = [
+            *verify_numeric_claims(synthesis, evidence),
+            *verify_entity_scope(
+                question,
+                metrics or [],
+                requested_scope=(query_analysis or {}).get("entity_scope"),
+            ),
+            *verify_citation_entailment(synthesis, evidence),
+        ]
+        issues = merge_verifier_issues(issues, verifier_issues)
         has_blocking_issue = any(issue.severity in {"medium", "high"} for issue in issues)
         return review.model_copy(
             update={

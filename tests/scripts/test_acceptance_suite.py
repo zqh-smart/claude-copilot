@@ -62,3 +62,20 @@ def test_l4_profile_runs_full_all_sample_gate(monkeypatch) -> None:
 
     assert run_acceptance_suite._run_l4() == 0
     assert commands[0][-2:] == ["--profile", "all"]
+
+
+def test_scope_contract_rejects_wrong_explicit_parent_scope() -> None:
+    payload = {
+        "default_entity_scope": "consolidated",
+        "benchmark_cases": [
+            {
+                "id": "parent",
+                "question": "母公司口径2021年营业收入是多少？",
+                "expect_entity_scope": "consolidated",
+            }
+        ],
+    }
+
+    failures = run_acceptance_suite._scope_contract_failures(payload)
+
+    assert failures == ["parent: parent-company question has wrong scope"]

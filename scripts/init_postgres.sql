@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS financial_items (
     metric_key TEXT,
     fact_key TEXT,
     statement_type TEXT,
+    entity_scope TEXT NOT NULL DEFAULT 'unknown',
     period TEXT,
     value_numeric NUMERIC,
     value_text TEXT,
@@ -117,6 +118,7 @@ CREATE INDEX IF NOT EXISTS ix_financial_items_fact_type ON financial_items(fact_
 CREATE INDEX IF NOT EXISTS ix_financial_items_metric_key ON financial_items(metric_key);
 CREATE INDEX IF NOT EXISTS ix_financial_items_fact_key ON financial_items(fact_key);
 CREATE INDEX IF NOT EXISTS ix_financial_items_statement_type ON financial_items(statement_type);
+CREATE INDEX IF NOT EXISTS ix_financial_items_entity_scope ON financial_items(entity_scope);
 CREATE INDEX IF NOT EXISTS ix_financial_items_period ON financial_items(period);
 CREATE INDEX IF NOT EXISTS ix_financial_items_note_category ON financial_items(note_category);
 CREATE INDEX IF NOT EXISTS ix_financial_items_doc_metric_period

@@ -1,4 +1,4 @@
-"""Serving-track ingest (Postgres/Qdrant/Neo4j) + L3 retrieval_cases eval."""
+"""Production Serving or isolated local-protocol L3 retrieval evaluation."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import time
+from hashlib import sha256
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,12 +19,23 @@ DEFAULT_PDF = Path(
     r"/项目实战2：大模型金融对话交互系统/allpdf-part1"
     r"/2022-01-25__北京指南针科技发展股份有限公司__300803__指南针__2021年__年度报告.pdf"
 )
+DEFAULT_PDF = ROOT / "data" / "documents" / "95686a1aa6534494a1806fdc8e9d6b1c.pdf"
 DEFAULT_GOLDEN = ROOT / "data" / "golden" / "znz_2021_stage_expectations.json"
 OUT_DIR = ROOT / "data" / "reports" / "serving_eval"
+LOCAL_OUT_DIR = ROOT / "data" / "reports" / "local_protocol_eval"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Serving ingest + L3 retrieval eval")
+    parser.add_argument(
+        "--execution-mode",
+        choices=("production-serving", "local-protocol"),
+        default="production-serving",
+        help=(
+            "production-serving requires external Postgres/Qdrant/Neo4j; local-protocol "
+            "uses isolated local persistence and in-memory Qdrant and is not a production gate"
+        ),
+    )
     parser.add_argument("--pdf-path", type=Path, default=DEFAULT_PDF)
     parser.add_argument("--expectations", type=Path, default=DEFAULT_GOLDEN)
     parser.add_argument("--storage-backend", default="postgres")
@@ -42,6 +54,31 @@ def parse_args() -> argparse.Namespace:
         "(OCR/table stress subsets may lack full statement coverage).",
     )
     return parser.parse_args()
+
+
+def _configure_execution(args: argparse.Namespace) -> tuple[Path, str]:
+    if args.execution_mode == "production-serving":
+        os.environ["STORAGE_BACKEND"] = args.storage_backend
+        os.environ["VECTOR_STORE_BACKEND"] = args.vector_backend
+        os.environ["GRAPH_STORE_BACKEND"] = args.graph_backend
+        return OUT_DIR, "production-serving"
+
+    runtime_root = LOCAL_OUT_DIR / "runtime"
+    os.environ.update(
+        {
+            "STORAGE_BACKEND": "local",
+            "VECTOR_STORE_BACKEND": "qdrant",
+            "GRAPH_STORE_BACKEND": "local",
+            "QDRANT_URL": ":memory:",
+            "EMBEDDING_BACKEND": "hash",
+            "RERANK_BACKEND": "deterministic",
+            "DOCUMENT_STORAGE_PATH": str(runtime_root / "documents"),
+            "RAW_DATA_PATH": str(runtime_root / "raw"),
+            "PARSED_DATA_PATH": str(runtime_root / "parsed"),
+            "GRAPH_DATA_PATH": str(runtime_root / "graph"),
+        }
+    )
+    return LOCAL_OUT_DIR, "local-protocol"
 
 
 def _reset_caches() -> None:
@@ -120,11 +157,10 @@ def main() -> int:
     args = parse_args()
     if not args.pdf_path.exists():
         raise FileNotFoundError(args.pdf_path)
-    expectations = json.loads(args.expectations.read_text(encoding="utf-8"))
+    expectation_bytes = args.expectations.read_bytes()
+    expectations = json.loads(expectation_bytes.decode("utf-8"))
 
-    os.environ["STORAGE_BACKEND"] = args.storage_backend
-    os.environ["VECTOR_STORE_BACKEND"] = args.vector_backend
-    os.environ["GRAPH_STORE_BACKEND"] = args.graph_backend
+    out_dir, execution_mode = _configure_execution(args)
     # L3 scores retrieval only; keep synthesis off to avoid LLM noise.
     os.environ["LLM_GROUNDED_SYNTHESIS_ENABLED"] = "false"
     _reset_caches()
@@ -197,7 +233,11 @@ def main() -> int:
         return 1
 
     parsed = parsed_repo.get(record.doc_id)
-    gate = (parsed.financial_schema.metadata.get("serving_gate") if parsed.financial_schema else {}) or {}
+    gate = (
+        parsed.financial_schema.metadata.get("serving_gate")
+        if parsed.financial_schema
+        else {}
+    ) or {}
     serving_facts = select_serving_metric_facts_from_document(parsed)
     company_id = build_company_id(record.metadata.company or "")
     sql_metrics = financial.query_metrics(company_id, limit=500) if company_id else []
@@ -205,13 +245,30 @@ def main() -> int:
     cases = expectations.get("retrieval_cases") or []
     case_results = []
     for case in cases:
-        preview = research.preview(doc_id=record.doc_id, question=case["question"], top_k=args.top_k)
+        preview = research.preview(
+            doc_id=record.doc_id,
+            question=case["question"],
+            top_k=args.top_k,
+        )
         scored = _score_case(case, preview)
         case_results.append(scored)
         print(json.dumps(scored, ensure_ascii=False, indent=2))
 
     passed = sum(1 for item in case_results if item["passed"])
+    gate_passed = bool(gate.get("allow_metric_serving", False))
+    retrieval_passed = not case_results or passed == len(case_results)
+    failures = [
+        str(item.get("id") or "unknown_case")
+        for item in case_results
+        if not item["passed"]
+    ]
+    if not gate_passed:
+        failures.insert(0, "serving_gate")
     report = {
+        "schema_version": "1.0",
+        "execution_mode": execution_mode,
+        "production_equivalent": execution_mode == "production-serving",
+        "sample_manifest_hash": sha256(expectation_bytes).hexdigest(),
         "doc_id": record.doc_id,
         "document_key": document_key,
         "ingest_seconds": ingest_seconds,
@@ -234,11 +291,32 @@ def main() -> int:
             "pass_rate": round(passed / max(len(case_results), 1), 4),
             "cases": case_results,
         },
+        "checks": {
+            "serving_gate": gate_passed,
+            "retrieval_cases": retrieval_passed,
+        },
+        "passed": gate_passed and retrieval_passed,
+        "failures": failures,
+        "runtime": {
+            "ingest_seconds": ingest_seconds,
+            "python": sys.version.split()[0],
+        },
     }
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUT_DIR / f"{record.doc_id}_serving_eval.json"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    suffix = (
+        "serving_eval"
+        if execution_mode == "production-serving"
+        else "local_protocol_eval"
+    )
+    out_path = out_dir / f"{record.doc_id}_{suffix}.json"
     out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps({"wrote": str(out_path), "l3_pass_rate": report["l3"]["pass_rate"]}, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {"wrote": str(out_path), "l3_pass_rate": report["l3"]["pass_rate"]},
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
 
     if not gate.get("allow_metric_serving", False) and not args.allow_serving_gate_fail:
         return 3

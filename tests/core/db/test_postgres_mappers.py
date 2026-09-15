@@ -85,6 +85,7 @@ def test_financial_fact_mappers_preserve_numeric_and_provenance() -> None:
         period="2024",
         value=100,
         statement_type="income_statement",
+        entity_scope="consolidated",
         source_table_id="table-1",
         provenance={"source": "test"},
     )
@@ -108,6 +109,7 @@ def test_financial_fact_mappers_preserve_numeric_and_provenance() -> None:
     assert metric_orm.value_numeric == Decimal("100")
     assert metric_orm.value_text is None
     assert metric_orm.provenance["source"] == "test"
+    assert metric_orm.entity_scope == "consolidated"
 
     assert note_orm.fact_type == "note"
     assert note_orm.dimensions == {"Class": "Consumer"}

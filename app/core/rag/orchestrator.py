@@ -19,6 +19,7 @@ from app.core.rag.retriever import (
     segment_section_type,
 )
 from src.claude_copilot.entity_resolution import EntityResolver
+from src.claude_copilot.schemas.document import EntityScope
 from src.claude_copilot.schemas.financial_data import FinancialMetricObservation
 from src.claude_copilot.schemas.knowledge_graph import GraphPath
 from src.claude_copilot.schemas.research import FusionSummary, MetricCalculation, QueryAnalysis
@@ -175,7 +176,26 @@ class QueryAnalyzer:
             "cash flow statement",
         ),
     }
-    _EXPLANATION_CUES = ("为什么", "为何", "why", "reason", "原因", "explain")
+    _EXPLANATION_CUES = (
+        "为什么",
+        "为何",
+        "why",
+        "reason",
+        "原因",
+        "explain",
+        "解释",
+        "驱动",
+        "driver",
+    )
+    _FINANCIAL_INSTRUMENT_RISK_CUES = (
+        "利率",
+        "汇率",
+        "公允价值",
+        "金融工具",
+        "interest rate",
+        "fair value",
+        "fx risk",
+    )
 
     def analyze(self, question: str) -> QueryAnalysis:
         normalized = re.sub(r"\s+", " ", question).strip().casefold()
@@ -206,7 +226,11 @@ class QueryAnalyzer:
         )
         section_hints = self._infer_section_hints(normalized)
 
+        is_explanation = any(cue in normalized for cue in self._EXPLANATION_CUES)
         wants_structured = bool(metric_keys or years or has_structured_cue)
+        if is_explanation and not metric_keys:
+            # Narrative driver questions should not flood SQL with every metric.
+            wants_structured = False
         if wants_graph and (wants_structured or has_semantic_cue):
             intent = "hybrid"
             routes = ["vector"]
@@ -226,6 +250,10 @@ class QueryAnalyzer:
             intent = "semantic"
             routes = ["vector"]
 
+        entity_scope = self._infer_entity_scope(normalized)
+        if entity_scope == "unknown" and "sql" in routes:
+            entity_scope = "consolidated"
+
         return QueryAnalysis(
             intent=intent,
             routes=routes,
@@ -233,7 +261,16 @@ class QueryAnalyzer:
             years=years,
             needs_growth=needs_growth,
             section_hints=section_hints,
+            entity_scope=entity_scope,
         )
+
+    @staticmethod
+    def _infer_entity_scope(normalized: str) -> EntityScope:
+        if any(cue in normalized for cue in ("母公司", "parent company", "standalone")):
+            return "parent_company"
+        if any(cue in normalized for cue in ("合并", "consolidated", "group basis")):
+            return "consolidated"
+        return "unknown"
 
     def _infer_section_hints(self, normalized: str) -> list[str]:
         hints: list[str] = []
@@ -246,6 +283,12 @@ class QueryAnalyzer:
             and any(cue in normalized for cue in self._EXPLANATION_CUES)
         ):
             hints.append("management_discussion")
+        business_market_risk = (
+            any(cue in normalized for cue in ("市场风险", "市场竞争", "竞争加剧"))
+            and not any(cue in normalized for cue in self._FINANCIAL_INSTRUMENT_RISK_CUES)
+        )
+        if business_market_risk and "risk_section" not in hints:
+            hints.append("risk_section")
         return hints
 
 
@@ -603,13 +646,16 @@ class RetrievalOrchestrator:
         observations: list[FinancialMetricObservation] = []
         year_filter = self._sql_year_filter(analysis)
         query_year = next(iter(year_filter)) if len(year_filter) == 1 else None
-        metric_keys = analysis.metric_keys or [None]
+        metric_keys = analysis.metric_keys or []
+        if not metric_keys:
+            return []
         for metric_key in metric_keys:
             observations.extend(
                 self._financial_repository.query_metrics(
                     company_id,
                     year=query_year,
                     metric_key=metric_key,
+                    entity_scope=analysis.entity_scope,
                     document_id=document_id,
                     limit=max(20, top_k * 10),
                 )
@@ -621,6 +667,7 @@ class RetrievalOrchestrator:
                         company_id,
                         year=query_year,
                         metric_key=metric_key,
+                        entity_scope=analysis.entity_scope,
                         document_id=None,
                         limit=max(20, top_k * 10),
                     )

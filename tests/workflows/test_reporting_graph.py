@@ -143,6 +143,29 @@ def test_reporting_graph_empty_metrics_still_produces_skeleton() -> None:
     assert "本报告为提纲 MVP" in result["answer"]
 
 
+def test_build_report_sections_includes_text_evidence_from_hits() -> None:
+    sections = build_report_sections(
+        {
+            "doc_id": "doc-1",
+            "company_name": "ACME",
+            "metrics": [{"metric_key": "revenue", "period_year": 2023, "value": 1.0}],
+            "calculations": [],
+            "risk_findings": [],
+            "warnings": [],
+            "hits": [
+                {
+                    "content": "管理层讨论：主营业务收入增长主要来自核心产品放量。",
+                    "metadata": {"section_type": "management_discussion"},
+                }
+            ],
+        }
+    )
+    titles = [section["title"] for section in sections]
+    assert "文本证据摘要" in titles
+    evidence = next(section for section in sections if section["title"] == "文本证据摘要")
+    assert any("主营业务" in bullet for bullet in evidence["bullets"])
+
+
 def test_build_report_sections_and_format_helpers() -> None:
     sections = build_report_sections(
         {

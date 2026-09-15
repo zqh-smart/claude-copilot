@@ -226,13 +226,20 @@ def _expect_value_ok(case: dict, preview) -> bool | None:
         value = getattr(metric, "value", None) or (
             metric.get("value") if isinstance(metric, dict) else None
         )
+        entity_scope = getattr(metric, "entity_scope", None) or (
+            metric.get("entity_scope") if isinstance(metric, dict) else None
+        )
         if case.get("expect_metric_key") and key != case["expect_metric_key"]:
             continue
         if case.get("expect_period") and str(period) != str(case["expect_period"]):
             continue
+        if case.get("expect_entity_scope") and entity_scope != case["expect_entity_scope"]:
+            continue
         if values_equal(value, expected):
             return True
 
+    if case.get("expect_entity_scope"):
+        return False
     answer = preview.answer or ""
     synthesis_answer = preview.synthesis.answer if preview.synthesis else ""
     blob = "\n".join(part for part in (answer, synthesis_answer) if part)

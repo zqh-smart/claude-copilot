@@ -136,6 +136,7 @@ def metric_fact_to_orm(doc_id: str, fact: FinancialMetricFact, item_index: int) 
         metric_key=fact.metric_key,
         fact_key=None,
         statement_type=fact.statement_type,
+        entity_scope=fact.entity_scope,
         period=fact.period,
         value_numeric=value_numeric,
         value_text=value_text,

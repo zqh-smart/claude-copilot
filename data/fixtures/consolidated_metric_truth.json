@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "description": "Authoritative consolidated vs parent revenue (CNY yuan) after 2026-09-13 scope audit. Use to sync local data/golden/* (gitignored).",
+  "default_entity_scope": "consolidated",
+  "samples": {
+    "znz_2021": {
+      "company": "北京指南针科技发展股份有限公司",
+      "year": 2021,
+      "revenue": {
+        "consolidated": { "2021": 932420978, "2020": 692598184 },
+        "parent_company": {}
+      }
+    },
+    "jucan_2021": {
+      "company": "聚灿光电科技股份有限公司",
+      "year": 2021,
+      "revenue": {
+        "consolidated": { "2021": 2009197450.44, "2020": 1406674200.72 },
+        "parent_company": { "2021": 1311334600.52, "2020": 1279195406.04 }
+      }
+    },
+    "tianhua_2021": {
+      "company": "苏州天华新能源科技股份有限公司",
+      "year": 2021,
+      "revenue": {
+        "consolidated": { "2021": 3397557862.27, "2020": 1313177402.56 },
+        "parent_company": { "2021": 469378042.95, "2020": 565068173.71 }
+      }
+    }
+  }
+}

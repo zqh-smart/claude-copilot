@@ -116,6 +116,7 @@ class WorkflowApiService:
             return ReportOutlineResponse(
                 answer_markdown=str(result.get("answer") or ""),
                 sections=sections,
+                hits=list(result.get("hits") or []),
                 warnings=list(result.get("warnings") or []),
                 workflow="report_workflow",
             )
@@ -132,6 +133,7 @@ class WorkflowApiService:
         return ReportOutlineResponse(
             answer_markdown=str(result.get("answer") or ""),
             sections=list(result.get("sections") or []),
+            hits=list(result.get("hits") or []),
             warnings=list(result.get("warnings") or []),
             workflow="reporting",
         )

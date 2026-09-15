@@ -91,6 +91,8 @@ def get_embedding_service():
 @lru_cache
 def get_qdrant_client():
     settings = get_settings()
+    if settings.qdrant_url == ":memory:":
+        return QdrantClient(location=":memory:")
     return QdrantClient(
         url=settings.qdrant_url,
         grpc_port=settings.qdrant_grpc_port,
@@ -219,6 +221,7 @@ def get_research_service() -> ResearchService:
         candidate_multiplier=settings.retrieval_candidate_multiplier,
         vector_weight=settings.hybrid_vector_weight,
         lexical_weight=settings.hybrid_lexical_weight,
+        fusion_mode=settings.hybrid_fusion_mode,
     )
     return ResearchService(
         document_pipeline_service=pipeline_service,

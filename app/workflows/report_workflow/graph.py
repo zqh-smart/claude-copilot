@@ -1,6 +1,6 @@
 """§5.5 Report Generation Workflow lite (no UI / no file export).
 
-Flow: prepare → build_report → quant_snapshot → compose_answer
+Flow: prepare → deep_evidence → build_report → quant_snapshot → compose_answer
 """
 
 from __future__ import annotations
@@ -20,6 +20,9 @@ class ReportWorkflowState(TypedDict, total=False):
     quant_summary: str
     warnings: list[str]
     answer: str
+    hits: list[dict]
+    graph_paths: list[dict]
+    research_subtasks: list[str]
 
 
 class _FallbackReportWorkflow:
@@ -75,6 +78,12 @@ def compose_report_workflow_answer(
     return "\n".join(parts).strip()
 
 
+def _default_deep_evidence(state: dict) -> dict:
+    from app.workflows.report_workflow.deep_retrieval import collect_deep_report_evidence
+
+    return collect_deep_report_evidence(state)
+
+
 def _default_prepare(state: dict) -> dict:
     warnings = list(state.get("warnings") or [])
     if not state.get("doc_id"):
@@ -96,6 +105,10 @@ def _default_build_report(state: dict) -> dict:
                 "company_id": state.get("company_id"),
                 "question": state.get("question") or "",
                 "top_k": state.get("top_k") or 5,
+                "metrics": list(state.get("metrics") or []),
+                "hits": list(state.get("hits") or []),
+                "graph_paths": list(state.get("graph_paths") or []),
+                "warnings": warnings,
             }
         )
         warnings.extend(list(result.get("warnings") or []))
@@ -140,26 +153,30 @@ def _default_compose(state: dict) -> dict:
 def build_report_workflow_graph(
     *,
     prepare_fn: Callable[[dict], dict] | None = None,
+    deep_evidence_fn: Callable[[dict], dict] | None = None,
     report_fn: Callable[[dict], dict] | None = None,
     quant_fn: Callable[[dict], dict] | None = None,
     compose_fn: Callable[[dict], dict] | None = None,
 ):
     prepare = prepare_fn or _default_prepare
+    deep_evidence = deep_evidence_fn or _default_deep_evidence
     report = report_fn or _default_build_report
     quant = quant_fn or _default_quant_snapshot
     compose = compose_fn or _default_compose
     try:
         from langgraph.graph import END, START, StateGraph
     except Exception:
-        return _FallbackReportWorkflow([prepare, report, quant, compose])
+        return _FallbackReportWorkflow([prepare, deep_evidence, report, quant, compose])
 
     builder = StateGraph(ReportWorkflowState)
     builder.add_node("prepare", prepare)
+    builder.add_node("deep_evidence", deep_evidence)
     builder.add_node("build_report", report)
     builder.add_node("quant_snapshot", quant)
     builder.add_node("compose_answer", compose)
     builder.add_edge(START, "prepare")
-    builder.add_edge("prepare", "build_report")
+    builder.add_edge("prepare", "deep_evidence")
+    builder.add_edge("deep_evidence", "build_report")
     builder.add_edge("build_report", "quant_snapshot")
     builder.add_edge("quant_snapshot", "compose_answer")
     builder.add_edge("compose_answer", END)

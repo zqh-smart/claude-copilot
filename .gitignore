@@ -252,6 +252,7 @@ web/dist/
 
 # Cursor local
 .cursor/
+/test-tmp/
 
 # ---------------------------------------------------------------------------
 # Local eval / golden / phase-H — keep on disk, do not commit

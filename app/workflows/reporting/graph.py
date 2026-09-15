@@ -31,6 +31,8 @@ class ReportingState(TypedDict, total=False):
     top_k: int
     metrics: list[dict]
     calculations: list[dict]
+    hits: list[dict]
+    graph_paths: list[dict]
     risk_findings: list[dict]
     sections: list[dict]
     warnings: list[str]
@@ -63,6 +65,13 @@ def _metric_sort_key(metric_key: str) -> tuple[int, str]:
         return (_CORE_METRIC_ORDER.index(metric_key), metric_key)
     except ValueError:
         return (len(_CORE_METRIC_ORDER), metric_key)
+
+
+def _truncate_hit_snippet(content: str, limit: int = 160) -> str:
+    text = " ".join(str(content).split())
+    if len(text) <= limit:
+        return text
+    return f"{text[: limit - 1]}…"
 
 
 def _format_metric_bullet(item: dict) -> str:
@@ -111,6 +120,7 @@ def build_report_sections(state: dict) -> list[dict]:
     question = (state.get("question") or "").strip()
     metrics = list(state.get("metrics") or [])
     calculations = list(state.get("calculations") or [])
+    hits = list(state.get("hits") or [])
     risk_findings = list(state.get("risk_findings") or [])
     warnings = list(state.get("warnings") or [])
 
@@ -170,10 +180,25 @@ def build_report_sections(state: dict) -> list[dict]:
     limitation_bullets = list(warnings[:8])
     limitation_bullets.append(_MVP_DISCLAIMER)
 
+    evidence_bullets: list[str] = []
+    if hits:
+        for index, hit in enumerate(hits[:6], start=1):
+            metadata = hit.get("metadata") or {}
+            label = (
+                metadata.get("section_title")
+                or metadata.get("section_type")
+                or "文本片段"
+            )
+            snippet = _truncate_hit_snippet(str(hit.get("content") or ""))
+            if snippet:
+                evidence_bullets.append(f"{index}. [{label}] {snippet}")
+
     sections: list[dict] = [
         {"title": "公司与文档", "bullets": company_bullets},
         {"title": "核心财务指标", "bullets": metric_bullets},
     ]
+    if evidence_bullets:
+        sections.append({"title": "文本证据摘要", "bullets": evidence_bullets})
     if growth_bullets:
         sections.append({"title": "增长与趋势", "bullets": growth_bullets})
     sections.extend(
@@ -235,6 +260,8 @@ def _default_gather_context(state: dict) -> dict:
     warnings = list(state.get("warnings") or [])
     metrics = list(state.get("metrics") or [])
     calculations = list(state.get("calculations") or [])
+    hits = list(state.get("hits") or [])
+    graph_paths = list(state.get("graph_paths") or [])
     risk_findings = list(state.get("risk_findings") or [])
 
     if not metrics:
@@ -247,6 +274,9 @@ def _default_gather_context(state: dict) -> dict:
         computed, calc_warnings = calculate_from_metrics(metrics)
         calculations = computed
         warnings.extend(calc_warnings)
+
+    if not risk_findings and graph_paths:
+        risk_findings = _extract_has_risk_findings(graph_paths)
 
     if not risk_findings:
         risk_state = {
@@ -280,6 +310,8 @@ def _default_gather_context(state: dict) -> dict:
         "company_name": company_name,
         "metrics": metrics,
         "calculations": calculations,
+        "hits": hits,
+        "graph_paths": graph_paths,
         "risk_findings": risk_findings,
         "warnings": warnings,
     }

@@ -128,16 +128,25 @@ def _assert_research_case(payload: dict, case: dict) -> dict:
         for metric in payload.get("metrics") or []:
             if metric.get("metric_key") != case["expect_metric_key"]:
                 continue
-            if case.get("expect_period") and str(metric.get("period")) != str(case["expect_period"]):
+            if case.get("expect_period") and str(metric.get("period")) != str(
+                case["expect_period"]
+            ):
                 continue
             value = metric.get("value")
-            if case.get("expect_value") is not None and not _values_equal(value, case["expect_value"]):
+            if case.get("expect_value") is not None and not _values_equal(
+                value, case["expect_value"]
+            ):
+                continue
+            if case.get("expect_entity_scope") and metric.get("entity_scope") != case[
+                "expect_entity_scope"
+            ]:
                 continue
             metric_ok = True
             matched_metric = {
                 "metric_key": metric.get("metric_key"),
                 "period": metric.get("period"),
                 "value": value,
+                "entity_scope": metric.get("entity_scope"),
             }
             break
 
@@ -286,7 +295,11 @@ def main() -> int:
 
         metrics = client.get(
             f"/api/v1/companies/{company_id}/metrics",
-            params={"metric_key": "revenue", "year": year},
+            params={
+                "metric_key": "revenue",
+                "year": year,
+                "entity_scope": revenue_case.get("expect_entity_scope", "consolidated"),
+            },
         )
         metrics_items = metrics.json().get("items", []) if metrics.status_code == 200 else []
         revenue_metric = next(
@@ -294,6 +307,9 @@ def main() -> int:
                 item
                 for item in metrics_items
                 if item.get("metric_key") == "revenue"
+                and item.get("entity_scope") == revenue_case.get(
+                    "expect_entity_scope", "consolidated"
+                )
                 and (item.get("period_year") == year or str(item.get("period")) == str(year))
             ),
             None,

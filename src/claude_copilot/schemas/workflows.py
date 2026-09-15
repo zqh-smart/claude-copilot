@@ -34,6 +34,7 @@ class ReportOutlineRequest(BaseModel):
 class ReportOutlineResponse(BaseModel):
     answer_markdown: str
     sections: list[dict[str, Any]] = Field(default_factory=list)
+    hits: list[dict[str, Any]] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     workflow: str = "report_workflow"
 

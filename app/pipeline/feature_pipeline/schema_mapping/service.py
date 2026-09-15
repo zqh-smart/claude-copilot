@@ -5,12 +5,14 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from src.claude_copilot.schemas.document import (
+    EntityScope,
     FinancialMetricFact,
     FinancialNoteFact,
     FinancialNoteSchema,
     FinancialSchema,
     FinancialStatementSchema,
     ParsedDocument,
+    ParsedPageBlock,
     ParsedSection,
     ParsedTable,
     SemanticSectionSchema,
@@ -80,6 +82,7 @@ class FinancialSchemaMappingService:
         statement_schemas = self._build_statement_schemas(
             prepared_tables,
             report_year=document.metadata.year,
+            page_blocks=document.page_blocks,
         )
         note_schemas = self._build_note_schemas(prepared_tables, note_facts)
         metric_facts = self._build_metric_facts(statement_schemas, prepared_tables)
@@ -273,16 +276,19 @@ class FinancialSchemaMappingService:
         tables: list[ParsedTable],
         *,
         report_year: int | None = None,
+        page_blocks: list[ParsedPageBlock] | None = None,
     ) -> list[FinancialStatementSchema]:
-        grouped_tables: dict[tuple[str, str], list[ParsedTable]] = {}
+        grouped_tables: dict[tuple[str, str, EntityScope], list[ParsedTable]] = {}
+        table_scopes = self._build_table_scope_map(tables, page_blocks or [])
         for table in tables:
             if table.table_type not in self._STATEMENT_TABLE_TYPES:
                 continue
-            group_key = self._statement_group_key(table)
+            scope = table_scopes.get(table.table_id or "", self._infer_entity_scope(table))
+            group_key = self._statement_group_key(table, entity_scope=scope)
             grouped_tables.setdefault(group_key, []).append(table)
 
         statements: list[FinancialStatementSchema] = []
-        for grouped in grouped_tables.values():
+        for group_key, grouped in grouped_tables.items():
             # Skip empty-shell tables so they do not become metric-less statements.
             grouped = [table for table in grouped if table.normalized_metrics]
             if not grouped:
@@ -328,6 +334,7 @@ class FinancialSchemaMappingService:
                 FinancialStatementSchema(
                     table_id=primary.table_id,
                     statement_type=primary.table_type,
+                    entity_scope=group_key[2],
                     title=self._resolve_statement_title(primary, statement_type=primary.table_type),
                     period_headers=period_headers,
                     unit=primary.unit,
@@ -552,6 +559,7 @@ class FinancialSchemaMappingService:
                             period=str(period),
                             value=value,
                             statement_type=statement.statement_type,
+                            entity_scope=statement.entity_scope,
                             unit=statement.unit,
                             currency=statement.currency,
                             source_table_id=source_table.table_id if source_table else statement.table_id,
@@ -667,9 +675,18 @@ class FinancialSchemaMappingService:
         metric_facts: list[FinancialMetricFact],
     ) -> dict[str, dict[str, int | float | str]]:
         metrics_index: dict[str, dict[str, int | float | str]] = {}
+        selected_scope: dict[tuple[str, str], str] = {}
+        scope_priority = {"parent_company": 0, "unknown": 1, "consolidated": 2}
         for fact in metric_facts:
             metrics_index.setdefault(fact.metric_key, {})
-            metrics_index[fact.metric_key][fact.period] = fact.value
+            key = (fact.metric_key, fact.period)
+            current_scope = selected_scope.get(key)
+            if (
+                current_scope is None
+                or scope_priority[fact.entity_scope] > scope_priority[current_scope]
+            ):
+                metrics_index[fact.metric_key][fact.period] = fact.value
+                selected_scope[key] = fact.entity_scope
         return metrics_index
 
     def _page_range_from_table(self, table: ParsedTable) -> tuple[int, int] | None:
@@ -689,11 +706,86 @@ class FinancialSchemaMappingService:
             return (section.page_start, section.page_start)
         return None
 
-    def _statement_group_key(self, table: ParsedTable) -> tuple[str, str]:
+    def _statement_group_key(
+        self,
+        table: ParsedTable,
+        *,
+        entity_scope: EntityScope | None = None,
+    ) -> tuple[str, str, EntityScope]:
         return (
             table.table_type or "statement",
             self._normalize_statement_title(table),
+            entity_scope or self._infer_entity_scope(table),
         )
+
+    def _build_table_scope_map(
+        self,
+        tables: list[ParsedTable],
+        page_blocks: list[ParsedPageBlock],
+    ) -> dict[str, EntityScope]:
+        anchors: list[tuple[int, int, str, EntityScope]] = []
+        for block in page_blocks:
+            scope = self._infer_entity_scope_from_text(block.text)
+            statement_type = self._statement_type_from_heading(block.text)
+            if scope == "unknown" or statement_type is None or block.page is None:
+                continue
+            anchors.append((block.page, block.order or 0, statement_type, scope))
+
+        resolved: dict[str, EntityScope] = {}
+        for table in tables:
+            scope = self._infer_entity_scope(table)
+            if scope == "unknown" and table.page is not None and table.table_type:
+                candidates = [
+                    anchor
+                    for anchor in anchors
+                    if anchor[2] == table.table_type
+                    and 0 <= table.page - anchor[0] <= 4
+                ]
+                if candidates:
+                    scope = max(candidates, key=lambda item: (item[0], item[1]))[3]
+            if table.table_id:
+                resolved[table.table_id] = scope
+        return resolved
+
+    @staticmethod
+    def _statement_type_from_heading(text: str) -> str | None:
+        normalized = text.casefold()
+        cues = {
+            "income_statement": ("利润表", "income statement"),
+            "balance_sheet": ("资产负债表", "balance sheet"),
+            "cash_flow": ("现金流量表", "cash flow statement"),
+            "equity": ("所有者权益变动表", "股东权益变动表", "changes in equity"),
+        }
+        return next(
+            (
+                statement_type
+                for statement_type, aliases in cues.items()
+                if any(alias in normalized for alias in aliases)
+            ),
+            None,
+        )
+
+    def _infer_entity_scope(self, table: ParsedTable) -> EntityScope:
+        context = " ".join(
+            str(value or "")
+            for value in (
+                table.title,
+                table.metadata.get("source_section_title"),
+                table.metadata.get("nearby_context"),
+            )
+        ).casefold()
+        return self._infer_entity_scope_from_text(context)
+
+    @staticmethod
+    def _infer_entity_scope_from_text(
+        text: str,
+    ) -> EntityScope:
+        context = text.casefold()
+        if any(cue in context for cue in ("母公司", "parent company", "standalone")):
+            return "parent_company"
+        if any(cue in context for cue in ("合并", "consolidated", "group statement")):
+            return "consolidated"
+        return "unknown"
 
     def _normalize_statement_title(self, table: ParsedTable) -> str:
         title = table.title or str(table.metadata.get("source_section_title") or "")

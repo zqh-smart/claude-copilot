@@ -181,6 +181,22 @@ def test_dedupe_serving_metric_facts_prefers_metrics_index_canonical() -> None:
     assert facts[0].value == 465398314.38
 
 
+def test_dedupe_serving_metric_facts_preserves_distinct_entity_scopes() -> None:
+    consolidated = _fact(metric_key="revenue", value=200).model_copy(
+        update={"entity_scope": "consolidated"}
+    )
+    parent = _fact(metric_key="revenue", value=130).model_copy(
+        update={"entity_scope": "parent_company"}
+    )
+
+    facts = dedupe_serving_metric_facts([parent, consolidated])
+
+    assert {(fact.entity_scope, fact.value) for fact in facts} == {
+        ("consolidated", 200),
+        ("parent_company", 130),
+    }
+
+
 def test_enrich_serving_fact_provenance_reads_existing_grounded_flag() -> None:
     fact = _fact(provenance={"source_grounded": True})
     enriched = enrich_serving_fact_provenance(fact, None)

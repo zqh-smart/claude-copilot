@@ -36,6 +36,9 @@ def query_company_metrics(
     year: int | None = Query(default=None, ge=1900, le=2200),
     metric_key: str | None = Query(default=None, min_length=1),
     statement_type: str | None = Query(default=None, min_length=1),
+    entity_scope: str | None = Query(
+        default=None, pattern="^(consolidated|parent_company|unknown)$"
+    ),
     limit: int = Query(default=500, ge=1, le=5000),
     service: FinancialDataService = Depends(get_financial_data_service),
 ) -> FinancialMetricsResponse:
@@ -45,6 +48,7 @@ def query_company_metrics(
             year=year,
             metric_key=metric_key,
             statement_type=statement_type,
+            entity_scope=entity_scope,
             limit=limit,
         )
     except CompanyNotFoundError as exc:
@@ -57,6 +61,10 @@ def get_metric_trend(
     metric_key: str,
     start_year: int | None = Query(default=None, ge=1900, le=2200),
     end_year: int | None = Query(default=None, ge=1900, le=2200),
+    entity_scope: str = Query(
+        default="consolidated",
+        pattern="^(consolidated|parent_company|unknown)$",
+    ),
     service: FinancialDataService = Depends(get_financial_data_service),
 ) -> MetricTrendResponse:
     if start_year is not None and end_year is not None and start_year > end_year:
@@ -67,6 +75,7 @@ def get_metric_trend(
             metric_key,
             start_year=start_year,
             end_year=end_year,
+            entity_scope=entity_scope,
         )
     except CompanyNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

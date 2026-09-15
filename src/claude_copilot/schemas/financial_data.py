@@ -4,6 +4,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from src.claude_copilot.schemas.document import EntityScope
+
 
 class CompanySummary(BaseModel):
     company_id: str
@@ -23,6 +25,7 @@ class FinancialMetricObservation(BaseModel):
     period_year: int | None = None
     value: int | float | str
     statement_type: str | None = None
+    entity_scope: EntityScope = "unknown"
     unit: str | None = None
     currency: str | None = None
     source_table_id: str | None = None
@@ -63,6 +66,7 @@ class FusedMetricFact(BaseModel):
     period: str
     value: int | float | str
     statement_type: str | None = None
+    entity_scope: EntityScope = "unknown"
     unit: str | None = None
     currency: str | None = None
     winner_document_id: str

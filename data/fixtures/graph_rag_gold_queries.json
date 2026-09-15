@@ -1,0 +1,158 @@
+{
+  "version": "2026-09-13",
+  "description": "GraphRAG gold: doc_slots × templates expanded to 100+ eval cases.",
+  "doc_slots": [
+    {"slot": "znz", "document_key": "znz_2021", "company_label": "指南针"},
+    {"slot": "jucan", "document_key": "jucan_2021", "company_label": "聚灿光电"},
+    {"slot": "tianhua", "document_key": "tianhua_2021", "company_label": "天华新能"},
+    {"slot": "gongtong", "document_key": "gongtong_2021", "company_label": "共同药业"},
+    {"slot": "langqi", "document_key": "langqi_2021", "company_label": "广州浪奇"}
+  ],
+  "templates": [
+    {
+      "id_prefix": "graph_revenue_metric",
+      "question": "{company}营业收入指标与公司主体的图谱关联",
+      "expect_routes": ["graph", "sql"],
+      "expect_graph_relation_types": ["HAS_METRIC"],
+      "expect_path_types": ["Company", "Metric"],
+      "tags": ["graph", "revenue"]
+    },
+    {
+      "id_prefix": "graph_net_income",
+      "question": "{company}净利润在知识图谱中的关联路径",
+      "expect_routes": ["sql", "graph"],
+      "expect_graph_relation_types": ["HAS_METRIC"],
+      "tags": ["graph", "profit"]
+    },
+    {
+      "id_prefix": "graph_operating_cash",
+      "question": "{company}经营活动现金流量净额与报表科目关系",
+      "expect_routes": ["sql", "graph"],
+      "expect_graph_relation_types": ["HAS_METRIC"],
+      "tags": ["graph", "cash"]
+    },
+    {
+      "id_prefix": "graph_total_assets",
+      "question": "{company}总资产指标节点与文档的链接",
+      "expect_routes": ["sql", "graph"],
+      "expect_graph_relation_types": ["HAS_METRIC"],
+      "tags": ["graph", "balance"]
+    },
+    {
+      "id_prefix": "graph_risk_disclosure",
+      "question": "{company}披露的主要经营与市场风险图谱",
+      "expect_routes": ["vector", "graph"],
+      "expect_graph_relation_types": ["HAS_RISK"],
+      "expect_path_types": ["Risk"],
+      "tags": ["graph", "risk"]
+    },
+    {
+      "id_prefix": "graph_market_risk",
+      "question": "{company}市场风险因素在图谱中的表示",
+      "expect_routes": ["vector", "graph"],
+      "expect_graph_relation_types": ["HAS_RISK"],
+      "tags": ["graph", "risk", "market"]
+    },
+    {
+      "id_prefix": "graph_document_link",
+      "question": "{company}年报文档节点与财务指标之间的边",
+      "expect_routes": ["graph", "sql"],
+      "expect_graph_relation_types": ["HAS_METRIC", "DESCRIBES"],
+      "expect_path_types": ["Document"],
+      "tags": ["graph", "document"]
+    },
+    {
+      "id_prefix": "graph_hybrid_revenue",
+      "question": "{company}2021年合并口径营业收入是多少，并给出图谱证据",
+      "expect_routes": ["hybrid"],
+      "expect_graph_relation_types": ["HAS_METRIC"],
+      "tags": ["graph", "hybrid", "revenue"]
+    },
+    {
+      "id_prefix": "graph_eps_metric",
+      "question": "{company}每股收益指标与公司的关系路径",
+      "expect_routes": ["sql", "graph"],
+      "expect_graph_relation_types": ["HAS_METRIC"],
+      "tags": ["graph", "eps"]
+    },
+    {
+      "id_prefix": "graph_equity",
+      "question": "{company}股东权益合计在图谱中的挂载方式",
+      "expect_routes": ["sql", "graph"],
+      "expect_graph_relation_types": ["HAS_METRIC"],
+      "tags": ["graph", "equity"]
+    },
+    {
+      "id_prefix": "graph_gross_profit",
+      "question": "{company}毛利或营业利润相关指标图谱路径",
+      "expect_routes": ["sql", "graph"],
+      "tags": ["graph", "margin"]
+    },
+    {
+      "id_prefix": "graph_liabilities",
+      "question": "{company}负债合计指标与公司节点如何连接",
+      "expect_routes": ["sql", "graph"],
+      "expect_graph_relation_types": ["HAS_METRIC"],
+      "tags": ["graph", "liabilities"]
+    },
+    {
+      "id_prefix": "graph_industry_risk",
+      "question": "{company}行业竞争与政策风险在知识图谱中的节点",
+      "expect_routes": ["vector", "graph"],
+      "expect_graph_relation_types": ["HAS_RISK"],
+      "tags": ["graph", "risk", "industry"]
+    },
+    {
+      "id_prefix": "graph_mda_vector",
+      "question": "{company}管理层讨论与分析章节的文本与图谱联合检索",
+      "expect_routes": ["vector", "graph"],
+      "tags": ["graph", "mda"]
+    },
+    {
+      "id_prefix": "graph_relational_intent",
+      "question": "{company}公司与核心财务指标之间的多跳关系",
+      "expect_routes": ["graph", "relational"],
+      "expect_graph_relation_types": ["HAS_METRIC"],
+      "tags": ["graph", "multi_hop"]
+    },
+    {
+      "id_prefix": "graph_roe",
+      "question": "{company}净资产收益率指标在图谱中的定位",
+      "expect_routes": ["sql", "graph"],
+      "tags": ["graph", "roe"]
+    },
+    {
+      "id_prefix": "graph_operating_income",
+      "question": "{company}营业利润与利润表科目的结构化图谱",
+      "expect_routes": ["sql", "graph"],
+      "expect_graph_relation_types": ["HAS_METRIC"],
+      "tags": ["graph", "operating"]
+    },
+    {
+      "id_prefix": "graph_cash_invest",
+      "question": "{company}投资活动现金流相关风险或指标关联",
+      "expect_routes": ["hybrid", "graph"],
+      "tags": ["graph", "cash", "invest"]
+    },
+    {
+      "id_prefix": "graph_credit_risk",
+      "question": "{company}信用与流动性风险披露的知识图谱路径",
+      "expect_routes": ["vector", "graph"],
+      "expect_graph_relation_types": ["HAS_RISK"],
+      "tags": ["graph", "risk", "credit"]
+    },
+    {
+      "id_prefix": "graph_segment_revenue",
+      "question": "{company}分产品或分地区收入在图谱与结构化层的证据",
+      "expect_routes": ["hybrid"],
+      "tags": ["graph", "segment"]
+    },
+    {
+      "id_prefix": "graph_yoy_growth",
+      "question": "{company}营收同比增长是否可从图谱与 SQL 联合验证",
+      "expect_routes": ["hybrid", "sql"],
+      "tags": ["graph", "growth"]
+    }
+  ],
+  "cases": []
+}

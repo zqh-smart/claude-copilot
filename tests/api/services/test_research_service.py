@@ -626,6 +626,30 @@ def test_explanation_without_mda_triggers_second_retrieve() -> None:
     assert result["hits"][0]["metadata"]["section_type"] == "management_discussion"
 
 
+def test_entity_scope_conflict_warning_when_multiple_scopes_returned() -> None:
+    warnings = ResearchService._entity_scope_conflict_warnings(
+        [
+            {
+                "metric_key": "revenue",
+                "period": "2021",
+                "entity_scope": "consolidated",
+                "value": 2009197450.44,
+            },
+            {
+                "metric_key": "revenue",
+                "period": "2021",
+                "entity_scope": "parent_company",
+                "value": 1311334600.52,
+            },
+        ],
+        {"entity_scope": "consolidated"},
+    )
+
+    assert len(warnings) == 1
+    assert "scope conflict" in warnings[0].casefold()
+    assert "consolidated" in warnings[0]
+
+
 def test_pinned_doc_year_mismatch_drops_out_of_year_metrics() -> None:
     orchestrator = _StubOrchestrator(
         OrchestratedRetrievalResult(
