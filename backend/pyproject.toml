@@ -66,6 +66,10 @@ dev = [
 ]
 langgraph_api = [
   "langgraph-cli[inmem]>=0.2.0",
+  # structlog's ConsoleRenderer raises SystemError on Windows when colors are
+  # enabled and colorama is absent, which aborts `langgraph dev` before the
+  # server binds. langgraph-cli[inmem] does not pull it in, so pin it here.
+  "colorama>=0.4.6; platform_system == 'Windows'",
 ]
 
 [tool.setuptools]

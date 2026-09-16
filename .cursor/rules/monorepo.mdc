@@ -5,10 +5,18 @@ alwaysApply: true
 
 # Claude Copilot monorepo
 
+> **Architecture Frozen. No further framework/runtime changes before P0 acceptance.**
+
 - Root: `D:\GithubProject\claude-copilot`
 - `backend/` = FastAPI + LangGraph. Run Python commands from `backend/`.
 - `frontend/apps/workbench/` = Vue 3 + Vite product workbench.
-- `frontend/apps/chat-ui/` = Next.js agent-chat-ui product surface.
+- `frontend/apps/chat-ui/` = React 19 + Vite + assistant-ui Agent Chat surface. Stack is **frozen** at P0 acceptance: `@assistant-ui/react` + `@assistant-ui/react-langgraph` + `@langchain/langgraph-sdk` against LangGraph `:2025`. Do NOT re-introduce Next.js, the original `agent-chat-ui`, or `@assistant-ui/react-langchain`. Do not invent a custom `ChatModelAdapter` or hand-rolled SSE parser — the runtime owns that surface.
+- **`@assistant-ui/*` baseline is compatibility-set based, not minor-version based.** The three packages do NOT share a minor line: `react` 0.15.x, `react-langgraph` 0.14.x, `react-markdown` 0.14.x. The old `0.13.x` baseline was a **false baseline** (`react` and `react-markdown` have no `0.13.x` release at all). Current exact pins live in `apps/chat-ui/package.json` (`react` 0.15.20 / `react-langgraph` 0.14.28 / `react-markdown` 0.14.15 / `langgraph-sdk` 1.11.0 / `core` 1.2.11 / `assistant-stream` 0.3.43 / `assistant-cloud` 0.2.1 via `pnpm.overrides`). Use `pnpm install:frozen` thereafter; any bump requires a full 15-item re-run from `apps/chat-ui/RUNTIME.md`.
+- **Current gate**: `Architecture Frozen → P0 Runtime Acceptance`. Do not start Tool UI / Generative UI / HITL work until the 15-item suite in `apps/chat-ui/RUNTIME.md` is green.
+- Pin patch versions for `unstable_createLangGraphStream` and `unstable_threadListAdapter`; any assistant-ui bump requires a full 15-item re-run from `apps/chat-ui/RUNTIME.md`.
+- Chat dev URL is `http://127.0.0.1:3001/chat/`. The trailing `/chat/` is enforced by `vite.config.ts` `base` and the workbench `VITE_CHAT_UI_URL` default.
 - Do not add UI in deprecated `backend/web/`.
 - Nested `frontend/agent-chat-ui-main/` is not the product surface.
 - Python package / DB name `claude_copilot` stays; it is not the folder name.
+- Chat-UI dev server runs on port 3001 and is opened from the Workbench top bar via absolute URL (no proxy). Production serves it at `/chat/**`.
+- LangGraph dev server (`:2025`) is consumed by chat-ui via `VITE_LANGGRAPH_API_URL`. Do not expose LangSmith / LLM keys through any `VITE_*` env.

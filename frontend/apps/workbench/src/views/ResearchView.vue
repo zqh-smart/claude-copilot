@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
 
 import {
@@ -8,6 +8,7 @@ import {
   type DocumentSummary,
   type ResearchPreview,
 } from '@/api/http'
+import { clearChatLaunchContext, setChatLaunchContext } from '@/lib/chat-launch-context'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 const suggestions = [
@@ -75,6 +76,23 @@ async function ask() {
 async function copyAnswer() {
   await navigator.clipboard.writeText(answer.value)
 }
+
+// Hand the selected document + question to Agent Chat. The prompt is only a
+// pre-fill (chat-ui never auto-sends it), so an empty question stays `undefined`
+// rather than sending an empty `cc_prompt`.
+watchEffect(() => {
+  setChatLaunchContext(
+    docId.value
+      ? {
+          source: 'research',
+          resourceId: docId.value,
+          prompt: question.value.trim() || undefined,
+        }
+      : undefined,
+  )
+})
+
+onUnmounted(clearChatLaunchContext)
 
 onMounted(async () => {
   try {

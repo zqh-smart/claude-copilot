@@ -7,7 +7,7 @@
 ```text
 claude-copilot/
 ├── backend/    FastAPI + LangGraph（文档管线、检索、研究图、Chat Memory）
-└── frontend/   Next.js 产品 UI（Agent Chat + 知识库 / 报告 / 评测等工作台）
+└── frontend/   产品 UI（React + assistant-ui 的 Agent Chat + Vue 3 的工作台）
 ```
 
 打开 Cursor 工作区：`D:\GithubProject\claude-copilot.code-workspace`，或本目录下的 `claude-copilot.code-workspace`。
@@ -32,9 +32,10 @@ pnpm install
 pnpm dev
 ```
 
-浏览器：http://localhost:3000
-- `/chat` Agent Chat
-- `/knowledge` `/reports` `/research` 等工作台走 `/api/fastapi` → FastAPI `:8000`
+浏览器：http://localhost:3000（工作台，Vue 3）
+点击右上角 Agent Chat 按钮会打开 http://127.0.0.1:3001（React + assistant-ui，对接 LangGraph `:2025`）
+
+工作台路由：`/`, `/knowledge`, `/reports`, `/research`, `/compare`, `/metrics`, `/eval`, `/jobs`, `/upload`, `/chat-memory` → FastAPI `:8000`（通过 `/api/fastapi` 代理）。
 
 更细的后端约定见 [`backend/AGENTS.md`](backend/AGENTS.md) 与 [`backend/README.md`](backend/README.md)。前端见 [`frontend/README.md`](frontend/README.md)。
 

@@ -19,13 +19,19 @@ import { RouterView, useRoute, useRouter } from 'vue-router'
 import { prefetchWorkspaceView } from '@/router'
 import { useAppStore } from '@/stores/app'
 import { buildAgentChatUrl } from '@/lib/agent-chat'
+import { useChatLaunchContext } from '@/lib/chat-launch-context'
 
 const route = useRoute()
 const router = useRouter()
 const app = useAppStore()
-const chatUiUrl = import.meta.env.VITE_CHAT_UI_URL || '/chat'
+const chatUiUrl = __CHAT_UI_URL__
 
-// 完整 Agent Chat 由独立 Next.js 应用提供；工作台只通过业务上下文与其交接。
+// The active view publishes what the user is looking at (doc id + prompt) via
+// `setChatLaunchContext`; the hand-off URL is assembled at click time.
+const chatLaunchContext = useChatLaunchContext()
+
+// 完整 Agent Chat 由独立 React + Vite 应用（apps/chat-ui）提供，挂载于 /chat/；
+// 工作台只通过业务上下文（cc_source / cc_resource / cc_prompt）与其交接。
 const menus = [
   { path: '/', label: '工作台', icon: HomeFilled },
   { path: '/knowledge', label: '知识库', icon: Files },
@@ -42,7 +48,7 @@ const menus = [
 const activePath = computed(() => (route.path === '/' ? '/' : `/${route.path.split('/')[1]}`))
 
 function openAgentChat() {
-  window.location.assign(buildAgentChatUrl(chatUiUrl))
+  window.location.assign(buildAgentChatUrl(chatUiUrl, chatLaunchContext.value))
 }
 </script>
 

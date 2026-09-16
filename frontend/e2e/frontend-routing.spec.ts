@@ -26,7 +26,7 @@ test('workbench exposes the financial product entry', async ({ page }) => {
 })
 
 test('chat UI is mounted below its production base path', async ({ page }) => {
-  await page.goto('http://127.0.0.1:3001/chat')
-  await expect(page).toHaveURL(/\/chat/)
+  await page.goto('http://127.0.0.1:3001/chat/')
+  await expect(page).toHaveURL(/\/chat\/?$/)
   await expect(page.locator('body')).not.toBeEmpty()
 })

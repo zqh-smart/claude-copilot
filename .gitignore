@@ -39,12 +39,18 @@ Thumbs.db
 **/test-results/
 **/playwright-report/
 **/runtime/
+!frontend/apps/chat-ui/src/runtime/
+!frontend/apps/chat-ui/src/runtime/**
 
 # Project-local scratch space
 **/.tmp/
 **/tmp/
 **/test-tmp/
 sandbox_test_*/
+# P0 acceptance artefacts (screenshots written by frontend/e2e specs)
+**/.p0-artifacts/
+# One-off Playwright probes used during P0 debugging; not product tests
+frontend/e2e/.p0-*.mjs
 
 # Editors and operating systems
 .idea/

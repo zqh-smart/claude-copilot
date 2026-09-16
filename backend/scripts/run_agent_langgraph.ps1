@@ -9,9 +9,14 @@ $env:PYTHONIOENCODING = "utf-8"
 if (-not (Test-Path ".\.venv-langgraph\Scripts\langgraph.exe")) {
   Write-Host "Creating .venv-langgraph ..."
   uv venv .venv-langgraph
-  uv pip install --python .venv-langgraph -e "."
-  uv pip install --python .venv-langgraph "langgraph-cli[inmem]"
 }
+
+# Install the LangGraph runtime through the `langgraph_api` extra. It carries
+# langgraph-cli plus colorama, which structlog's ConsoleRenderer requires on
+# Windows; without it `langgraph dev` dies with
+# "ConsoleRenderer with `colors=True` on Windows requires the colorama package".
+# Run on every start so an existing venv missing the extra is repaired.
+uv pip install --python .venv-langgraph -e ".[langgraph_api]"
 
 if (-not (Test-Path ".\langgraph.env")) {
   Copy-Item ".\langgraph.env.example" ".\langgraph.env"

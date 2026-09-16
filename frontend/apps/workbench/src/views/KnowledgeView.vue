@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 
 import {
@@ -11,6 +11,7 @@ import {
   type KnowledgeGraphSummary,
   type ResearchPreview,
 } from '@/api/http'
+import { clearChatLaunchContext, setChatLaunchContext } from '@/lib/chat-launch-context'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 const router = useRouter()
@@ -96,6 +97,22 @@ async function runPreview() {
 watch(selectedId, (docId) => {
   if (docId) void loadDetail(docId)
 })
+
+// Hand the document the user is inspecting to Agent Chat, together with the
+// probe question they typed in the retrieval preview.
+watchEffect(() => {
+  setChatLaunchContext(
+    selectedId.value
+      ? {
+          source: 'knowledge',
+          resourceId: selectedId.value,
+          prompt: question.value.trim() || undefined,
+        }
+      : undefined,
+  )
+})
+
+onUnmounted(clearChatLaunchContext)
 
 onMounted(async () => {
   try {

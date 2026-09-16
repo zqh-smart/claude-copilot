@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import {
@@ -17,6 +17,7 @@ import {
   type ReportLength,
   type ReportTemplateId,
 } from '@/api/http'
+import { clearChatLaunchContext, setChatLaunchContext } from '@/lib/chat-launch-context'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 const route = useRoute()
@@ -263,6 +264,28 @@ watch(
   },
   { immediate: true },
 )
+
+/**
+ * Hand the report's material selection to Agent Chat.
+ *
+ * `cc_resource` is a single opaque id, so only the first selected document is
+ * handed off — the contract has no room for a document list. An open draft wins,
+ * since that is the most specific thing the user is looking at.
+ */
+watchEffect(() => {
+  const resourceId = draft.value?.draft_id || selectedIds.value[0]
+  setChatLaunchContext(
+    resourceId
+      ? {
+          source: 'reports',
+          resourceId,
+          prompt: prompt.value.trim() || undefined,
+        }
+      : undefined,
+  )
+})
+
+onUnmounted(clearChatLaunchContext)
 </script>
 
 <template>

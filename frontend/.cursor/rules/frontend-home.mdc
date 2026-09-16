@@ -9,8 +9,9 @@ alwaysApply: true
 - Backend in the same repo: `D:\GithubProject\claude-copilot\backend`.
 - Open the monorepo via `D:\GithubProject\claude-copilot.code-workspace`.
 - `apps/workbench` is the Vue 3 + Vite + Element Plus/Yudao-style financial workbench.
-- `apps/chat-ui` is the official Next.js agent-chat-ui integration and owns full Agent Chat.
+- `apps/chat-ui` is React + Vite + [assistant-ui](https://www.assistant-ui.com); the canonical primitive for Agent UX. **Do not re-introduce Next.js or the original `agent-chat-ui` here.**
 - Do not port React chat components into Vue or share LangGraph Message/Thread types.
 - Share only Claude Copilot business DTOs through `packages/contracts`.
-- Workbench data and narrow SSE flows go through FastAPI `:8000`; Chat uses the Agent gateway/LangGraph integration.
-- Development ports are workbench `:3000`, chat `:3001`, FastAPI `:8000`; production routes `/`, `/chat/**`, `/api/**` on one origin.
+- Workbench data and narrow SSE flows go through FastAPI `:8000`; Chat uses `useLangGraphRuntime` against LangGraph `:2025`.
+- Development URLs are workbench `http://127.0.0.1:3000/`, chat `http://127.0.0.1:3001/chat/`, FastAPI `http://127.0.0.1:8000/`, LangGraph `http://127.0.0.1:2025/`. Production routes `/`, `/chat/**`, `/api/**` on one origin.
+- Only public configuration belongs in `VITE_*` env vars. Secrets (LangSmith / LangGraph API keys, LLM tokens) MUST travel server-to-server via FastAPI BFF — never through `import.meta.env`.

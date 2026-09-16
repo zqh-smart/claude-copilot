@@ -7,7 +7,7 @@ Claude Copilot is a financial document intelligence system. Phase 1 focuses on t
 Engineering references (monorepo `D:\GithubProject\claude-copilot`):
 
 - **backend** (`backend/`)：FastAPI + LangGraph
-- **frontend** (`frontend/`)：**sole frontend home** — Agent Chat + knowledge/workbench pages
+- **frontend** (`frontend/`)：**sole frontend home** — Vue 3 workbench + React + assistant-ui Agent Chat
 - **Dify**: document pipeline patterns (parser router, status machine, segments, indexing)
 - **LangGraph**: multi-step research orchestration with critic/revision loops
 
@@ -23,7 +23,7 @@ claude-copilot/                # git root
 │   ├── scripts/
 │   ├── data/
 │   └── docs/
-└── frontend/                  # Next.js — ALL frontend pages (chat + workbench)
+└── frontend/                  # Vue 3 workbench + React + assistant-ui Agent Chat
 ```
 
 **Boundary rules:**
