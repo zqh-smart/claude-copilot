@@ -37,6 +37,8 @@ pnpm dev
 
 工作台路由：`/`, `/knowledge`, `/reports`, `/research`, `/compare`, `/metrics`, `/eval`, `/jobs`, `/upload`, `/chat-memory` → FastAPI `:8000`（通过 `/api/fastapi` 代理）。
 
+当前执行顺序（P0 验收未绿之前不要做 Tool UI）见根目录 [`NEXT.md`](NEXT.md)。
+
 更细的后端约定见 [`backend/AGENTS.md`](backend/AGENTS.md) 与 [`backend/README.md`](backend/README.md)。前端见 [`frontend/README.md`](frontend/README.md)。
 
 `backend/web/` 已废弃，不要在那里加页面。
