@@ -194,7 +194,8 @@ export const createChatLangGraphStream = () => {
     assistantId: LANGGRAPH_ASSISTANT_ID,
   })
 
-  return async (messages, config) => {
+  return async (...args: Parameters<typeof stream>) => {
+    const [messages, config] = args
     clearLangGraphError()
     try {
       return await stream(messages, {
