@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
+import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import {
@@ -273,7 +273,7 @@ watch(
  * handed off — the contract has no room for a document list. An open draft wins,
  * since that is the most specific thing the user is looking at.
  */
-watchEffect(() => {
+function publishChatContext() {
   const resourceId = draft.value?.draft_id || selectedIds.value[0]
   setChatLaunchContext(
     resourceId
@@ -284,9 +284,17 @@ watchEffect(() => {
         }
       : undefined,
   )
-})
+}
+
+watchEffect(publishChatContext)
 
 onUnmounted(clearChatLaunchContext)
+
+// SPA navigation in <KeepAlive> never fires `onUnmounted`; clear here so the
+// top-bar handoff does not leak the previous draft / document into unrelated
+// tabs (e.g. /upload, /jobs, /metrics).
+onDeactivated(clearChatLaunchContext)
+onActivated(publishChatContext)
 </script>
 
 <template>
@@ -324,6 +332,14 @@ onUnmounted(clearChatLaunchContext)
               <el-table-column label="公司" width="190" show-overflow-tooltip><template #default="scope">{{ scope.row.metadata.company || '—' }}</template></el-table-column>
               <el-table-column label="年度" width="90"><template #default="scope">{{ scope.row.metadata.year || '—' }}</template></el-table-column>
               <el-table-column prop="segment_count" label="切片" width="80" />
+              <template #empty>
+                <el-empty
+                  :description="query ? '没有匹配的可用文档' : '暂无已完成解析的报告材料'"
+                >
+                  <el-button v-if="query" @click="query = ''">清除搜索</el-button>
+                  <el-button v-else type="primary" @click="router.push('/upload')">上传报告材料</el-button>
+                </el-empty>
+              </template>
             </el-table>
             <p class="selection-summary">已选择 {{ selectedIds.length }} 份材料</p>
           </el-card>

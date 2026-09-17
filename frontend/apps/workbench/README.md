@@ -4,7 +4,10 @@ Vue 3 + Vite + TypeScript + Element Plus application for Claude Copilot's financ
 
 Implemented routes include dashboard, knowledge and graph inspection, research, comparison, reports, metrics, evaluation, jobs, uploads, and chat-memory inspection.
 
-The workbench calls FastAPI through `/api/fastapi` during the current migration. It does not connect to LangGraph directly. Full conversational Agent UX lives in `../chat-ui` and is opened through the top-bar Agent Chat action.
+The workbench calls FastAPI through `/api/fastapi` and does not connect to
+LangGraph directly. Full conversational Agent UX still lives in the independent
+React app at `../chat-ui`; `/agent-chat` embeds that app in the Vue shell while
+the assistant-ui runtime continues to own threads, streaming, and cancellation.
 
 Use workspace commands from `frontend/`:
 

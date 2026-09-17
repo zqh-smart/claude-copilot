@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
 import {
   getKnowledgeGraph,
@@ -15,6 +15,7 @@ import PageToolbar from '@/components/PageToolbar.vue'
 import { clearChatLaunchContext, setChatLaunchContext } from '@/lib/chat-launch-context'
 import { useWorkspaceStore } from '@/stores/workspace'
 
+const route = useRoute()
 const router = useRouter()
 const workspace = useWorkspaceStore()
 const { documents } = storeToRefs(workspace)
@@ -101,7 +102,7 @@ watch(selectedId, (docId) => {
 
 // Hand the document the user is inspecting to Agent Chat, together with the
 // probe question they typed in the retrieval preview.
-watchEffect(() => {
+function publishChatContext() {
   setChatLaunchContext(
     selectedId.value
       ? {
@@ -111,16 +112,28 @@ watchEffect(() => {
         }
       : undefined,
   )
-})
+}
+
+watchEffect(publishChatContext)
 
 onUnmounted(clearChatLaunchContext)
+
+// KeepAlive cache: clearing on `onDeactivated` so navigating away in the SPA
+// does not leave a stale document id in the launch-context slot for views that
+// do not publish their own context (e.g. /upload, /jobs). `onUnmounted` is the
+// too-late hook because KeepAlive does not unmount on tab switches.
+onDeactivated(clearChatLaunchContext)
+onActivated(publishChatContext)
 
 onMounted(async () => {
   try {
     await workspace.ensureDocuments()
-    const first = documents.value.find(
-      (item) => item.status === 'completed' && !/smoke|\.txt$/i.test(item.filename),
-    )
+    const pinned = typeof route.query.doc_id === 'string' ? route.query.doc_id : ''
+    const first =
+      documents.value.find((item) => item.doc_id === pinned) ||
+      documents.value.find(
+        (item) => item.status === 'completed' && !/smoke|\.txt$/i.test(item.filename),
+      )
     selectedId.value = first?.doc_id || documents.value[0]?.doc_id || ''
   } catch (reason) {
     error.value = reason instanceof Error ? reason.message : '知识库加载失败'
@@ -203,7 +216,7 @@ onMounted(async () => {
               <el-col :span="12"><el-statistic title="节点" :value="graph?.nodes.length || 0" /></el-col>
               <el-col :span="12"><el-statistic title="关系" :value="graph?.relationships.length || 0" /></el-col>
             </el-row>
-            <el-table :data="graph?.relationships.slice(0, 100) || []" height="470" class="graph-table">
+            <el-table :data="graph?.relationships?.slice(0, 100) || []" height="470" class="graph-table">
               <el-table-column prop="relationship_type" label="关系" width="180" />
               <el-table-column prop="source_node_id" label="源节点" show-overflow-tooltip />
               <el-table-column prop="target_node_id" label="目标节点" show-overflow-tooltip />

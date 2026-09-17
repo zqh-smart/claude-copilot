@@ -25,11 +25,9 @@ export function langGraphHeaders(): Record<string, string> {
  * Workbench handoff context (doc id, follow-up prompt, chat memory session) so
  * the backend agent knows what the user was looking at when the chat started.
  *
- * NOTE (P0): nothing calls this yet. In assistant-ui 0.15 the `load()` seam no
- * longer forwards a run config to `threads.getState()`, so the handoff has to
- * travel through the run itself (`thread.append({ runConfig })` /
- * `composer.setRunConfig()` → `createLangGraphStream` → `runs.stream`). Wiring
- * that is P1; see apps/chat-ui/RUNTIME.md "Known gaps".
+ * `ResearchComposer` applies this through `composer.setRunConfig()` so the
+ * selected Workbench document reaches the existing graph as
+ * `configurable.doc_id`. The `load()` seam does not forward run config.
  */
 export interface AgentRuntimeConfig {
   doc_id?: string

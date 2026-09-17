@@ -4,7 +4,7 @@ import { GridComponent, TooltipComponent } from 'echarts/components'
 import { init, use, type EChartsType } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { storeToRefs } from 'pinia'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch, watchEffect } from 'vue'
 
 import {
   getMetricTrend,
@@ -13,6 +13,7 @@ import {
   type MetricTrend,
 } from '@/api/http'
 import PageToolbar from '@/components/PageToolbar.vue'
+import { clearChatLaunchContext, setChatLaunchContext } from '@/lib/chat-launch-context'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 use([BarChart, GridComponent, TooltipComponent, CanvasRenderer])
@@ -53,6 +54,7 @@ const trendAnomaly = computed(() => {
   }
   return ''
 })
+const latestPoint = computed(() => trend.value?.points.at(-1) || null)
 
 function formatValue(value: number | string | null | undefined) {
   if (value == null || value === '') return '—'
@@ -118,18 +120,37 @@ async function loadMetrics() {
   }
 }
 
+function sourceUrl(documentId: string, page?: number | null) {
+  return `/api/fastapi/api/v1/documents/${encodeURIComponent(documentId)}/source${page ? `#page=${page}` : ''}`
+}
+
+function publishChatContext() {
+  setChatLaunchContext(
+    companyId.value
+      ? {
+          source: 'metrics',
+          resourceId: companyId.value,
+          prompt: `分析${selectedCompany.value?.name || '该公司'}的${metricLabel.value}趋势与数据质量`,
+        }
+      : undefined,
+  )
+}
+
 function resizeChart() {
   chart?.resize()
 }
 
 watch(trend, () => void renderChart())
+watch([companyId, metricKey], () => void loadMetrics())
+watchEffect(publishChatContext)
+onActivated(publishChatContext)
+onDeactivated(clearChatLaunchContext)
 
 onMounted(async () => {
   window.addEventListener('resize', resizeChart)
   try {
     await workspace.ensureCompanies()
     companyId.value = companies.value[0]?.company_id || ''
-    await loadMetrics()
   } catch (reason) {
     error.value = reason instanceof Error ? reason.message : '指标中心加载失败'
   } finally {
@@ -138,6 +159,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  clearChatLaunchContext()
   window.removeEventListener('resize', resizeChart)
   chart?.dispose()
 })
@@ -152,7 +174,12 @@ onBeforeUnmount(() => {
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
 
     <el-card shadow="never" class="filter-card" v-loading="loading">
-      <el-form inline label-position="top" class="filter-form">
+      <el-empty
+        v-if="!loading && !companies.length"
+        :image-size="72"
+        description="暂无已抽取结构化指标的公司；完成文档处理后会自动出现在这里"
+      />
+      <el-form v-else inline label-position="top" class="filter-form">
         <el-form-item label="目标公司">
           <el-select v-model="companyId" filterable placeholder="选择公司" style="width: 300px">
             <el-option v-for="item in companies" :key="item.company_id" :label="`${item.name} · ${item.metric_count} 指标`" :value="item.company_id" />
@@ -170,7 +197,8 @@ onBeforeUnmount(() => {
     <div class="metric-grid">
       <article class="metric-card"><span>公司主体</span><strong>{{ selectedCompany?.name || '—' }}</strong><small>{{ selectedCompany?.document_count || 0 }} 份入库文档</small></article>
       <article class="metric-card"><span>当前指标</span><strong>{{ metricLabel }}</strong><small>{{ metrics.length }} 条来源观测</small></article>
-      <article class="metric-card success"><span>CAGR</span><strong>{{ trend?.cagr == null ? '—' : `${(trend.cagr * 100).toFixed(2)}%` }}</strong><small>仅供分析，先检查质量告警</small></article>
+      <article class="metric-card success"><span>最新值</span><strong>{{ formatValue(latestPoint?.value) }}</strong><small>{{ latestPoint?.year || '—' }} · {{ trend?.unit || '未标单位' }}</small></article>
+      <article class="metric-card"><span>CAGR</span><strong>{{ trend?.cagr == null ? '—' : `${(trend.cagr * 100).toFixed(2)}%` }}</strong><small>仅供分析，先检查质量告警</small></article>
       <article class="metric-card"><span>口径</span><strong>{{ trend?.unit || '—' }} {{ trend?.currency || '' }}</strong><small>默认优先合并口径</small></article>
     </div>
 
@@ -213,6 +241,18 @@ onBeforeUnmount(() => {
         <el-table-column prop="source_table_title" label="来源表" min-width="260" show-overflow-tooltip />
         <el-table-column label="页码" width="90"><template #default="scope">{{ scope.row.page_range?.[0] || '—' }}</template></el-table-column>
         <el-table-column label="文档" width="150"><template #default="scope">{{ scope.row.document_id.slice(0, 12) }}</template></el-table-column>
+        <el-table-column label="溯源" width="90">
+          <template #default="scope">
+            <el-link
+              :href="sourceUrl(scope.row.document_id, scope.row.page_range?.[0])"
+              target="_blank"
+              type="primary"
+            >
+              打开来源
+            </el-link>
+          </template>
+        </el-table-column>
+        <template #empty><el-empty description="当前公司与指标没有可用观测值" /></template>
       </el-table>
     </el-card>
   </section>

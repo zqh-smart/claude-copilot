@@ -32,16 +32,20 @@ test.describe('LangGraph unavailable', () => {
     page.on('pageerror', (error) => pageErrors.push(error.message))
 
     await page.goto(CHAT)
-    await expect(page.getByRole('button', { name: '新对话' })).toBeVisible()
+    await page.getByRole('button', { name: '打开历史会话' }).click()
+    await expect(page.getByRole('button', { name: '新建对话' })).toBeVisible()
 
-    const composer = page.getByPlaceholder('向 Claude Copilot 提问…')
+    await page.getByRole('button', { name: '关闭历史会话' }).click()
+    const composer = page.getByPlaceholder('向金融研究 Agent 提问…')
     await composer.fill('这是一条在 LangGraph 离线时发送的探测消息')
     await composer.press('Enter')
 
     // Give the runtime a generous window to settle into a terminal state.
-    await page.waitForTimeout(35_000)
+    // #11's bound is the 8s `withTimeout` in apps/chat-ui/src/runtime/connection.ts
+    // plus a safe slack; anything past this is by definition an infinite spinner.
+    await page.waitForTimeout(15_000)
 
-    const stopVisible = await page.getByRole('button', { name: '停止' }).isVisible()
+    const stopVisible = await page.getByRole('button', { name: '停止生成' }).isVisible()
     const toastCount = await page.locator('[data-sonner-toaster] [data-sonner-toast]').count()
     const inlineAlertCount = await page.locator('[role="alert"]').count()
     const liveText = (await page.locator('[aria-live]').allInnerTexts()).join(' ').trim()
@@ -70,9 +74,11 @@ test.describe('LangGraph unavailable', () => {
     page.on('pageerror', (error) => pageErrors.push(error.message))
 
     await page.goto(CHAT)
-    await expect(page.getByText('Agent Chat').first()).toBeVisible()
-    await expect(page.getByRole('button', { name: '新对话' })).toBeVisible()
-    await expect(page.getByPlaceholder('向 Claude Copilot 提问…')).toBeVisible()
+    await expect(page.getByText('研究对话').first()).toBeVisible()
+    await page.getByRole('button', { name: '打开历史会话' }).click()
+    await expect(page.getByRole('button', { name: '新建对话' })).toBeVisible()
+    await page.getByRole('button', { name: '关闭历史会话' }).click()
+    await expect(page.getByPlaceholder('向金融研究 Agent 提问…')).toBeVisible()
     await page.waitForTimeout(5000)
 
     // A backend outage must not crash the React tree.

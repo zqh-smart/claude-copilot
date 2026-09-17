@@ -14,10 +14,12 @@ const CompareView = () => import('@/views/CompareView.vue')
 const ResearchView = () => import('@/views/ResearchView.vue')
 const ReportsView = () => import('@/views/ReportsView.vue')
 const ChatMemoryView = () => import('@/views/ChatMemoryView.vue')
+const AgentChatView = () => import('@/views/AgentChatView.vue')
 
 type ViewLoader = () => Promise<Component>
 
 const migratedViews: Record<string, ViewLoader> = {
+  'agent-chat': AgentChatView,
   knowledge: KnowledgeView,
   research: ResearchView,
   compare: CompareView,
@@ -36,6 +38,7 @@ export function prefetchWorkspaceView(path: string) {
 }
 
 const workspaceRoutes = [
+  ['agent-chat', '研究对话', '金融研究 Agent 对话'],
   ['knowledge', '知识库', '文档、切片与知识图谱管理'],
   ['chat-memory', '对话记忆', 'L0-L3 记忆浏览与检索'],
   ['research', '研究问答', '金融文档联合检索与研究'],
@@ -49,6 +52,11 @@ const workspaceRoutes = [
 
 const children: RouteRecordRaw[] = [
   { path: '', name: 'dashboard', component: DashboardView, meta: { title: '工作台' } },
+  // Compatibility aliases used by earlier links and acceptance checklists.
+  // Keep the canonical paths in one place rather than rendering an empty
+  // RouterView when an old bookmark is opened.
+  { path: 'tasks', redirect: '/jobs' },
+  { path: 'evaluation', redirect: '/eval' },
   ...workspaceRoutes.map(([path, title, description]) => ({
     path,
     name: path,

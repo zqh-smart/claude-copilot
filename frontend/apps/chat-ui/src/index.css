@@ -6,26 +6,26 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    --background: 150 11% 98%;
+    --foreground: 153 31% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 153 31% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
+    --popover-foreground: 153 31% 11%;
+    --primary: 161 55% 23%;
     --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
+    --secondary: 145 18% 94%;
+    --secondary-foreground: 161 55% 23%;
+    --muted: 145 18% 94%;
+    --muted-foreground: 153 9% 41%;
+    --accent: 150 25% 92%;
+    --accent-foreground: 161 55% 23%;
+    --destructive: 0 54% 50%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
-    --radius: 0.75rem;
+    --border: 142 15% 89%;
+    --input: 142 15% 86%;
+    --ring: 161 55% 23%;
+    --radius: 0.875rem;
   }
 
   .dark {
@@ -59,5 +59,11 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-family: var(--cc-font-sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
   }
 }

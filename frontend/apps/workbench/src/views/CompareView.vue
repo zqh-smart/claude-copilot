@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import {
   compareDocuments,
@@ -13,6 +14,7 @@ import PageToolbar from '@/components/PageToolbar.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 const workspace = useWorkspaceStore()
+const router = useRouter()
 const { documents: cachedDocuments, companies: cachedCompanies } = storeToRefs(workspace)
 const loading = ref(!workspace.loadedAt.documents || !workspace.loadedAt.companies)
 const comparing = ref(false)
@@ -37,6 +39,9 @@ const matrixColumns = computed(() =>
   Array.from(new Set((comparison.value?.matrix || []).flatMap((row) => Object.keys(row)))),
 )
 const portfolioIds = computed(() => companies.value.slice(0, 4).map((item) => item.company_id))
+const canCompare = computed(
+  () => Boolean(docA.value && docB.value && docA.value !== docB.value && question.value.trim()),
+)
 
 function docLabel(doc: DocumentSummary) {
   return `${doc.metadata.company || doc.filename} · ${doc.metadata.year || '—'} · ${doc.filename}`
@@ -71,8 +76,13 @@ function findComparablePair(items: DocumentSummary[]) {
   return [items[0], items[1]] as const
 }
 
+function swapDocuments() {
+  ;[docA.value, docB.value] = [docB.value, docA.value]
+  comparison.value = null
+}
+
 async function runCompare() {
-  if (!docA.value || !docB.value || docA.value === docB.value) return
+  if (!canCompare.value) return
   comparing.value = true
   error.value = ''
   try {
@@ -127,22 +137,40 @@ onMounted(async () => {
   <section class="cc-page">
     <PageToolbar kicker="对比分析" subtitle="双文档工作流生成差异矩阵，组合视图汇总指标排名与图谱风险。">
       <el-tag effect="plain">{{ documents.length }} 份可比文档</el-tag>
+      <el-button @click="router.push('/upload')">补充文档</el-button>
     </PageToolbar>
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
 
     <el-card shadow="never" v-loading="loading">
       <template #header><strong>双文档对比设定</strong></template>
-      <el-form label-position="top">
+      <el-empty
+        v-if="!loading && documents.length < 2"
+        :image-size="80"
+        description="至少需要两份已完成解析且包含切片的文档"
+      >
+        <el-button type="primary" @click="router.push('/upload')">上传对比材料</el-button>
+      </el-empty>
+      <el-form v-else label-position="top">
         <div class="compare-doc-grid">
           <el-form-item label="基准文档 A"><el-select v-model="docA" filterable style="width: 100%"><el-option v-for="item in documents" :key="item.doc_id" :label="docLabel(item)" :value="item.doc_id" /></el-select></el-form-item>
           <el-form-item label="对比文档 B"><el-select v-model="docB" filterable style="width: 100%"><el-option v-for="item in documents" :key="item.doc_id" :label="docLabel(item)" :value="item.doc_id" /></el-select></el-form-item>
         </div>
+        <el-alert
+          v-if="docA && docA === docB"
+          title="基准文档与对比文档不能相同"
+          type="warning"
+          show-icon
+          :closable="false"
+        />
         <el-form-item label="研究问题"><el-input v-model="question" /></el-form-item>
         <div class="compare-doc-grid">
           <el-form-item label="报告期间"><el-input v-model="period" placeholder="例如 2021" /></el-form-item>
           <el-form-item label="指标 Keys（逗号分隔）"><el-input v-model="metricKeys" /></el-form-item>
         </div>
-        <div class="form-submit"><el-button type="primary" :loading="comparing" :disabled="!docA || !docB || docA === docB" @click="runCompare">开始两文对比</el-button></div>
+        <div class="form-submit">
+          <el-button :disabled="!docA || !docB" @click="swapDocuments">交换 A / B</el-button>
+          <el-button type="primary" :loading="comparing" :disabled="!canCompare" @click="runCompare">开始两文对比</el-button>
+        </div>
       </el-form>
     </el-card>
 
@@ -183,7 +211,12 @@ onMounted(async () => {
         </el-table>
         <el-alert v-for="warning in portfolio.warnings" :key="warning" :title="warning" type="warning" :closable="false" show-icon />
       </template>
-      <el-empty v-else description="至少需要两家有结构化指标的公司" />
+      <el-empty
+        v-else
+        description="至少需要两家有结构化指标的公司；完成文档入库和指标抽取后会自动展示"
+      >
+        <el-button @click="router.push('/metrics')">前往指标中心</el-button>
+      </el-empty>
     </el-card>
   </section>
 </template>

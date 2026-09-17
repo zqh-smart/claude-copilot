@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { ElMessage } from 'element-plus'
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, onUnmounted, ref, watchEffect } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref, watchEffect } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
 import {
   researchDocument,
@@ -19,6 +20,7 @@ const suggestions = [
   '经营活动现金流表现如何？',
 ]
 const route = useRoute()
+const router = useRouter()
 const workspace = useWorkspaceStore()
 const { documents, servingEvals: serving } = storeToRefs(workspace)
 const loading = ref(!workspace.loadedAt.documents || !workspace.loadedAt.servingEvals)
@@ -29,6 +31,14 @@ const question = ref(suggestions[0])
 const result = ref<ResearchPreview | null>(null)
 const resultTab = ref('answer')
 
+const completedDocuments = computed(() =>
+  documents.value.filter(
+    (item) =>
+      item.status === 'completed' &&
+      item.segment_count &&
+      !/smoke|worker-soak|\.txt$|\.md$/i.test(item.filename),
+  ),
+)
 const servingIds = computed(() => new Set(serving.value.map((item) => item.doc_id)))
 const selected = computed(() => documents.value.find((item) => item.doc_id === docId.value) || null)
 const selectedEval = computed(() => serving.value.find((item) => item.doc_id === docId.value) || null)
@@ -76,12 +86,13 @@ async function ask() {
 
 async function copyAnswer() {
   await navigator.clipboard.writeText(answer.value)
+  ElMessage.success('研究回答已复制')
 }
 
 // Hand the selected document + question to Agent Chat. The prompt is only a
 // pre-fill (chat-ui never auto-sends it), so an empty question stays `undefined`
 // rather than sending an empty `cc_prompt`.
-watchEffect(() => {
+function publishChatContext() {
   setChatLaunchContext(
     docId.value
       ? {
@@ -91,9 +102,14 @@ watchEffect(() => {
         }
       : undefined,
   )
-})
+}
+
+watchEffect(publishChatContext)
 
 onUnmounted(clearChatLaunchContext)
+
+onDeactivated(clearChatLaunchContext)
+onActivated(publishChatContext)
 
 onMounted(async () => {
   try {
@@ -103,10 +119,10 @@ onMounted(async () => {
     ])
     const pinned = typeof route.query.doc_id === 'string' ? route.query.doc_id : ''
     const preferred =
-      documents.value.find((item) => item.doc_id === pinned) ||
-      documents.value.find((item) => item.status === 'completed' && servingIds.value.has(item.doc_id)) ||
-      documents.value.find((item) => item.status === 'completed' && !/smoke|\.txt$/i.test(item.filename))
-    docId.value = preferred?.doc_id || documents.value[0]?.doc_id || ''
+      completedDocuments.value.find((item) => item.doc_id === pinned) ||
+      completedDocuments.value.find((item) => servingIds.value.has(item.doc_id)) ||
+      completedDocuments.value[0]
+    docId.value = preferred?.doc_id || ''
   } catch (reason) {
     error.value = reason instanceof Error ? reason.message : '研究工作台加载失败'
   } finally {
@@ -119,15 +135,23 @@ onMounted(async () => {
   <section class="cc-page">
     <PageToolbar kicker="研究问答" subtitle="向量、结构化指标和知识图谱联合检索，并展示完整证据诊断。">
       <el-tag type="success" effect="plain">可追溯</el-tag>
+      <el-button @click="router.push('/knowledge')">打开知识库</el-button>
     </PageToolbar>
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
 
     <div class="research-config-grid" v-loading="loading">
       <el-card shadow="never">
         <template #header><strong>文档范围</strong></template>
-        <el-select v-model="docId" filterable style="width: 100%">
-          <el-option v-for="item in documents" :key="item.doc_id" :label="documentLabel(item)" :value="item.doc_id" />
+        <el-select v-if="completedDocuments.length" v-model="docId" filterable style="width: 100%">
+          <el-option v-for="item in completedDocuments" :key="item.doc_id" :label="documentLabel(item)" :value="item.doc_id" />
         </el-select>
+        <el-empty
+          v-else-if="!loading"
+          :image-size="72"
+          description="暂无可研究的已解析文档"
+        >
+          <el-button type="primary" @click="router.push('/upload')">上传研究材料</el-button>
+        </el-empty>
         <el-descriptions v-if="selected" :column="2" border class="document-summary">
           <el-descriptions-item label="公司">{{ selected.metadata.company || '—' }}</el-descriptions-item>
           <el-descriptions-item label="年度">{{ selected.metadata.year || '—' }}</el-descriptions-item>
@@ -144,6 +168,13 @@ onMounted(async () => {
         <div class="form-submit"><el-button type="primary" :loading="researching" :disabled="!docId || !question.trim()" @click="ask">发起研究检索</el-button></div>
       </el-card>
     </div>
+
+    <el-card v-if="!result && !researching && completedDocuments.length" shadow="never">
+      <el-empty
+        :image-size="72"
+        description="选择文档和问题后发起检索；结果将同时展示文本、指标与图谱证据"
+      />
+    </el-card>
 
     <template v-if="result">
       <el-card shadow="never">
@@ -175,6 +206,7 @@ onMounted(async () => {
               <p>{{ hit.content }}</p>
               <a :href="sourceUrl(result.doc_id || docId, pageOf(hit.metadata))" target="_blank" rel="noreferrer">查看原文{{ pageOf(hit.metadata) ? ` · 第 ${pageOf(hit.metadata)} 页` : '' }}</a>
             </article>
+            <el-empty v-if="!result.hits?.length" description="本次检索未返回文本证据" />
           </el-tab-pane>
 
           <el-tab-pane :label="`结构化指标 (${result.metrics?.length || 0})`" name="metrics">
@@ -185,11 +217,16 @@ onMounted(async () => {
               <el-table-column prop="entity_scope" label="主体口径" width="140" />
               <el-table-column prop="source_table_title" label="来源表" min-width="260" show-overflow-tooltip />
               <el-table-column label="页码" width="80"><template #default="scope">{{ scope.row.page_range?.[0] || '—' }}</template></el-table-column>
+              <template #empty><el-empty description="本次检索未命中结构化指标" /></template>
             </el-table>
           </el-tab-pane>
 
           <el-tab-pane :label="`图谱路径 (${result.graph_paths?.length || 0})`" name="graph">
-            <el-table :data="result.graph_paths || []" stripe><el-table-column prop="summary" label="关系路径" min-width="500" /><el-table-column prop="score" label="得分" width="110" /></el-table>
+            <el-table :data="result.graph_paths || []" stripe>
+              <el-table-column prop="summary" label="关系路径" min-width="500" />
+              <el-table-column prop="score" label="得分" width="110" />
+              <template #empty><el-empty description="本次检索未返回图谱路径" /></template>
+            </el-table>
           </el-tab-pane>
         </el-tabs>
       </el-card>

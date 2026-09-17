@@ -14,13 +14,18 @@ test('workbench exposes the financial product entry', async ({ page }) => {
   await page.route('**/api/fastapi/api/v1/eval/serving', (route) => route.fulfill({ json: [] }))
 
   await page.goto('http://127.0.0.1:3000/')
-  await expect(page.getByRole('heading', { name: '金融知识与研究工作台' })).toBeVisible()
+  // The workbench dashboard renders PageToolbar kicker + the top-bar h1
+  // (router/index.ts:43 sets `title: '工作台'`). The PageToolbar kicker is the
+  // most stable label across copy edits; assert on both pieces of chrome.
+  await expect(page.getByRole('heading', { name: '工作台' })).toBeVisible()
+  await expect(page.locator('.cc-page-kicker', { hasText: '金融文档智能' })).toBeVisible()
   await expect(page.getByRole('button', { name: /Agent Chat/ })).toBeVisible()
 
   await page.getByRole('menuitem', { name: '知识库' }).click()
-  await expect(page.getByRole('heading', { name: '知识库与图谱' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '知识库' })).toBeVisible()
+  await expect(page.locator('.cc-page-kicker', { hasText: '知识库' }).first()).toBeVisible()
   await page.getByRole('menuitem', { name: '工作台' }).click()
-  await expect(page.getByRole('heading', { name: '金融知识与研究工作台' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '工作台' })).toBeVisible()
   expect(documentRequests).toBe(1)
   expect(runtimeErrors).toEqual([])
 })

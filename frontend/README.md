@@ -34,7 +34,8 @@ pnpm dev:chat
 Development URLs:
 
 - Workbench: `http://127.0.0.1:3000/`
-- Agent Chat: `http://127.0.0.1:3001/chat/` (Workbench opens this in a new tab from the top-bar "Agent Chat" button)
+- Agent Chat runtime: `http://127.0.0.1:3001/chat/` (the Workbench embeds it at
+  `/agent-chat`; “新窗口打开” remains available for standalone use)
 
 Build and type-check:
 

@@ -1,5 +1,6 @@
 import type { Component } from 'vue'
 import {
+  ChatDotRound,
   DataAnalysis,
   Document,
   Files,
@@ -49,6 +50,7 @@ export const navGroups: NavGroup[] = [
     title: '研究产出',
     icon: Search,
     items: [
+      { path: '/agent-chat', title: '研究对话', icon: ChatDotRound, keywords: ['agent', '金融', '对话'] },
       { path: '/research', title: '研究问答', icon: Search, keywords: ['research', '检索'] },
       { path: '/compare', title: '对比分析', icon: DataAnalysis, keywords: ['公司', '年度'] },
       { path: '/reports', title: '报告中心', icon: Memo, keywords: ['草稿', '导出'] },
@@ -70,7 +72,12 @@ export function groupKeyForPath(path: string): string | null {
   if (path.startsWith('/knowledge') || path.startsWith('/upload') || path.startsWith('/jobs')) {
     return 'nav-docs'
   }
-  if (path.startsWith('/research') || path.startsWith('/compare') || path.startsWith('/reports')) {
+  if (
+    path.startsWith('/agent-chat') ||
+    path.startsWith('/research') ||
+    path.startsWith('/compare') ||
+    path.startsWith('/reports')
+  ) {
     return 'nav-research'
   }
   if (path.startsWith('/metrics') || path.startsWith('/eval') || path.startsWith('/chat-memory')) {

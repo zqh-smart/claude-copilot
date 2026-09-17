@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ElMessage } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
 
 import PageToolbar from '@/components/PageToolbar.vue'
@@ -113,7 +114,9 @@ async function runSearch() {
 }
 
 async function copyJson() {
-  if (selected.value) await navigator.clipboard.writeText(JSON.stringify(selected.value, null, 2))
+  if (!selected.value) return
+  await navigator.clipboard.writeText(JSON.stringify(selected.value, null, 2))
+  ElMessage.success('记忆 JSON 已复制')
 }
 
 function downloadJson() {
@@ -129,13 +132,17 @@ function downloadJson() {
 
 watch(layer, () => void loadLayer())
 
-onMounted(async () => {
+async function refresh() {
   try {
     health.value = await getChatMemoryHealth()
   } catch (reason) {
     health.value = { status: 'down', error: reason instanceof Error ? reason.message : String(reason) }
   }
   await loadLayer()
+}
+
+onMounted(async () => {
+  await refresh()
 })
 </script>
 
@@ -145,6 +152,7 @@ onMounted(async () => {
       <el-tag :type="connected ? 'success' : health?.status === 'disabled' ? 'warning' : 'danger'" effect="plain">
         {{ connected ? 'MemoryCore 已连接' : health?.status === 'disabled' ? 'MemoryCore 未启用' : 'MemoryCore 不可用' }}
       </el-tag>
+      <el-button :loading="loading" @click="refresh">刷新记忆</el-button>
     </PageToolbar>
     <el-alert v-if="health?.status === 'disabled'" title="后端 CHAT_MEMORY_ENABLED=false。启用 MemoryCore sidecar 后，此页面会自动显示真实记忆。" type="warning" show-icon :closable="false" />
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />

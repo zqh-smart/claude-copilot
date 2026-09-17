@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ChatDotRound, Expand, Fold } from '@element-plus/icons-vue'
 import { computed, ref, watch } from 'vue'
-import { RouterView, useRoute } from 'vue-router'
+import { RouterView, useRoute, useRouter } from 'vue-router'
 
 import GlobalSearch, { type SearchEntry } from '@/components/GlobalSearch.vue'
 import { groupKeyForPath, homeNavItem, navGroups } from '@/constants/nav'
@@ -11,6 +11,7 @@ import { prefetchWorkspaceView } from '@/router'
 import { useAppStore } from '@/stores/app'
 
 const route = useRoute()
+const router = useRouter()
 const app = useAppStore()
 const chatUiUrl = __CHAT_UI_URL__
 const chatLaunchContext = useChatLaunchContext()
@@ -22,6 +23,7 @@ const active = computed(() => {
   return `/${path.split('/')[1]}`
 })
 const pageTitle = computed(() => String(route.meta.title || '工作台'))
+const isAgentChat = computed(() => route.path === '/agent-chat')
 
 const searchEntries = computed<SearchEntry[]>(() => {
   const items: SearchEntry[] = [
@@ -33,9 +35,9 @@ const searchEntries = computed<SearchEntry[]>(() => {
     },
     {
       path: '__agent_chat__',
-      title: 'Agent Chat',
+      title: '研究对话',
       group: '对话',
-      keywords: ['agent', 'langgraph', '研究助手'],
+      keywords: ['agent', '金融', '研究助手'],
     },
   ]
   for (const group of navGroups) {
@@ -52,7 +54,11 @@ const searchEntries = computed<SearchEntry[]>(() => {
 })
 
 function openAgentChat() {
-  window.location.assign(buildAgentChatUrl(chatUiUrl, chatLaunchContext.value))
+  const target = new URL(buildAgentChatUrl(chatUiUrl, chatLaunchContext.value))
+  void router.push({
+    path: '/agent-chat',
+    query: Object.fromEntries(target.searchParams.entries()),
+  })
 }
 
 function onSearchNavigate(entry: SearchEntry) {
@@ -121,8 +127,8 @@ function prefetch(path: string) {
       </button>
     </aside>
 
-    <div class="workspace">
-      <header class="workspace__header">
+    <div class="workspace" :class="{ 'workspace--chat': isAgentChat }">
+      <header v-if="!isAgentChat" class="workspace__header">
         <div class="workspace__header-left">
           <h1 class="workspace__title">{{ pageTitle }}</h1>
         </div>
@@ -130,12 +136,12 @@ function prefetch(path: string) {
           <GlobalSearch :entries="searchEntries" @navigate="onSearchNavigate" />
           <el-button type="primary" @click="openAgentChat">
             <el-icon><ChatDotRound /></el-icon>
-            Agent Chat
+            研究对话
           </el-button>
         </div>
       </header>
-      <main class="workspace__main">
-        <div class="workspace__content">
+      <main class="workspace__main" :class="{ 'workspace__main--chat': isAgentChat }">
+        <div class="workspace__content" :class="{ 'workspace__content--chat': isAgentChat }">
           <RouterView v-slot="{ Component }">
             <KeepAlive :max="8">
               <component :is="Component" />
@@ -341,6 +347,17 @@ function prefetch(path: string) {
   width: 100%;
   max-width: var(--cc-content-max-width);
   padding: 20px 24px 28px;
+}
+
+.workspace__main--chat {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace__content--chat {
+  height: 100%;
+  max-width: none;
+  padding: 0;
 }
 
 @media (max-width: 768px) {

@@ -20,8 +20,9 @@ test('#3 /chat/ loads with LangGraph up', async ({ page }) => {
   page.on('pageerror', (error) => errors.push(error.message))
 
   await page.goto(CHAT)
-  await expect(page.getByText('Agent Chat').first()).toBeVisible()
-  await expect(page.getByRole('button', { name: '新对话' })).toBeVisible()
+  await expect(page.getByText('研究对话').first()).toBeVisible()
+  await page.getByRole('button', { name: '打开历史会话' }).click()
+  await expect(page.getByRole('button', { name: '新建对话' })).toBeVisible()
   await page.waitForTimeout(2500)
 
   const backendFailures = errors.filter((message) => !/favicon/i.test(message))
@@ -35,7 +36,8 @@ test('#6 the thread rail is backed by client.threads.search on :2025', async ({ 
   const title = 'P0-ACCEPTANCE-LIST-PROBE'
 
   await page.goto(CHAT)
-  await expect(page.getByRole('button', { name: '新对话' })).toBeVisible()
+  await page.getByRole('button', { name: '打开历史会话' }).click()
+  await expect(page.getByRole('button', { name: '新建对话' })).toBeVisible()
   await expect(page.getByText(title)).toBeVisible({ timeout: 20_000 })
 
   console.log('#6 LangGraph thread rendered in rail = true')
@@ -64,8 +66,9 @@ test('#5 new conversation defers thread creation until the first send', async ({
   })
 
   await page.goto(CHAT)
-  await expect(page.getByRole('button', { name: '新对话' })).toBeVisible()
-  await page.getByRole('button', { name: '新对话' }).click()
+  await page.getByRole('button', { name: '打开历史会话' }).click()
+  await expect(page.getByRole('button', { name: '新建对话' })).toBeVisible()
+  await page.getByRole('button', { name: '新建对话' }).click()
   await page.waitForTimeout(4000)
 
   // No remote id: creation is deferred to the first message.
@@ -81,26 +84,23 @@ test('#14 hard refresh keeps launch context without re-firing the prompt', async
   const url = `${CHAT}?cc_source=research&cc_resource=doc-abc123&cc_prompt=${encodeURIComponent(prompt)}`
 
   await page.goto(url)
-  await expect(page.getByText('已从工作台衔接')).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByText('研究问答')).toBeVisible()
-  await expect(page.getByText(`预填问题：${prompt}`)).toBeVisible()
+  const composer = page.getByPlaceholder('向金融研究 Agent 提问…')
+  await expect(composer).toHaveValue(prompt, { timeout: 15_000 })
 
-  // The prompt is displayed, never auto-sent.
-  const userBubblesBefore = await page.locator('text=' + prompt).count()
-  console.log('#14 prompt occurrences before reload = ' + userBubblesBefore)
+  // The prompt is prefilled, never auto-sent.
+  await expect(page.getByRole('heading', { name: '金融研究 Agent' })).toBeVisible()
+  console.log('#14 thread remains empty before reload = true')
 
   await page.reload()
 
   // Context survives F5 ...
-  await expect(page.getByText('已从工作台衔接')).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByText(`预填问题：${prompt}`)).toBeVisible()
+  await expect(composer).toHaveValue(prompt, { timeout: 15_000 })
   expect(page.url()).toContain('cc_source=research')
   expect(page.url()).toContain('cc_resource=doc-abc123')
 
-  // ... and the composer is still empty: the prompt went to the banner only.
-  const composer = page.getByPlaceholder('向 Claude Copilot 提问…')
-  await expect(composer).toHaveValue('')
-  console.log('#14 composer empty after reload = true')
+  // ... and the prompt remains a draft rather than a sent user message.
+  await expect(page.getByRole('heading', { name: '金融研究 Agent' })).toBeVisible()
+  console.log('#14 composer draft restored after reload = true')
 
   await page.screenshot({
     path: '../.p0-artifacts/08-launch-context-2025-up.png',

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onActivated, onDeactivated, onUnmounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import PageToolbar from '@/components/PageToolbar.vue'
 import {
@@ -13,6 +14,7 @@ import {
 } from '@/api/http'
 
 const loading = ref(true)
+const router = useRouter()
 const actingId = ref('')
 const jobs = ref<IngestionJob[]>([])
 const metrics = ref<IngestionQueueMetrics | null>(null)
@@ -21,6 +23,13 @@ let timer: number | undefined
 
 const activeJobs = computed(
   () => jobs.value.filter((item) => ['ready', 'processing', 'retry_wait'].includes(item.status)).length,
+)
+const statusFilter = ref('')
+const filteredJobs = computed(() =>
+  statusFilter.value ? jobs.value.filter((item) => item.status === statusFilter.value) : jobs.value,
+)
+const statusOptions = computed(() =>
+  Array.from(new Set(jobs.value.map((item) => item.status))).sort(),
 )
 
 function statusType(status: string) {
@@ -136,20 +145,48 @@ onUnmounted(stopPolling)
     </div>
 
     <el-card shadow="never">
-      <template #header><div class="document-header"><strong>任务列表</strong><small>每 10 秒自动刷新</small></div></template>
-      <el-table :data="jobs" stripe max-height="650">
+      <template #header>
+        <div class="document-header">
+          <strong>任务列表</strong>
+          <div class="card-title">
+            <el-select v-model="statusFilter" clearable placeholder="全部状态" style="width: 150px">
+              <el-option v-for="status in statusOptions" :key="status" :label="status" :value="status" />
+            </el-select>
+            <small>每 10 秒自动刷新</small>
+          </div>
+        </div>
+      </template>
+      <el-table :data="filteredJobs" stripe max-height="650">
         <el-table-column prop="filename" label="文件" min-width="260" show-overflow-tooltip />
         <el-table-column label="状态" width="120"><template #default="scope"><el-tag :type="statusType(scope.row.status)">{{ scope.row.status }}</el-tag></template></el-table-column>
         <el-table-column prop="stage" label="阶段" width="130" />
         <el-table-column label="进度" width="180"><template #default="scope"><el-progress :percentage="scope.row.progress_percent" :stroke-width="8" /></template></el-table-column>
         <el-table-column label="尝试" width="90"><template #default="scope">{{ scope.row.attempt }}/{{ scope.row.max_attempts }}</template></el-table-column>
+        <el-table-column prop="error_message" label="失败原因" min-width="220" show-overflow-tooltip>
+          <template #default="scope">{{ scope.row.error_message || '—' }}</template>
+        </el-table-column>
         <el-table-column label="更新时间" width="180"><template #default="scope">{{ formatDate(scope.row.updated_at) }}</template></el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="230" fixed="right">
           <template #default="scope">
             <el-button v-if="scope.row.status === 'failed'" text type="primary" :loading="actingId === scope.row.job_id" @click="retry(scope.row)">重试</el-button>
             <el-button v-if="['ready', 'processing', 'retry_wait'].includes(scope.row.status)" text type="danger" :loading="actingId === scope.row.job_id" @click="cancel(scope.row)">取消</el-button>
+            <el-button
+              v-if="scope.row.doc_id"
+              text
+              @click="router.push({ path: '/knowledge', query: { doc_id: scope.row.doc_id } })"
+            >
+              查看文档
+            </el-button>
           </template>
         </el-table-column>
+        <template #empty>
+          <el-empty
+            :description="statusFilter ? `没有 ${statusFilter} 状态的任务` : '暂无处理任务；上传文档后会在此跟踪流水线进度'"
+          >
+            <el-button v-if="!statusFilter" type="primary" @click="router.push('/upload')">上传第一份文档</el-button>
+            <el-button v-else @click="statusFilter = ''">清除筛选</el-button>
+          </el-empty>
+        </template>
       </el-table>
     </el-card>
   </section>

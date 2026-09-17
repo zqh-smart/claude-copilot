@@ -99,7 +99,7 @@ onMounted(() => {
           :key="item.doc_id"
           type="button"
           class="home-doc-row"
-          @click="router.push('/knowledge')"
+          @click="router.push({ path: '/knowledge', query: { doc_id: item.doc_id } })"
         >
           <span>
             <strong>{{ item.metadata.company || item.filename }}</strong>

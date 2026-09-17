@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import {
@@ -10,8 +10,9 @@ import {
 import { langGraphClient, langGraphThreadListAdapter, createChatLangGraphStream } from '@/runtime/langgraph'
 import { notifyLangGraphFailure } from '@/runtime/connection'
 import { ChatThread } from '@/routes/ChatThread'
+import { ChatHeader } from '@/components/ChatHeader'
 import { ThreadList } from '@/components/ThreadList'
-import { LaunchContextBanner, useLaunchContext } from '@/components/LaunchContextBanner'
+import { useLaunchContext } from '@/components/LaunchContextBanner'
 import { ChatToaster } from '@/components/ui/sonner'
 
 /** URL param holding the active LangGraph thread id. */
@@ -20,6 +21,7 @@ const THREAD_PARAM = 'thread'
 export default function App() {
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   // The `cc_*` handoff params are read on every render and deliberately left
   // in the URL: Acceptance #14 requires the launch context to survive F5 while
@@ -47,11 +49,11 @@ export default function App() {
   return (
     <AgentRuntime threadId={threadId} onThreadIdChange={handleThreadIdChange}>
       <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
-        <ThreadList />
-        <main className="flex flex-1 flex-col overflow-hidden">
-          <LaunchContextBanner context={launchContext} />
-          <ChatThread />
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <ChatHeader onOpenHistory={() => setHistoryOpen(true)} />
+          <ChatThread launchContext={launchContext} />
         </main>
+        <ThreadList open={historyOpen} onOpenChange={setHistoryOpen} />
       </div>
       <ChatToaster />
     </AgentRuntime>

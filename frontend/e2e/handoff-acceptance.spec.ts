@@ -5,9 +5,9 @@ import { expect, test } from '@playwright/test'
  *
  * Full round trip, with FastAPI stubbed so the test does not need a live
  * backend:
- *   /knowledge (document selected)  →  click "Agent Chat"
- *   →  lands on :3001/chat/ with cc_source / cc_resource / cc_prompt
- *   →  chat-ui renders the handoff banner from those params
+ *   /knowledge (document selected)  →  click "研究对话"
+ *   →  lands on the embedded /agent-chat route with cc_* params
+ *   →  the React composer renders the handoff prompt as an unsent draft
  *
  * The Workbench has no /chat proxy, so a bare relative fallback would land on
  * http://127.0.0.1:3000/chat (dead). This test pins the baked __CHAT_UI_URL__
@@ -26,23 +26,7 @@ const PROMPT = '2021年营业收入是多少？'
 const WORKBENCH = process.env.WORKBENCH_URL || 'http://127.0.0.1:3000'
 let workbenchReady = false
 
-test.beforeAll(async ({ request }) => {
-  try {
-    const response = await request.get(WORKBENCH, { timeout: 4000 })
-    workbenchReady = response.ok() && (await response.text()).includes('id="app"')
-  } catch {
-    workbenchReady = false
-  }
-})
-
-test('workbench handoff reaches chat-ui with launch context', async ({ page }) => {
-  test.skip(
-    !workbenchReady,
-    `No Workbench dev server at ${WORKBENCH}. Start it with ` +
-      '`pnpm dev:workbench` (it must own :3000) or set WORKBENCH_URL.',
-  )
-
-  // FastAPI is not required: stub the endpoints /knowledge touches on mount.
+async function stubWorkbenchApi(page: import('@playwright/test').Page) {
   await page.route('**/api/fastapi/**', async (route) => {
     const url = route.request().url()
 
@@ -70,18 +54,38 @@ test('workbench handoff reaches chat-ui with launch context', async ({ page }) =
 
     await route.fulfill({ json: [] })
   })
+}
+
+test.beforeAll(async ({ request }) => {
+  try {
+    const response = await request.get(WORKBENCH, { timeout: 4000 })
+    workbenchReady = response.ok() && (await response.text()).includes('id="app"')
+  } catch {
+    workbenchReady = false
+  }
+})
+
+test('workbench handoff reaches chat-ui with launch context', async ({ page }) => {
+  test.skip(
+    !workbenchReady,
+    `No Workbench dev server at ${WORKBENCH}. Start it with ` +
+      '`pnpm dev:workbench` (it must own :3000) or set WORKBENCH_URL.',
+  )
+
+  // FastAPI is not required: stub the endpoints /knowledge touches on mount.
+  await stubWorkbenchApi(page)
 
   await page.goto(`${WORKBENCH}/knowledge`)
 
   // The view auto-selects the first completed document, which is what publishes
   // the handoff context. The rail renders metadata.company rather than the
   // filename, so assert on the company label.
-  await expect(page.getByText(COMPANY)).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText(COMPANY).first()).toBeVisible({ timeout: 15_000 })
 
-  await page.getByRole('button', { name: /Agent Chat/ }).click()
+  await page.getByRole('button', { name: /研究对话/ }).click()
 
-  // Handoff must land on the chat-ui origin, not the workbench's dead /chat.
-  await page.waitForURL(/127\.0\.0\.1:3001\/chat\//, { timeout: 20_000 })
+  // Handoff stays inside the Vue shell; the iframe owns the React /chat/ URL.
+  await page.waitForURL(/\/agent-chat/, { timeout: 20_000 })
   const handoff = new URL(page.url())
 
   console.log('#4 handoff url = ' + handoff.toString())
@@ -93,9 +97,37 @@ test('workbench handoff reaches chat-ui with launch context', async ({ page }) =
   expect(handoff.searchParams.get('cc_resource')).toBe(DOC_ID)
   expect(handoff.searchParams.get('cc_prompt')).toBe(PROMPT)
 
-  // Round trip: chat-ui must actually render the banner from those params.
-  await expect(page.getByText('已从工作台衔接')).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByText('知识库', { exact: false })).toBeVisible()
+  // Round trip: the embedded React composer receives the prompt without
+  // automatically firing it.
+  const chat = page.frameLocator('iframe[title="Claude Copilot 研究对话"]')
+  await expect(chat.getByPlaceholder('向金融研究 Agent 提问…')).toHaveValue(PROMPT, {
+    timeout: 15_000,
+  })
+  await expect(chat.getByRole('heading', { name: '金融研究 Agent' })).toBeVisible()
 
   await page.screenshot({ path: '../.p0-artifacts/11-handoff-round-trip.png', fullPage: true })
+})
+
+test('KeepAlive clears launch context after leaving a publishing page', async ({ page }) => {
+  test.skip(
+    !workbenchReady,
+    `No Workbench dev server at ${WORKBENCH}. Start it with ` +
+      '`pnpm dev:workbench` (it must own :3000) or set WORKBENCH_URL.',
+  )
+
+  await stubWorkbenchApi(page)
+  await page.goto(`${WORKBENCH}/knowledge`)
+  await expect(page.getByText(COMPANY).first()).toBeVisible({ timeout: 15_000 })
+
+  // This must be an in-app navigation so KnowledgeView is deactivated by
+  // KeepAlive rather than unmounted by a full page load.
+  await page.locator('.el-menu-item').filter({ hasText: '文档上传' }).click()
+  await expect(page).toHaveURL(/\/upload$/)
+  await page.getByRole('button', { name: /研究对话/ }).click()
+  await page.waitForURL(/\/agent-chat/, { timeout: 20_000 })
+
+  const handoff = new URL(page.url())
+  expect(handoff.searchParams.get('cc_source')).toBeNull()
+  expect(handoff.searchParams.get('cc_resource')).toBeNull()
+  expect(handoff.searchParams.get('cc_prompt')).toBeNull()
 })
