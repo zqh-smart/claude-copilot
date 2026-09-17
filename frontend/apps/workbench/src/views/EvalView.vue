@@ -8,6 +8,7 @@ import {
   type ScorecardSummary,
   type ServingEvalSummary,
 } from '@/api/http'
+import PageToolbar from '@/components/PageToolbar.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 const workspace = useWorkspaceStore()
@@ -65,11 +66,10 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="page-stack">
-    <div class="page-heading compact-heading">
-      <div><p class="eyebrow">QUALITY GATES</p><h1>L3 检索与入库门禁</h1><p>查看真实 Serving 报告、案例结果与阶段 Scorecard。</p></div>
+  <section class="cc-page">
+    <PageToolbar kicker="评测中心" subtitle="查看真实 Serving 报告、案例结果与阶段 Scorecard。">
       <el-tag type="success" effect="plain">{{ reports.length }} 份报告</el-tag>
-    </div>
+    </PageToolbar>
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
 
     <el-card shadow="never" v-loading="loading">

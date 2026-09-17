@@ -2,6 +2,7 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onActivated, onDeactivated, onUnmounted, ref } from 'vue'
 
+import PageToolbar from '@/components/PageToolbar.vue'
 import {
   cancelIngestionJob,
   getIngestionMetrics,
@@ -96,11 +97,11 @@ onUnmounted(stopPolling)
 </script>
 
 <template>
-  <section class="page-stack" v-loading="loading">
-    <div class="page-heading compact-heading">
-      <div><p class="eyebrow">INGESTION OPERATIONS</p><h1>文档处理任务</h1><p>跟踪流水线阶段、重试失败任务并查看队列健康。</p></div>
-      <el-space><el-button @click="refresh()">刷新</el-button><el-button type="primary" @click="$router.push('/upload')">上传文档</el-button></el-space>
-    </div>
+  <section class="cc-page" v-loading="loading">
+    <PageToolbar kicker="任务中心" subtitle="跟踪流水线阶段、重试失败任务并查看队列健康。">
+      <el-button @click="refresh()">刷新</el-button>
+      <el-button type="primary" @click="$router.push('/upload')">上传文档</el-button>
+    </PageToolbar>
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
     <el-alert
       v-for="alert in metrics?.alerts || []"
@@ -111,12 +112,27 @@ onUnmounted(stopPolling)
       :closable="false"
     />
 
-    <div class="metric-grid">
-      <article class="metric-card"><span>任务总数</span><strong>{{ jobs.length }}</strong></article>
-      <article class="metric-card"><span>活动任务</span><strong>{{ activeJobs }}</strong></article>
-      <article class="metric-card"><span>工作进程</span><strong>{{ metrics?.active_worker_count || 0 }}</strong></article>
-      <article class="metric-card" :class="{ danger: (metrics?.recent_failed_count || 0) > 0 }"><span>近期失败</span><strong>{{ metrics?.recent_failed_count || 0 }}</strong></article>
-      <article class="metric-card"><span>队列状态</span><strong class="health-text">{{ metrics?.health_status || '—' }}</strong></article>
+    <div class="overview-kpis">
+      <article class="overview-kpi overview-kpi--static">
+        <div class="overview-kpi__head"><span>任务总数</span></div>
+        <div class="overview-kpi__value">{{ jobs.length }}</div>
+        <p class="overview-kpi__meta">当前队列全部任务</p>
+      </article>
+      <article class="overview-kpi overview-kpi--static overview-kpi--warning">
+        <div class="overview-kpi__head"><span>活动任务</span></div>
+        <div class="overview-kpi__value">{{ activeJobs }}</div>
+        <p class="overview-kpi__meta">ready / processing / retry_wait</p>
+      </article>
+      <article class="overview-kpi overview-kpi--static">
+        <div class="overview-kpi__head"><span>工作进程</span></div>
+        <div class="overview-kpi__value">{{ metrics?.active_worker_count || 0 }}</div>
+        <p class="overview-kpi__meta">正在消费队列的 worker</p>
+      </article>
+      <article class="overview-kpi overview-kpi--static" :class="{ 'overview-kpi--danger': (metrics?.recent_failed_count || 0) > 0 }">
+        <div class="overview-kpi__head"><span>近期失败</span></div>
+        <div class="overview-kpi__value">{{ metrics?.recent_failed_count || 0 }}</div>
+        <p class="overview-kpi__meta">队列状态 {{ metrics?.health_status || '—' }}</p>
+      </article>
     </div>
 
     <el-card shadow="never">

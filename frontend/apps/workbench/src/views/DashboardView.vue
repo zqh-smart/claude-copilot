@@ -1,67 +1,130 @@
 <script setup lang="ts">
 import { Connection, DataBoard, Document, Files } from '@element-plus/icons-vue'
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 
+import PageToolbar from '@/components/PageToolbar.vue'
+import { useAsyncLoad } from '@/composables/useAsyncLoad'
 import { useWorkspaceStore } from '@/stores/workspace'
 
+const router = useRouter()
 const workspace = useWorkspaceStore()
 const { documents, servingEvals: evals } = storeToRefs(workspace)
-const loading = ref(!workspace.loadedAt.documents || !workspace.loadedAt.servingEvals)
-const error = ref('')
+const { loading, error, run } = useAsyncLoad()
 
 const completed = computed(() => documents.value.filter((item) => item.status === 'completed').length)
 const passingEvals = computed(
   () => evals.value.filter((item) => (item.l3?.total || 0) > 0 && item.l3?.pass_rate === 1).length,
 )
+const failed = computed(() => documents.value.filter((item) => item.status === 'failed').length)
+const completionRate = computed(() =>
+  documents.value.length ? Math.round((completed.value / documents.value.length) * 100) : 0,
+)
+const recentDocuments = computed(() => documents.value.slice(0, 6))
 
-onMounted(async () => {
-  try {
+function statusType(status: string) {
+  if (status === 'completed') return 'success'
+  if (status === 'failed') return 'danger'
+  return 'warning'
+}
+
+onMounted(() => {
+  void run(async () => {
     await Promise.all([workspace.ensureDocuments(), workspace.ensureServingEvals()])
-  } catch (reason) {
-    error.value = reason instanceof Error ? reason.message : '后端连接失败'
-  } finally {
-    loading.value = false
-  }
+  })
 })
 </script>
 
 <template>
-  <section class="page-stack">
-    <div class="hero-panel">
-      <div>
-        <p class="eyebrow">FINANCIAL DOCUMENT INTELLIGENCE</p>
-        <h1>金融知识与研究工作台</h1>
-        <p>统一管理文档解析、混合检索、图谱推理、Agentic Research 与正式报告。</p>
-      </div>
-      <el-button type="primary" size="large" @click="$router.push('/upload')">上传文档</el-button>
-    </div>
+  <section class="cc-page" v-loading="loading">
+    <PageToolbar kicker="金融文档智能" subtitle="文档解析、混合检索、图谱推理与正式报告的统一入口。">
+      <el-button @click="router.push('/knowledge')">打开知识库</el-button>
+      <el-button type="primary" @click="router.push('/upload')">上传文档</el-button>
+    </PageToolbar>
 
     <el-alert v-if="error" :title="error" type="warning" show-icon :closable="false" />
 
-    <div class="metric-grid" v-loading="loading">
-      <article class="metric-card">
-        <el-icon><Files /></el-icon><span>文档总数</span><strong>{{ documents.length }}</strong>
+    <section class="overview-kpis">
+      <article class="overview-kpi" @click="router.push('/knowledge')">
+        <div class="overview-kpi__head">
+          <span>文档总数</span>
+          <el-icon><Files /></el-icon>
+        </div>
+        <div class="overview-kpi__value">{{ documents.length }}</div>
+        <p class="overview-kpi__meta">知识库可检索资产</p>
       </article>
-      <article class="metric-card">
-        <el-icon><Document /></el-icon><span>处理完成</span><strong>{{ completed }}</strong>
+      <article class="overview-kpi overview-kpi--success" @click="router.push('/jobs')">
+        <div class="overview-kpi__head">
+          <span>处理完成</span>
+          <el-icon><Document /></el-icon>
+        </div>
+        <div class="overview-kpi__value">
+          {{ completed }}
+          <small>/ {{ documents.length }}</small>
+        </div>
+        <div class="overview-kpi__progress"><span :style="{ width: `${completionRate}%` }" /></div>
+        <p class="overview-kpi__meta">完成率 {{ completionRate }}%</p>
       </article>
-      <article class="metric-card">
-        <el-icon><DataBoard /></el-icon><span>L3 评测</span><strong>{{ evals.length }}</strong>
+      <article class="overview-kpi overview-kpi--warning" @click="router.push('/eval')">
+        <div class="overview-kpi__head">
+          <span>L3 评测</span>
+          <el-icon><DataBoard /></el-icon>
+        </div>
+        <div class="overview-kpi__value">{{ evals.length }}</div>
+        <p class="overview-kpi__meta">全量通过 {{ passingEvals }}</p>
       </article>
-      <article class="metric-card">
-        <el-icon><Connection /></el-icon><span>全量通过</span><strong>{{ passingEvals }}</strong>
+      <article class="overview-kpi" :class="{ 'overview-kpi--danger': failed > 0 }" @click="router.push('/jobs')">
+        <div class="overview-kpi__head">
+          <span>失败文档</span>
+          <el-icon><Connection /></el-icon>
+        </div>
+        <div class="overview-kpi__value">{{ failed }}</div>
+        <p class="overview-kpi__meta">需在任务中心重试或排查</p>
+      </article>
+    </section>
+
+    <div class="home-board">
+      <article class="cc-card">
+        <div class="cc-card__head">
+          <div>
+            <h2 class="cc-card__title">最近文档</h2>
+            <p class="cc-card__sub">从知识库继续切片、召回或研究问答</p>
+          </div>
+          <el-button link type="primary" @click="router.push('/knowledge')">查看全部</el-button>
+        </div>
+        <el-empty v-if="!recentDocuments.length" description="还没有文档，先上传一份年报" :image-size="72" />
+        <button
+          v-for="item in recentDocuments"
+          :key="item.doc_id"
+          type="button"
+          class="home-doc-row"
+          @click="router.push('/knowledge')"
+        >
+          <span>
+            <strong>{{ item.metadata.company || item.filename }}</strong>
+            <small>{{ item.metadata.year || '—' }} · {{ item.segment_count || 0 }} 切片</small>
+          </span>
+          <el-tag size="small" :type="statusType(item.status)">{{ item.status }}</el-tag>
+        </button>
+      </article>
+
+      <article class="cc-card">
+        <div class="cc-card__head">
+          <div>
+            <h2 class="cc-card__title">快捷入口</h2>
+            <p class="cc-card__sub">工作台负责业务页，Agent Chat 仍走独立 React 应用</p>
+          </div>
+        </div>
+        <nav class="home-shortcuts">
+          <button type="button" @click="router.push('/research')">研究问答</button>
+          <button type="button" @click="router.push('/compare')">对比分析</button>
+          <button type="button" @click="router.push('/reports')">报告中心</button>
+          <button type="button" @click="router.push('/metrics')">指标中心</button>
+          <button type="button" @click="router.push('/eval')">评测中心</button>
+          <button type="button" @click="router.push('/chat-memory')">对话记忆</button>
+        </nav>
       </article>
     </div>
-
-    <el-card shadow="never" class="migration-card">
-      <template #header><strong>前端形态</strong></template>
-      <el-steps :active="2" finish-status="success" align-center>
-        <el-step title="管理后台骨架" description="参考 Yudao Lite 工程实践" />
-        <el-step title="工作台 9 页" description="REST 页面全部接入" />
-        <el-step title="构建隔离" description="本地 PostCSS / Vite 边界" />
-        <el-step title="Agent Chat" description="独立 Next.js 应用，协议级兼容" />
-      </el-steps>
-    </el-card>
   </section>
 </template>

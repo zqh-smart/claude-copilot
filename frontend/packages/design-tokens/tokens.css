@@ -1,18 +1,49 @@
 :root {
   --cc-brand-primary: #1a5945;
   --cc-brand-primary-hover: #24765a;
+  --cc-brand-soft: #e9f3ee;
+  --cc-brand-muted: #b7d4c6;
   --cc-brand-primary-soft: #68a98f;
   --cc-brand-deep: #123f32;
   --cc-brand-accent: #c9943b;
-  --cc-bg-page: #f2f5f3;
+  --cc-brand-accent-soft: #f7efd9;
+
+  --cc-bg-page: #f4f6f5;
+  --cc-bg-sidebar: #ffffff;
   --cc-bg-card: #ffffff;
+  --cc-bg-hover: #f7faf8;
+  --cc-bg-subtle: #eef3f0;
   --cc-bg-accent: #e7f1ec;
-  --cc-text-primary: #1a2e27;
-  --cc-text-secondary: #60726b;
+
+  --cc-text-primary: #13241d;
+  --cc-text-secondary: #5f716a;
+  --cc-text-muted: #8a9892;
+
   --cc-border-color: #dfe7e2;
+  --cc-border-light: #eef2f0;
+
+  --cc-success: #16835f;
+  --cc-success-soft: #ecf8f3;
+  --cc-warning: #c9943b;
+  --cc-warning-soft: #fbf4e6;
+  --cc-danger: #c53c3c;
+  --cc-danger-soft: #fdf2f2;
+
   --cc-radius-sm: 10px;
-  --cc-radius-md: 13px;
-  --cc-radius-lg: 16px;
-  --cc-sidebar-width: 232px;
-  --cc-shadow-card: 0 8px 28px rgb(18 63 50 / 6%);
+  --cc-radius-md: 14px;
+  --cc-radius-lg: 18px;
+  --cc-radius-xl: 22px;
+
+  --cc-shadow-xs: 0 1px 2px rgb(18 63 50 / 4%);
+  --cc-shadow-sm: 0 2px 8px rgb(18 63 50 / 6%);
+  --cc-shadow-md: 0 8px 24px rgb(18 63 50 / 8%);
+  --cc-shadow-card: 0 1px 3px rgb(18 63 50 / 5%), 0 8px 24px rgb(18 63 50 / 4%);
+
+  --cc-sidebar-width: 248px;
+  --cc-sidebar-collapsed-width: 72px;
+  --cc-shell-pad: 12px;
+  --cc-shell-gap: 12px;
+  --cc-content-max-width: none;
+
+  --cc-font-sans: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
 }

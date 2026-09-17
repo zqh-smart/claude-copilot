@@ -8,6 +8,7 @@ import {
   type DocumentSummary,
   type ResearchPreview,
 } from '@/api/http'
+import PageToolbar from '@/components/PageToolbar.vue'
 import { clearChatLaunchContext, setChatLaunchContext } from '@/lib/chat-launch-context'
 import { useWorkspaceStore } from '@/stores/workspace'
 
@@ -115,11 +116,10 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="page-stack">
-    <div class="page-heading compact-heading">
-      <div><p class="eyebrow">AGENTIC RAG</p><h1>研报与文档深度问答</h1><p>向量、结构化指标和知识图谱联合检索，并展示完整证据诊断。</p></div>
+  <section class="cc-page">
+    <PageToolbar kicker="研究问答" subtitle="向量、结构化指标和知识图谱联合检索，并展示完整证据诊断。">
       <el-tag type="success" effect="plain">可追溯</el-tag>
-    </div>
+    </PageToolbar>
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
 
     <div class="research-config-grid" v-loading="loading">

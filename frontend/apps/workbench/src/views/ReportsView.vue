@@ -17,6 +17,7 @@ import {
   type ReportLength,
   type ReportTemplateId,
 } from '@/api/http'
+import PageToolbar from '@/components/PageToolbar.vue'
 import { clearChatLaunchContext, setChatLaunchContext } from '@/lib/chat-launch-context'
 import { useWorkspaceStore } from '@/stores/workspace'
 
@@ -289,12 +290,11 @@ onUnmounted(clearChatLaunchContext)
 </script>
 
 <template>
-  <section class="page-stack" v-loading="loading">
+  <section class="cc-page" v-loading="loading">
     <template v-if="!draft">
-      <div class="page-heading compact-heading">
-        <div><p class="eyebrow">REPORT STUDIO</p><h1>智能报告中心</h1><p>按模板组织真实文档证据，生成可编辑、可引用、可导出的金融报告。</p></div>
+      <PageToolbar kicker="报告中心" subtitle="按模板组织真实文档证据，生成可编辑、可引用、可导出的金融报告。">
         <el-tag effect="plain">{{ drafts.length }} 份草稿</el-tag>
-      </div>
+      </PageToolbar>
       <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
 
       <el-steps :active="0" finish-status="success" simple>

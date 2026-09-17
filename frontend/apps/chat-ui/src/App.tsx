@@ -2,14 +2,13 @@ import { useCallback, useMemo, type ReactNode } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import {
-  unstable_createLangGraphStream,
   useLangGraphRuntime,
   type LangChainMessage,
   type LangGraphInterruptState,
 } from '@assistant-ui/react-langgraph'
 
-import { langGraphClient, langGraphThreadListAdapter } from '@/runtime/langgraph'
-import { LANGGRAPH_ASSISTANT_ID } from '@/runtime/config'
+import { langGraphClient, langGraphThreadListAdapter, createChatLangGraphStream } from '@/runtime/langgraph'
+import { notifyLangGraphFailure } from '@/runtime/connection'
 import { ChatThread } from '@/routes/ChatThread'
 import { ThreadList } from '@/components/ThreadList'
 import { LaunchContextBanner, useLaunchContext } from '@/components/LaunchContextBanner'
@@ -66,16 +65,14 @@ interface AgentRuntimeProps {
 }
 
 function AgentRuntime({ threadId, onThreadIdChange, children }: AgentRuntimeProps) {
-  // Memoize the client + stream factory so the SDK can reuse its connection
-  // pool and the runtime sees a stable reference across renders.
-  const client = useMemo(() => langGraphClient, [])
-  const stream = useMemo(
-    () =>
-      unstable_createLangGraphStream({
-        client,
-        assistantId: LANGGRAPH_ASSISTANT_ID,
-      }),
-    [client],
+  const stream = useMemo(() => createChatLangGraphStream(), [])
+  const eventHandlers = useMemo(
+    () => ({
+      onError: (error: unknown) => {
+        notifyLangGraphFailure(error)
+      },
+    }),
+    [],
   )
 
   // `load()` is the seam that turns a LangGraph thread id into the messages and
@@ -114,6 +111,7 @@ function AgentRuntime({ threadId, onThreadIdChange, children }: AgentRuntimeProp
 
     stream,
     load,
+    eventHandlers,
 
     // The adapter owns the full thread list lifecycle (list / initialize /
     // fetch / rename / archive / delete), so `cloud`, `create` and `delete`

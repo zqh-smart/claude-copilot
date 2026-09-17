@@ -28,10 +28,19 @@
  */
 import type { ThreadMessage } from '@assistant-ui/react'
 import type { RemoteThreadListAdapter } from '@assistant-ui/react'
+import {
+  unstable_createLangGraphStream,
+} from '@assistant-ui/react-langgraph'
 import { Client } from '@langchain/langgraph-sdk'
 import { createAssistantStream } from 'assistant-stream'
 
 import { LANGGRAPH_API_URL, LANGGRAPH_ASSISTANT_ID, langGraphHeaders } from './config'
+import {
+  clearLangGraphError,
+  describeLangGraphFailure,
+  notifyLangGraphFailure,
+  withTimeout,
+} from './connection'
 
 /**
  * Shared LangGraph SDK client. Module-scoped so the SDK can pool connections.
@@ -86,10 +95,15 @@ export const langGraphThreadListAdapter: RemoteThreadListAdapter = {
   async initialize(_threadId) {
     // LangGraph owns thread id generation; the assistant-ui local id is
     // transient and never surfaced (see `onThreadIdChange` in @/App).
-    const created = await langGraphClient.threads.create({
-      metadata: { assistant_id: LANGGRAPH_ASSISTANT_ID },
-    })
-    return { remoteId: created.thread_id, externalId: created.thread_id }
+    try {
+      const created = await langGraphClient.threads.create({
+        metadata: { assistant_id: LANGGRAPH_ASSISTANT_ID },
+      })
+      clearLangGraphError()
+      return { remoteId: created.thread_id, externalId: created.thread_id }
+    } catch (reason) {
+      throw new Error(describeLangGraphFailure(reason))
+    }
   },
 
   async fetch(threadId) {
@@ -163,4 +177,33 @@ function titleOf(metadata: Record<string, unknown> | null | undefined): string {
   }
 
   return '未命名会话'
+}
+
+/**
+ * Official stream helper plus a timeout around `initialize()`.
+ *
+ * Cold-start `:2025` outages fail inside `threadListAdapter.initialize`
+ * (`POST /threads`). The runtime can swallow that rejection before the run
+ * queue settles, leaving `isRunning` stuck. Bounding `initialize()` here
+ * makes the stream promise reject, which is the supported seam — still no
+ * custom SSE parser.
+ */
+export const createChatLangGraphStream = () => {
+  const stream = unstable_createLangGraphStream({
+    client: langGraphClient,
+    assistantId: LANGGRAPH_ASSISTANT_ID,
+  })
+
+  return async (messages, config) => {
+    clearLangGraphError()
+    try {
+      return await stream(messages, {
+        ...config,
+        initialize: () => withTimeout(config.initialize()),
+      })
+    } catch (reason) {
+      notifyLangGraphFailure(reason)
+      throw reason
+    }
+  }
 }

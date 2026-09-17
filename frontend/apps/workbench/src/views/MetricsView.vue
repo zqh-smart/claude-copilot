@@ -12,6 +12,7 @@ import {
   type MetricObservation,
   type MetricTrend,
 } from '@/api/http'
+import PageToolbar from '@/components/PageToolbar.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 use([BarChart, GridComponent, TooltipComponent, CanvasRenderer])
@@ -143,11 +144,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="page-stack">
-    <div class="page-heading compact-heading">
-      <div><p class="eyebrow">FINANCIAL BI</p><h1>结构化财务指标</h1><p>查询标准化指标、年度趋势和可追溯来源，并明确展示数据质量告警。</p></div>
+  <section class="cc-page">
+    <PageToolbar kicker="指标中心" subtitle="查询标准化指标、年度趋势和可追溯来源，并明确展示数据质量告警。">
       <el-tag effect="plain">{{ companies.length }} 家有效公司</el-tag>
-    </div>
+    </PageToolbar>
 
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
 

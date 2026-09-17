@@ -1,14 +1,17 @@
 import {
   AuiIf,
   ComposerPrimitive,
+  ErrorPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
   useAuiState,
 } from '@assistant-ui/react'
 import { MarkdownTextPrimitive } from '@assistant-ui/react-markdown'
 import { Send, Square } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { subscribeLangGraphError } from '@/runtime/connection'
 
 /**
  * The chat surface.
@@ -39,6 +42,8 @@ export function ChatThread() {
         </ThreadPrimitive.ScrollToBottom>
       </div>
 
+      <ConnectionAlert />
+
       <ComposerPrimitive.Root className="border-t border-border bg-background px-6 py-4">
         <ComposerPrimitive.Input
           rows={1}
@@ -65,13 +70,30 @@ export function ChatThread() {
  */
 function CancelButton() {
   const isRunning = useAuiState((s) => s.thread.isRunning)
-  if (!isRunning) return null
+  const [connectionError, setConnectionError] = useState<string | null>(null)
+
+  useEffect(() => subscribeLangGraphError(setConnectionError), [])
+
+  if (!isRunning || connectionError) return null
   return (
     <ComposerPrimitive.Cancel asChild>
       <Button type="button" variant="outline" size="icon" aria-label="停止">
         <Square className="size-4" />
       </Button>
     </ComposerPrimitive.Cancel>
+  )
+}
+
+function ConnectionAlert() {
+  const [message, setMessage] = useState<string | null>(null)
+
+  useEffect(() => subscribeLangGraphError(setMessage), [])
+
+  if (!message) return null
+  return (
+    <ErrorPrimitive.Root className="mx-6 mb-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+      {message}
+    </ErrorPrimitive.Root>
   )
 }
 

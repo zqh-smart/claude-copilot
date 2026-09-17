@@ -4,6 +4,7 @@ import { ElMessage } from 'element-plus'
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
+import PageToolbar from '@/components/PageToolbar.vue'
 import { uploadDocumentAsync, type IngestionJob } from '@/api/http'
 
 const router = useRouter()
@@ -23,12 +24,22 @@ const form = reactive({
 const accepted = '.pdf,.doc,.docx,.xls,.xlsx,.csv,.html,.htm,.md,.txt,.ppt,.pptx'
 
 function selectFile(event: Event) {
-  file.value = (event.target as HTMLInputElement).files?.[0] || null
-  submitted.value = null
+  takeFile((event.target as HTMLInputElement).files?.[0])
 }
 
 function chooseFile() {
   fileInput.value?.click()
+}
+
+function takeFile(next: File | undefined) {
+  if (!next) return
+  file.value = next
+  submitted.value = null
+}
+
+function onDrop(event: DragEvent) {
+  event.preventDefault()
+  takeFile(event.dataTransfer?.files?.[0])
 }
 
 async function submit() {
@@ -49,19 +60,24 @@ async function submit() {
 </script>
 
 <template>
-  <section class="page-stack">
-    <div class="page-heading compact-heading">
-      <div><p class="eyebrow">DOCUMENT INGESTION</p><h1>上传金融文档</h1><p>提交后进入解析、清洗、结构化、切片、索引与图谱流水线。</p></div>
+  <section class="cc-page">
+    <PageToolbar kicker="文档入库" subtitle="提交后进入解析、清洗、结构化、切片、索引与图谱流水线。">
       <el-button @click="router.push('/jobs')">查看任务队列</el-button>
-    </div>
+    </PageToolbar>
 
     <div class="upload-grid">
       <el-card shadow="never">
         <template #header><strong>选择文件</strong></template>
         <input ref="fileInput" type="file" :accept="accepted" hidden @change="selectFile" />
-        <button class="drop-zone" type="button" @click="chooseFile">
+        <button
+          class="drop-zone"
+          type="button"
+          @click="chooseFile"
+          @dragover.prevent
+          @drop="onDrop"
+        >
           <el-icon size="34"><UploadFilled /></el-icon>
-          <strong>{{ file?.name || '点击选择文档' }}</strong>
+          <strong>{{ file?.name || '拖入或点击选择文档' }}</strong>
           <span>{{ file ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : accepted }}</span>
         </button>
         <el-alert

@@ -9,6 +9,7 @@ import {
   type DocumentSummary,
   type PortfolioDashboard,
 } from '@/api/http'
+import PageToolbar from '@/components/PageToolbar.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 const workspace = useWorkspaceStore()
@@ -123,11 +124,10 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="page-stack">
-    <div class="page-heading compact-heading">
-      <div><p class="eyebrow">COMPARATIVE RESEARCH</p><h1>文档与投资组合对比</h1><p>双文档工作流生成差异矩阵，组合视图汇总指标排名与图谱风险。</p></div>
+  <section class="cc-page">
+    <PageToolbar kicker="对比分析" subtitle="双文档工作流生成差异矩阵，组合视图汇总指标排名与图谱风险。">
       <el-tag effect="plain">{{ documents.length }} 份可比文档</el-tag>
-    </div>
+    </PageToolbar>
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
 
     <el-card shadow="never" v-loading="loading">

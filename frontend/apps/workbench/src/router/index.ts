@@ -69,6 +69,25 @@ const router = createRouter({
   routes: [{ path: '/', component: AppLayout, children }],
 })
 
+router.onError((error, to) => {
+  const isChunkLoadFail =
+    /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(
+      error.message,
+    )
+  if (!isChunkLoadFail) return
+  const key = 'cc:chunk-reload'
+  const last = Number(sessionStorage.getItem(key) || '0')
+  const now = Date.now()
+  if (now - last < 10_000) return
+  sessionStorage.setItem(key, String(now))
+  const target = to?.fullPath || '/'
+  if (window.location.pathname + window.location.search + window.location.hash !== target) {
+    window.location.assign(target)
+  } else {
+    window.location.reload()
+  }
+})
+
 router.afterEach((to) => {
   document.title = `${String(to.meta.title || '工作台')} - Claude Copilot`
 })

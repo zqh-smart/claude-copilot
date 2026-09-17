@@ -11,6 +11,7 @@ import {
   type KnowledgeGraphSummary,
   type ResearchPreview,
 } from '@/api/http'
+import PageToolbar from '@/components/PageToolbar.vue'
 import { clearChatLaunchContext, setChatLaunchContext } from '@/lib/chat-launch-context'
 import { useWorkspaceStore } from '@/stores/workspace'
 
@@ -130,16 +131,16 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="page-stack">
-    <div class="page-heading compact-heading">
-      <div><p class="eyebrow">KNOWLEDGE BASE</p><h1>知识库与图谱</h1><p>浏览文档、切片和图谱，并验证实际召回。</p></div>
+  <section class="cc-page">
+    <PageToolbar kicker="知识库" subtitle="浏览文档、切片和图谱，并验证实际召回。">
+      <el-button @click="router.push('/research')">研究问答</el-button>
       <el-button type="primary" @click="router.push('/upload')">上传文档</el-button>
-    </div>
+    </PageToolbar>
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
 
     <div class="knowledge-grid" v-loading="loading">
       <el-card shadow="never" class="document-panel">
-        <el-input v-model="query" clearable placeholder="搜索公司、文件名或年份" />
+        <el-input v-model="query" clearable placeholder="搜索公司、文件名或年份" class="cc-filter-input" />
         <div class="document-list">
           <button
             v-for="item in workbenchDocuments"

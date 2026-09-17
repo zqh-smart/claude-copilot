@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 
+import PageToolbar from '@/components/PageToolbar.vue'
 import {
   getChatMemoryHealth,
   getChatMemoryLayer,
@@ -139,11 +140,12 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="page-stack">
-    <div class="page-heading compact-heading">
-      <div><p class="eyebrow">CONVERSATION MEMORY</p><h1>对话记忆</h1><p>L0–L3 会话经验与用户偏好；与金融文档三库相互独立。</p></div>
-      <el-tag :type="connected ? 'success' : health?.status === 'disabled' ? 'warning' : 'danger'" effect="plain">{{ connected ? 'MemoryCore 已连接' : health?.status === 'disabled' ? 'MemoryCore 未启用' : 'MemoryCore 不可用' }}</el-tag>
-    </div>
+  <section class="cc-page">
+    <PageToolbar kicker="对话记忆" subtitle="L0–L3 会话经验与用户偏好；与金融文档三库相互独立。">
+      <el-tag :type="connected ? 'success' : health?.status === 'disabled' ? 'warning' : 'danger'" effect="plain">
+        {{ connected ? 'MemoryCore 已连接' : health?.status === 'disabled' ? 'MemoryCore 未启用' : 'MemoryCore 不可用' }}
+      </el-tag>
+    </PageToolbar>
     <el-alert v-if="health?.status === 'disabled'" title="后端 CHAT_MEMORY_ENABLED=false。启用 MemoryCore sidecar 后，此页面会自动显示真实记忆。" type="warning" show-icon :closable="false" />
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
 
