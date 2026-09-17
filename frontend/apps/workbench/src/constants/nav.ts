@@ -53,7 +53,7 @@ export const navGroups: NavGroup[] = [
       { path: '/agent-chat', title: '研究对话', icon: ChatDotRound, keywords: ['agent', '金融', '对话'] },
       { path: '/research', title: '研究问答', icon: Search, keywords: ['research', '检索'] },
       { path: '/compare', title: '对比分析', icon: DataAnalysis, keywords: ['公司', '年度'] },
-      { path: '/reports', title: '报告中心', icon: Memo, keywords: ['草稿', '导出'] },
+      { path: '/reports', title: '报告中心', icon: Memo, keywords: ['草稿', '导出', '在线文档', '研报'] },
     ],
   },
   {

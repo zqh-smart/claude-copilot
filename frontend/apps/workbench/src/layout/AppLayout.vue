@@ -24,6 +24,7 @@ const active = computed(() => {
 })
 const pageTitle = computed(() => String(route.meta.title || '工作台'))
 const isAgentChat = computed(() => route.path === '/agent-chat')
+const isReports = computed(() => route.path === '/reports' || route.path.startsWith('/reports/'))
 
 const searchEntries = computed<SearchEntry[]>(() => {
   const items: SearchEntry[] = [
@@ -127,7 +128,7 @@ function prefetch(path: string) {
       </button>
     </aside>
 
-    <div class="workspace" :class="{ 'workspace--chat': isAgentChat }">
+    <div class="workspace" :class="{ 'workspace--chat': isAgentChat, 'workspace--reports': isReports }">
       <header v-if="!isAgentChat" class="workspace__header">
         <div class="workspace__header-left">
           <h1 class="workspace__title">{{ pageTitle }}</h1>
@@ -140,8 +141,8 @@ function prefetch(path: string) {
           </el-button>
         </div>
       </header>
-      <main class="workspace__main" :class="{ 'workspace__main--chat': isAgentChat }">
-        <div class="workspace__content" :class="{ 'workspace__content--chat': isAgentChat }">
+      <main class="workspace__main" :class="{ 'workspace__main--chat': isAgentChat, 'workspace__main--reports': isReports }">
+        <div class="workspace__content" :class="{ 'workspace__content--chat': isAgentChat, 'workspace__content--reports': isReports }">
           <RouterView v-slot="{ Component }">
             <KeepAlive :max="8">
               <component :is="Component" />
@@ -354,10 +355,25 @@ function prefetch(path: string) {
   overflow: hidden;
 }
 
-.workspace__content--chat {
+.workspace__content--chat,
+.workspace__content--reports {
+  display: flex;
   height: 100%;
   max-width: none;
+  min-height: 0;
   padding: 0;
+}
+
+.workspace__content--reports :deep(.reports-workspace) {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.workspace__main--reports {
+  min-height: 0;
+  overflow: hidden;
 }
 
 @media (max-width: 768px) {

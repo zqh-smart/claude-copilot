@@ -68,7 +68,7 @@ const children: RouteRecordRaw[] = [
     path: 'reports/:draftId',
     name: 'report-editor',
     component: ReportsView,
-    meta: { title: '报告编辑' },
+    meta: { title: '报告中心' },
   },
 ]
 
