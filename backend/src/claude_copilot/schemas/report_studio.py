@@ -55,6 +55,7 @@ class ReportDraftSection(BaseModel):
     chapter_id: str
     title: str
     content: str
+    editor_json: dict[str, Any] | None = None
     citation_ids: list[str] = Field(default_factory=list)
     required_metrics: list[str] = Field(default_factory=list)
     analysis_requirements: list[str] = Field(default_factory=list)

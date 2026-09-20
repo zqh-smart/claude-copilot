@@ -5,6 +5,28 @@ import AIInsightBlock from '@/components/reports/blocks/AIInsightBlock.vue'
 import CitationMark from '@/components/reports/blocks/CitationMark.vue'
 import ReportChartBlock from '@/components/reports/blocks/ReportChartBlock.vue'
 
+export const ReportSection = Node.create({
+  name: 'reportSection',
+  group: 'block',
+  content: 'block+',
+  defining: true,
+  addAttributes() {
+    return {
+      sectionId: { default: '' },
+      chapterId: { default: '' },
+      citationIds: { default: [] },
+      requiredMetrics: { default: [] },
+      analysisRequirements: { default: [] },
+    }
+  },
+  parseHTML() {
+    return [{ tag: 'section[data-type="report-section"]' }]
+  },
+  renderHTML({ HTMLAttributes }: { HTMLAttributes: Record<string, unknown> }) {
+    return ['section', mergeAttributes(HTMLAttributes, { 'data-type': 'report-section' }), 0]
+  },
+})
+
 export const AIInsight = Node.create({
   name: 'aiInsight',
   group: 'block',

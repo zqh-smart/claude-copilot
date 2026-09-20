@@ -109,12 +109,29 @@ def test_patch_section_content(tmp_path: Path) -> None:
     draft = service.create_draft(
         CreateReportDraftRequest(doc_ids=["doc-1"], template_id="period_comparison")
     )
-    section = draft.sections[0].model_copy(update={"content": "人工改写后的行业概览 [C1]"})
+    editor_json = {
+        "type": "doc",
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [{"type": "text", "text": "人工改写后的行业概览 "}],
+            }
+        ],
+    }
+    section = draft.sections[0].model_copy(
+        update={"content": "人工改写后的行业概览 [C1]", "editor_json": editor_json}
+    )
     updated = service.patch_draft(
         draft.draft_id,
         PatchReportDraftRequest(sections=[section, *draft.sections[1:]]),
     )
     assert updated.sections[0].content.startswith("人工改写")
+    assert updated.sections[0].section_id == section.section_id
+    assert updated.sections[0].chapter_id == section.chapter_id
+    assert updated.sections[0].citation_ids == section.citation_ids
+    assert updated.sections[0].required_metrics == section.required_metrics
+    assert updated.sections[0].analysis_requirements == section.analysis_requirements
+    assert updated.sections[0].editor_json == editor_json
     assert updated.status == "revised"
 
 

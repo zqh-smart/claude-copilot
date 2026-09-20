@@ -53,7 +53,7 @@ function toggle(id: string) {
         <template #default="scope">{{ scope.row.metadata.doc_type || '—' }}</template>
       </el-table-column>
     </el-table>
-    <p>已选择 {{ selectedIds.length }} 份材料。可先不选，使用本地初稿。</p>
+    <p>已选择 {{ selectedIds.length }} 份材料。至少选择一份已完成解析的材料。</p>
   </div>
 </template>
 

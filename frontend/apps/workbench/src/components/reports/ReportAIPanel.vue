@@ -19,8 +19,6 @@ const emit = defineEmits<{
   send: [text: string]
   shortcut: [text: string]
   openCitation: [citation: Citation]
-  chart: []
-  table: []
 }>()
 
 const draft = defineModel<string>('draft', { default: '' })
@@ -50,7 +48,7 @@ const draft = defineModel<string>('draft', { default: '' })
         :active-id="activeCitationId"
         @open="emit('openCitation', $event)"
       />
-      <ReportDataPanel v-else @chart="emit('chart')" @table="emit('table')" />
+      <ReportDataPanel v-else />
     </div>
   </aside>
 </template>

@@ -9,6 +9,7 @@ import ReportTemplateSelector from '@/components/reports/ReportTemplateSelector.
 import { useWorkspaceStore } from '@/stores/workspace'
 
 const open = defineModel<boolean>({ default: false })
+defineProps<{ creating: boolean }>()
 
 const emit = defineEmits<{
   create: [payload: {
@@ -31,7 +32,6 @@ const sourceIds = ref<string[]>([])
 const prompt = ref('重点分析：盈利能力、现金流、海外业务、风险因素')
 const language = ref<ReportLanguage>('zh')
 const length = ref<ReportLength>('standard')
-const creating = ref(false)
 
 const backendTemplateId = computed(
   () => PRODUCT_TEMPLATES.find((item) => item.id === reportType.value)?.backendTemplateId || 'comprehensive_financial',
@@ -40,12 +40,11 @@ const backendTemplateId = computed(
 watch(open, async (value) => {
   if (!value) return
   step.value = 0
-  creating.value = false
   await workspace.ensureDocuments().catch(() => undefined)
 })
 
 async function submit() {
-  creating.value = true
+  if (!sourceIds.value.length) return
   emit('create', {
     type: reportType.value,
     templateId: backendTemplateId.value,
@@ -99,7 +98,7 @@ async function submit() {
       </section>
       <section v-show="step === 4">
         <h3>确认创建</h3>
-        <p>将立即打开在线文档。若后端生成可用，会写入初稿；否则先进入本地可编辑文档并逐章生成。</p>
+        <p>将调用后端生成报告框架并打开在线文档。后端失败时不会创建本地假草稿。</p>
         <ul>
           <li>模板：{{ PRODUCT_TEMPLATES.find((item) => item.id === reportType)?.name }}</li>
           <li>对象：{{ company || '未填写' }}</li>
@@ -111,7 +110,7 @@ async function submit() {
     <template #footer>
       <el-button v-if="step > 0" @click="step -= 1">上一步</el-button>
       <el-button v-if="step < 4" type="primary" @click="step += 1">下一步</el-button>
-      <el-button v-else type="primary" :loading="creating" @click="submit">创建报告</el-button>
+    <el-button v-else type="primary" :loading="creating" :disabled="!sourceIds.length" @click="submit">生成报告框架</el-button>
     </template>
   </el-drawer>
 </template>

@@ -1,4 +1,4 @@
-export type ReportStatus = 'draft' | 'done' | 'archived' | 'generating'
+export type ReportStatus = 'draft' | 'done' | 'archived'
 export type ReportType = 'earnings' | 'company' | 'industry' | 'peer' | 'event' | 'custom'
 export type ReportLanguage = 'zh' | 'en'
 export type ReportLength = 'brief' | 'standard' | 'long'
@@ -89,7 +89,7 @@ export interface Report {
   length: ReportLength
   prompt: string
   backendDraftId?: string
-  generatingChapters?: Array<{ title: string; status: 'pending' | 'running' | 'done' }>
+  syncState?: 'synced' | 'cached'
 }
 
 export interface ReportListItem {
@@ -139,7 +139,6 @@ export const REPORT_STATUS_LABEL: Record<ReportStatus, string> = {
   draft: '草稿',
   done: '已完成',
   archived: '已归档',
-  generating: '生成中',
 }
 
 export const PRODUCT_TEMPLATES: Array<{

@@ -14,8 +14,7 @@ import { clearChatLaunchContext, setChatLaunchContext } from '@/lib/chat-launch-
 import { askReportAssistant, runReportAiCommand } from '@/services/reportAiService'
 import { extractPlainText } from '@/services/reportDocument'
 import { formatClock } from '@/services/reportFormat'
-import { MOCK_CURRENT_USER } from '@/services/reportMock'
-import { reportRepository, streamReport } from '@/services/reportRepository'
+import { reportRepository } from '@/services/reportRepository'
 import type {
   Citation,
   CreateReportInput,
@@ -28,6 +27,8 @@ import type {
   SaveState,
 } from '@/types/report'
 
+const CURRENT_USER = 'me'
+
 const route = useRoute()
 const router = useRouter()
 const lists = ref<ReportListItem[]>([])
@@ -35,6 +36,7 @@ const report = ref<Report | null>(null)
 const query = ref('')
 const filter = ref<'all' | 'mine' | ReportStatus>('all')
 const wizardOpen = ref(false)
+const creatingReport = ref(false)
 const historyOpen = ref(false)
 const aiCollapsed = ref(window.innerWidth < 1366)
 const tab = ref<'assistant' | 'citations' | 'data'>('assistant')
@@ -46,8 +48,6 @@ const pendingAi = ref(false)
 const assistantDraft = ref('')
 const messages = ref<Array<{ id: string; role: 'user' | 'assistant'; text: string }>>([])
 const editorRef = ref<{
-  insertGeneratedChart: () => void
-  insertGeneratedTable: () => void
   replaceSelection: (text: string) => void
 } | null>(null)
 
@@ -60,8 +60,8 @@ const routeReportId = computed(() => {
 const filteredLists = computed(() => {
   const term = query.value.trim().toLocaleLowerCase()
   return lists.value.filter((item) => {
-    if (filter.value === 'mine' && item.createdBy !== MOCK_CURRENT_USER) return false
-    if (filter.value === 'draft' && item.status !== 'draft' && item.status !== 'generating') return false
+    if (filter.value === 'mine' && item.createdBy !== CURRENT_USER) return false
+    if (filter.value === 'draft' && item.status !== 'draft') return false
     if (filter.value === 'done' && item.status !== 'done') return false
     if (filter.value === 'archived' && item.status !== 'archived') return false
     if (!term) return true
@@ -74,14 +74,21 @@ async function refreshList() {
 }
 
 async function openReport(id: string, replace = false) {
-  const next = await reportRepository.getReport(id)
-  if (!next) return
-  report.value = next
-  reportRepository.setLastOpenedId(id)
-  activeCitationId.value = next.citations[0]?.id || ''
-  const target = `/reports/${id}`
-  if (route.path !== target) {
-    await router[replace ? 'replace' : 'push'](target)
+  try {
+    const next = await reportRepository.getReport(id)
+    if (!next) return
+    report.value = next
+    reportRepository.setLastOpenedId(next.id)
+    activeCitationId.value = next.citations[0]?.id || ''
+    if (next.syncState === 'cached') {
+      ElMessage.warning('后端暂不可用，当前显示最近一次同步缓存；恢复连接前不会覆盖后端草稿。')
+    }
+    const target = `/reports/${next.id}`
+    if (route.path !== target) {
+      await router[replace ? 'replace' : 'push'](target)
+    }
+  } catch (reason) {
+    ElMessage.error(reason instanceof Error ? reason.message : '报告加载失败')
   }
 }
 
@@ -100,35 +107,39 @@ async function ensureActiveReport() {
 function scheduleSave(content: EditorJSON) {
   if (!report.value) return
   report.value = { ...report.value, content }
+  const reportId = report.value.id
+  const title = report.value.title
   window.clearTimeout(saveTimer)
   saveState.value = 'saving'
   saveTimer = window.setTimeout(async () => {
-    if (!report.value) return
     try {
-      report.value = await reportRepository.updateReport(
-        report.value.id,
-        { content: report.value.content, title: report.value.title },
+      const saved = await reportRepository.updateReport(
+        reportId,
+        { content, title },
         { type: 'autosave', description: '自动保存' },
       )
+      if (report.value?.id === reportId) report.value = saved
       saveState.value = 'saved'
-      savedAt.value = formatClock(report.value.updatedAt)
+      savedAt.value = formatClock(saved.updatedAt)
       await refreshList()
-    } catch {
+    } catch (reason) {
       saveState.value = 'error'
+      ElMessage.error(reason instanceof Error ? reason.message : '保存失败，修改尚未同步到后端')
     }
   }, 1400)
 }
 
 async function createReport(input: CreateReportInput) {
-  const created = await reportRepository.createReport(input)
-  wizardOpen.value = false
-  await refreshList()
-  await openReport(created.id)
-  if (created.status === 'generating') {
-    report.value = await streamReport(created.id, (next) => {
-      if (report.value?.id === next.id) report.value = next
-    })
+  creatingReport.value = true
+  try {
+    const created = await reportRepository.createReport(input)
+    wizardOpen.value = false
     await refreshList()
+    await openReport(created.id)
+  } catch (reason) {
+    ElMessage.error(reason instanceof Error ? reason.message : '报告框架生成失败')
+  } finally {
+    creatingReport.value = false
   }
 }
 
@@ -144,7 +155,7 @@ async function shareReport() {
   ElMessage.success('报告链接已复制')
 }
 
-async function exportReport(format: 'docx' | 'pdf' | 'md') {
+async function exportReport(format: 'html' | 'pdf' | 'md') {
   if (!report.value) return
   if (format === 'md') {
     const blob = new Blob([`# ${report.value.title}\n\n${extractPlainText(report.value.content)}`], {
@@ -158,12 +169,12 @@ async function exportReport(format: 'docx' | 'pdf' | 'md') {
     URL.revokeObjectURL(url)
     return
   }
-  if (!report.value.backendDraftId) {
-    ElMessage.warning('Word / PDF 导出需要后端草稿接口，当前报告尚未同步。')
+  if (!report.value.backendDraftId || report.value.syncState === 'cached') {
+    ElMessage.warning('HTML / PDF 导出需要连接后端并加载已同步草稿。')
     return
   }
   try {
-    const artifact = await exportReportDraft(report.value.backendDraftId, format === 'pdf' ? 'pdf' : 'html', report.value.title)
+    const artifact = await exportReportDraft(report.value.backendDraftId, format, report.value.title)
     const url = URL.createObjectURL(artifact.blob)
     const anchor = document.createElement('a')
     anchor.href = url
@@ -182,8 +193,6 @@ async function handleCommand(command: ReportAiCommand) {
     const result = await runReportAiCommand({ command, selection: selection.value })
     messages.value.push({ id: `${Date.now()}`, role: 'assistant', text: result.message })
     if (result.replacement) editorRef.value?.replaceSelection(result.replacement)
-    if (result.insertChart) editorRef.value?.insertGeneratedChart()
-    if (result.insertTable) editorRef.value?.insertGeneratedTable()
     if (result.openCitations) tab.value = 'citations'
   } finally {
     pendingAi.value = false
@@ -194,9 +203,6 @@ async function sendAssistant(text: string) {
   messages.value.push({ id: `${Date.now()}-u`, role: 'user', text })
   pendingAi.value = true
   try {
-    if (text.includes('趋势图')) {
-      editorRef.value?.insertGeneratedChart()
-    }
     const reply = await askReportAssistant(text, selection.value)
     messages.value.push({ id: `${Date.now()}-a`, role: 'assistant', text: reply })
   } finally {
@@ -271,7 +277,6 @@ onActivated(() => {
           :key="report.id"
           ref="editorRef"
           :content="report.content"
-          :generating-chapters="report.generatingChapters"
           @change="scheduleSave"
           @selection="selection = $event"
           @citation="onCitationClick"
@@ -296,11 +301,9 @@ onActivated(() => {
       @send="sendAssistant"
       @shortcut="sendAssistant"
       @open-citation="openCitation"
-      @chart="editorRef?.insertGeneratedChart()"
-      @table="editorRef?.insertGeneratedTable()"
     />
 
-    <NewReportDialog v-model="wizardOpen" @create="createReport" />
+    <NewReportDialog v-model="wizardOpen" :creating="creatingReport" @create="createReport" />
     <ReportVersionDrawer v-model="historyOpen" :versions="report?.versions || []" />
   </section>
 </template>

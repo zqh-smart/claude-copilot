@@ -12,14 +12,12 @@ import { Editor, EditorContent, BubbleMenu } from '@tiptap/vue-3'
 import { onBeforeUnmount, ref, watch } from 'vue'
 
 import ReportEditorToolbar from '@/components/reports/ReportEditorToolbar.vue'
-import { AIInsight, Citation, ReportChart } from '@/components/reports/tiptapExtensions'
+import { AIInsight, Citation, ReportChart, ReportSection } from '@/components/reports/tiptapExtensions'
 import { setCitationClickHandler } from '@/components/reports/reportEditorEvents'
-import { financialTable, reportChart } from '@/services/reportDocument'
 import type { EditorJSON, EditorSelection, ReportAiCommand } from '@/types/report'
 
 const props = defineProps<{
   content: EditorJSON
-  generatingChapters?: Array<{ title: string; status: 'pending' | 'running' | 'done' }>
 }>()
 
 const emit = defineEmits<{
@@ -70,6 +68,7 @@ function createEditor() {
       TableRow,
       TableHeader,
       TableCell,
+      ReportSection,
       AIInsight,
       ReportChart,
       Citation,
@@ -114,29 +113,6 @@ function runCommand(command: ReportAiCommand) {
   emit('command', command)
 }
 
-function insertGeneratedChart() {
-  editor.value?.chain().focus().insertContent(reportChart({
-    id: `chart-${Date.now()}`,
-    title: '营收与净利润趋势',
-    chartType: 'combo',
-    xAxis: ['2022', '2023', '2024', '2025', '2026H1'],
-    series: [
-      { name: '营业收入', type: 'bar', data: [3286, 4009, 4270, 4620, 1884] },
-      { name: '归母净利润', type: 'bar', data: [307, 441, 507, 530, 229] },
-    ],
-    dataSource: '示例数据，待数据助手接入',
-  })).run()
-}
-
-function insertGeneratedTable() {
-  editor.value?.chain().focus().insertContent(
-    financialTable(
-      ['指标', '本期', '上年同期', '同比'],
-      [['营业收入', '—', '—', '—'], ['归母净利润', '—', '—', '—']],
-    ),
-  ).run()
-}
-
 function replaceSelection(text: string) {
   const instance = editor.value
   if (!instance) return
@@ -144,28 +120,15 @@ function replaceSelection(text: string) {
   instance.chain().focus().insertContentAt({ from, to }, text).run()
 }
 
-defineExpose({ insertGeneratedChart, insertGeneratedTable, replaceSelection, editor })
+defineExpose({ replaceSelection, editor })
 </script>
 
 <template>
   <div class="report-editor">
     <ReportEditorToolbar :editor="(editor as never)" :tick="editorTick" />
-    <div v-if="generatingChapters?.length" class="report-editor__progress">
-      <span v-for="item in generatingChapters" :key="item.title" :class="`is-${item.status}`">
-        {{ item.title }}
-        <template v-if="item.status === 'done'">✓</template>
-        <template v-else-if="item.status === 'running'">正在生成...</template>
-        <template v-else>等待生成</template>
-      </span>
-    </div>
     <div class="report-editor__scroll">
       <bubble-menu v-if="editor" :editor="(editor as never)" :tippy-options="{ duration: 100 }" class="report-bubble">
-        <button type="button" @click="runCommand('rewrite')">AI</button>
-        <button type="button" @click="runCommand('rewrite')">改写</button>
-        <button type="button" @click="runCommand('shorten')">精简</button>
-        <button type="button" @click="runCommand('expand')">扩写</button>
-        <button type="button" @click="runCommand('explain')">解释</button>
-        <button type="button" @click="runCommand('find_evidence')">找证据</button>
+        <button type="button" @click="runCommand('find_evidence')">查看引用</button>
       </bubble-menu>
       <editor-content :editor="(editor as never)" class="report-editor__canvas" />
     </div>
@@ -180,22 +143,6 @@ defineExpose({ insertGeneratedChart, insertGeneratedTable, replaceSelection, edi
   flex: 1;
   flex-direction: column;
   background: #fff;
-}
-.report-editor__progress {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-  padding: 8px 20px;
-  border-bottom: 1px solid #e8ecea;
-  color: var(--cc-text-muted);
-  font-size: 12px;
-  background: #fbfcfb;
-}
-.report-editor__progress .is-running {
-  color: var(--cc-brand-primary);
-}
-.report-editor__progress .is-done {
-  color: var(--cc-success);
 }
 .report-editor__scroll {
   min-height: 0;
@@ -243,6 +190,9 @@ defineExpose({ insertGeneratedChart, insertGeneratedTable, replaceSelection, edi
   margin: 0 0 10px;
   font-size: 28px;
   line-height: 1.3;
+}
+.report-prose [data-type='report-section'] {
+  display: flow-root;
 }
 .report-prose h2 {
   margin: 28px 0 10px;

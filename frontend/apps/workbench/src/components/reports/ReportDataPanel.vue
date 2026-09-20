@@ -1,27 +1,9 @@
-<script setup lang="ts">
-import { MOCK_METRICS } from '@/services/reportMock'
-
-defineEmits<{
-  chart: []
-  table: []
-}>()
-</script>
-
 <template>
   <div class="data-panel">
     <p class="data-panel__hint">
-      数据助手将承接财务指标、同比环比、结构化表格与图表生成。当前为 UI + mock。
+      数据助手将在下一阶段接入结构化财务指标。当前不展示示例指标，也不会向正文插入模拟数据。
     </p>
-    <el-table :data="MOCK_METRICS" size="small" stripe>
-      <el-table-column prop="name" label="指标" min-width="120" />
-      <el-table-column prop="current" label="本期" width="88" />
-      <el-table-column prop="previous" label="上年" width="88" />
-      <el-table-column prop="yoy" label="同比" width="80" />
-    </el-table>
-    <div class="data-panel__actions">
-      <el-button @click="$emit('table')">插入指标表</el-button>
-      <el-button type="primary" plain @click="$emit('chart')">生成趋势图</el-button>
-    </div>
+    <el-empty :image-size="56" description="暂无已连接的数据查询" />
   </div>
 </template>
 
@@ -38,9 +20,5 @@ defineEmits<{
   color: var(--cc-text-secondary);
   font-size: 12px;
   line-height: 1.6;
-}
-.data-panel__actions {
-  display: flex;
-  gap: 8px;
 }
 </style>

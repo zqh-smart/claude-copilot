@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
 from uuid import uuid4
-
-from functools import lru_cache
 
 from app.api.services.report_template_catalog import get_report_template, list_report_templates
 from app.api.services.workflow_api_service import WorkflowApiService
@@ -119,7 +118,11 @@ class ReportDraftStore:
 
     def list_summaries(self) -> list[ReportDraftSummary]:
         items: list[ReportDraftSummary] = []
-        for path in sorted(self._root.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True):
+        for path in sorted(
+            self._root.glob("*.json"),
+            key=lambda item: item.stat().st_mtime,
+            reverse=True,
+        ):
             payload = _normalize_draft_payload(json.loads(path.read_text(encoding="utf-8")))
             items.append(
                 ReportDraftSummary(
@@ -284,7 +287,7 @@ class ReportDraftService:
         applied = False
         if apply:
             updated_sections = [
-                item.model_copy(update={"content": suggested})
+                item.model_copy(update={"content": suggested, "editor_json": None})
                 if item.section_id == section_id
                 else item
                 for item in draft.sections
@@ -318,7 +321,11 @@ class ReportDraftService:
     ) -> str:
         company = next((item.company for item in sources if item.company), None)
         years = sorted({item.year for item in sources if item.year is not None})
-        year_label = f"{years[0]}-{years[-1]}" if len(years) > 1 else (str(years[0]) if years else "")
+        year_label = (
+            f"{years[0]}-{years[-1]}"
+            if len(years) > 1
+            else (str(years[0]) if years else "")
+        )
         bits = [part for part in (company, year_label, template.name) if part]
         return " ".join(bits) or template.name
 
@@ -382,7 +389,10 @@ class ReportDraftService:
                 unused_by_source.append(
                     (
                         source,
-                        f"{_hit_section_title(metadata)} {metadata.get('section_type') or ''}".strip(),
+                        (
+                            f"{_hit_section_title(metadata)} "
+                            f"{metadata.get('section_type') or ''}"
+                        ).strip(),
                         [excerpt[:280]],
                         _hit_page(metadata),
                     )

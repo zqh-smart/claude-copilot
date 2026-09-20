@@ -265,6 +265,7 @@ export interface ReportDraftSection {
   chapter_id: string
   title: string
   content: string
+  editor_json?: { type: string; content?: Array<Record<string, unknown>> } | null
   citation_ids: string[]
   required_metrics: string[]
   analysis_requirements: string[]

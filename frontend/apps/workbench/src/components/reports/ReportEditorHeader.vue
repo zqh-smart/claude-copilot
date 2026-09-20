@@ -14,7 +14,7 @@ defineProps<{
 const emit = defineEmits<{
   share: []
   history: []
-  export: [format: 'docx' | 'pdf' | 'md']
+  export: [format: 'html' | 'pdf' | 'md']
   complete: []
   toggleAi: []
 }>()
@@ -49,7 +49,7 @@ const emit = defineEmits<{
         </el-button>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item command="docx">导出 Word</el-dropdown-item>
+            <el-dropdown-item command="html">导出 HTML</el-dropdown-item>
             <el-dropdown-item command="pdf">导出 PDF</el-dropdown-item>
             <el-dropdown-item command="md">导出 Markdown</el-dropdown-item>
           </el-dropdown-menu>

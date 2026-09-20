@@ -17,14 +17,6 @@ const emit = defineEmits<{
 
 const draft = defineModel<string>('draft', { default: '' })
 
-const shortcuts = [
-  '分析毛利率下降原因',
-  '补充海外业务最新进展',
-  '生成一张营收趋势图',
-  '将这一节改成券商研报风格',
-  '检查这段结论是否有证据支持',
-]
-
 const selectionLabel = computed(() => {
   const text = props.selection?.text.trim()
   if (!text) return ''
@@ -43,12 +35,9 @@ function submit() {
   <div class="ai-assistant">
     <div class="ai-assistant__intro">
       <strong>你好，我是你的金融研究助手</strong>
-      <p>可以帮你改写、扩展分析、补充数据、生成图表、查找证据或检查结论的依据。</p>
+      <p>AI 改写将在下一阶段接入后端证据辅助接口。当前不会生成或覆盖报告正文。</p>
     </div>
     <p v-if="selectionLabel" class="ai-assistant__selection">已选中：{{ selectionLabel }}</p>
-    <div class="ai-assistant__shortcuts">
-      <button v-for="item in shortcuts" :key="item" type="button" @click="emit('shortcut', item)">{{ item }}</button>
-    </div>
     <div class="ai-assistant__thread">
       <article v-for="item in messages" :key="item.id" :class="item.role">
         {{ item.text }}
@@ -60,10 +49,11 @@ function submit() {
         type="textarea"
         :rows="3"
         resize="none"
-        placeholder="请输入问题，或选择上方的建议..."
+        disabled
+        placeholder="AI 研究助手尚未启用"
         @keydown.enter.exact.prevent="submit"
       />
-      <el-button type="primary" circle :loading="pending" @click="submit">
+      <el-button type="primary" circle disabled :loading="pending" @click="submit">
         <el-icon><Promotion /></el-icon>
       </el-button>
     </div>
@@ -95,25 +85,6 @@ function submit() {
   border-radius: 8px;
   background: var(--cc-brand-soft);
   color: var(--cc-brand-deep);
-}
-.ai-assistant__shortcuts {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.ai-assistant__shortcuts button {
-  padding: 8px 10px;
-  border: 1px solid #e8ecea;
-  border-radius: 10px;
-  background: #fff;
-  color: var(--cc-text-primary);
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
-}
-.ai-assistant__shortcuts button:hover {
-  border-color: var(--cc-brand-muted);
-  background: #f7faf8;
 }
 .ai-assistant__thread {
   display: flex;
