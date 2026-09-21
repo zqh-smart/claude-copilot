@@ -24,7 +24,7 @@
     "@tiptap/extension-underline": "2.26.1",
     "@tiptap/pm": "2.26.1",
     "@tiptap/starter-kit": "2.26.1",
-    "@tiptap/vue-3": "2.26.1",
+    "@tiptap/vue-3": "3.31.3",
     "@vueuse/core": "^14.3.0",
     "axios": "1.16.0",
     "echarts": "^6.0.0",
