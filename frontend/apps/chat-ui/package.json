@@ -33,7 +33,7 @@
     "assistant-stream": "0.3.43",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.476.0",
+    "lucide-react": "^1.47.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-router-dom": "^6.28.0",
